@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-07-02
+goal: Make the dev environment liftable with a single 'docker compose up' on
+  Windows + Linux hosts. Eliminate manual alembic step and native-binary
+  crashloop.
