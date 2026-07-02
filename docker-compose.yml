@@ -1,0 +1,80 @@
+###############################################################################
+# docker-compose.yml — Entorno de desarrollo local
+#
+# Servicios:
+#   db  — PostgreSQL 15 (base de datos)
+#   api — FastAPI backend
+#   web — Vite frontend (dev server)
+#
+# Uso:
+#   docker compose up           # con docker-compose.override.yml automático
+#   docker compose up --build   # rebuild imágenes
+#   docker compose down -v      # destruir + borrar volumes
+#
+# Variables de entorno:
+#   Crear facturas-proveedores-api/.env desde .env.example
+###############################################################################
+
+services:
+
+  # ── Base de datos ────────────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: facturas_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_DB: ${DB_NAME:-facturas_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-facturas_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── Backend FastAPI ───────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./facturas-proveedores-api
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: facturas_api
+    restart: unless-stopped
+    env_file:
+      - ./facturas-proveedores-api/.env
+    environment:
+      # Sobreescribir DATABASE_URL para apuntar al servicio db del compose
+      DATABASE_URL: postgresql+psycopg2://${DB_USER:-postgres}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-facturas_db}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Frontend Vite ─────────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ./facturas-proveedores-web
+      dockerfile: Dockerfile
+      target: dev
+    container_name: facturas_web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+    driver: local

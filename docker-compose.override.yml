@@ -1,0 +1,65 @@
+###############################################################################
+# docker-compose.override.yml — Overrides para desarrollo local
+#
+# Este archivo se aplica AUTOMÁTICAMENTE sobre docker-compose.yml cuando
+# se corre `docker compose up` (Docker Compose lo detecta por nombre).
+#
+# Agrega: hot reload, montaje de código fuente, modo debug.
+###############################################################################
+
+services:
+
+  # ── Backend con hot reload ───────────────────────────────────────────────────
+  api:
+    build:
+      target: runtime          # mismo target, pero con código montado
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload               # hot reload en desarrollo
+      - --reload-dir
+      - /app/app
+    volumes:
+      # Montar código fuente para hot reload sin rebuild
+      - ./facturas-proveedores-api/app:/app/app:ro
+      - ./facturas-proveedores-api/tests:/app/tests:ro
+      - ./facturas-proveedores-api/alembic:/app/alembic:ro
+      - ./facturas-proveedores-api/alembic.ini:/app/alembic.ini:ro
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+
+  # ── Frontend con hot reload ──────────────────────────────────────────────────
+  web:
+    build:
+      target: dev
+    command:
+      - npm
+      - run
+      - dev
+      - --
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "5173"
+    volumes:
+      # Montar código fuente y node_modules desde host para velocidad
+      - ./facturas-proveedores-web/src:/app/src:ro
+      - ./facturas-proveedores-web/public:/app/public:ro
+      - ./facturas-proveedores-web/index.html:/app/index.html:ro
+      - ./facturas-proveedores-web/vite.config.ts:/app/vite.config.ts:ro
+      - ./facturas-proveedores-web/tsconfig.json:/app/tsconfig.json:ro
+      - ./facturas-proveedores-web/package.json:/app/package.json:ro
+      # node_modules montado desde el host (instalar con npm ci primero)
+      - ./facturas-proveedores-web/node_modules:/app/node_modules
+    environment:
+      VITE_API_URL: http://localhost:8000
+
+  # ── Base de datos sin restricción de puerto para tools locales ───────────────
+  db:
+    ports:
+      - "5432:5432"    # accesible desde DBeaver/TablePlus en el host

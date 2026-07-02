@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(scoop --version)",
+      "Bash(go version *)",
+      "Bash(gentle-ai --version)",
+      "Bash(powershell.exe *)",
+      "Bash('C:\\\\Users\\\\pocho/scoop/shims/gentle-ai.exe' --help)",
+      "Bash('C:\\\\Users\\\\pocho/scoop/shims/gentle-ai.exe' install *)",
+      "Bash('C:\\\\Users\\\\pocho/scoop/shims/gentle-ai.exe' doctor *)"
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-06-27
+goal: "MVP loop closure: render the on-demand cuenta-corriente triple for one
+  supplier and provide cross-feature cache invalidation so manual flujo de
+  facturas y pagos actualice saldo, estados FIFO y saldo_acumulado
+  automáticamente."

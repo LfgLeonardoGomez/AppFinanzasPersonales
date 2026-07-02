@@ -1,0 +1,54 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Monorepo root .gitignore
+# ─────────────────────────────────────────────────────────────────────────────
+# Los subproyectos api/ y web/ son repos git independientes, con su propio
+# .git/ y .gitignore. Acá solo se trackean los archivos de "overhead" del
+# monorepo: KB, specs, docs, config compartida, etc.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Subrepos (cada uno con su .git/ propio)
+facturas-proveedores-api/
+facturas-proveedores-web/
+
+# Environment files
+.env
+.env.local
+*.env.local
+.envrc
+
+# OS artefacts (Windows + Mac + Linux)
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+ehthumbs.db
+ehthumbs_vista.db
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+logs/
+
+# Test & coverage artefacts (root-level only; subrepos manejan los suyos)
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+
+# Generados
+*.bak
+*.tmp
+*.orig
+*.rej
+
+# OpenCode / agent runtime
+.opencode/
+.active-orchestrator-state.json.local

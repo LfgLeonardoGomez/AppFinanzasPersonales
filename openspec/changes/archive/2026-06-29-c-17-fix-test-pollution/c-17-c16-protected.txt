@@ -1,0 +1,43 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.3, pytest-8.4.2, pluggy-1.6.0 -- C:\Users\pocho\AppData\Local\Programs\Python\Python313\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\pocho\Desktop\ProyectosPersonales\AppFinazasPPersonales\facturas-proveedores-api
+configfile: pyproject.toml
+plugins: anyio-4.14.0, Faker-40.23.0, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 22 items
+
+tests/test_alembic_migration_0003.py::test_upgrade_chains_to_0003 PASSED [  4%]
+tests/test_alembic_migration_0003.py::test_index_on_usuario_nombre_lower_exists PASSED [  9%]
+tests/test_alembic_migration_0003.py::test_no_saldo_or_estado_column_after_migration PASSED [ 13%]
+tests/test_alembic_migration_0003.py::test_downgrade_drops_index PASSED  [ 18%]
+tests/test_alembic_migration_0003.py::test_re_upgrade_restores_index PASSED [ 22%]
+tests/test_alembic_migration_0003.py::test_database_url_restored_after_module PASSED [ 27%]
+tests/test_config.py::TestSettingsLoading::test_valid_env_loads_correctly PASSED [ 31%]
+tests/test_config.py::TestSettingsLoading::test_missing_required_variable_raises PASSED [ 36%]
+tests/test_config.py::TestSettingsLoading::test_wildcard_origin_rejected PASSED [ 40%]
+tests/test_config.py::TestSettingsProxyLiveEnvReads::test_settings_proxy_reads_live_env PASSED [ 45%]
+tests/test_config.py::TestSettingsProxyLiveEnvReads::test_settings_proxy_does_not_cache_across_attributes PASSED [ 50%]
+tests/test_config.py::TestSettingsProxyLiveEnvReads::test_get_settings_returns_fresh_instance PASSED [ 54%]
+tests/test_config.py::TestSettingsProxyLiveEnvReads::test_settings_proxy_preserves_call_sites PASSED [ 59%]
+tests/test_deps.py::TestGetCurrentUser::test_me_with_valid_session_returns_profile PASSED [ 63%]
+tests/test_deps.py::TestGetCurrentUser::test_me_without_cookie_returns_401 PASSED [ 68%]
+tests/test_deps.py::TestGetCurrentUser::test_me_with_invalid_token_returns_401 PASSED [ 72%]
+tests/test_deps.py::TestGetCurrentUser::test_two_users_get_their_own_profile PASSED [ 77%]
+tests/test_deps.py::TestRateLimit::test_sixth_attempt_returns_429 PASSED [ 81%]
+tests/test_deps.py::TestRateLimit::test_different_ips_have_independent_counters PASSED [ 86%]
+tests/test_deps.py::TestLazyEngine::test_deps_module_does_not_construct_engine_at_import PASSED [ 90%]
+tests/test_deps.py::TestLazyEngine::test_get_engine_builds_engine_on_first_call PASSED [ 95%]
+tests/test_deps.py::TestLazyEngine::test_get_db_uses_lazy_engine PASSED  [100%]
+
+============================== warnings summary ===============================
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\formparsers.py:12
+  C:\Users\pocho\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\formparsers.py:12: PendingDeprecationWarning: Please use `import python_multipart` instead.
+    import multipart
+
+tests/test_deps.py::TestGetCurrentUser::test_me_with_valid_session_returns_profile
+  C:\Users\pocho\AppData\Local\Programs\Python\Python313\Lib\site-packages\passlib\handlers\argon2.py:716: DeprecationWarning: Accessing argon2.__version__ is deprecated and will be removed in a future release. Use importlib.metadata directly to query for argon2-cffi's packaging metadata.
+    _argon2_cffi.__version__, max_version)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 22 passed, 2 warnings in 30.55s =======================

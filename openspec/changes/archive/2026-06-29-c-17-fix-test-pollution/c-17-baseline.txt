@@ -1,0 +1,170 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.3, pytest-8.4.2, pluggy-1.6.0
+rootdir: C:\Users\pocho\Desktop\ProyectosPersonales\AppFinazasPPersonales\facturas-proveedores-api
+configfile: pyproject.toml
+plugins: anyio-4.14.0, Faker-40.23.0, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 694 items
+
+tests\test_alembic_migration.py .....                                    [  0%]
+tests\test_alembic_migration_0003.py ......                              [  1%]
+tests\test_alembic_migration_0004.py .....                               [  2%]
+tests\test_alembic_migration_0005.py .......                             [  3%]
+tests\test_auth_integration.py ...........                               [  4%]
+tests\test_auth_repositories.py ..........                               [  6%]
+tests\test_auth_schemas.py ..........                                    [  7%]
+tests\test_cloudinary_preset_comprobante.py ......                       [  8%]
+tests\test_cloudinary_signer.py ....                                     [  9%]
+tests\test_config.py .......                                             [ 10%]
+tests\test_cuenta_corriente_historial_helper.py .............            [ 12%]
+tests\test_cuenta_corriente_integration.py ............                  [ 13%]
+tests\test_cuenta_corriente_no_persistence.py ........                   [ 14%]
+tests\test_cuenta_corriente_schemas.py .........................         [ 18%]
+tests\test_cuenta_corriente_service.py ...............                   [ 20%]
+tests\test_deps.py .........                                             [ 22%]
+tests\test_factura_integration.py ...FFFFFFFFFFFFFFFFFF                  [ 25%]
+tests\test_factura_repository.py ............                            [ 26%]
+tests\test_factura_schemas.py ......................                     [ 29%]
+tests\test_factura_service.py ......................                     [ 33%]
+tests\test_fifo_algorithm.py ..........                                  [ 34%]
+tests\test_health.py ....                                                [ 35%]
+tests\test_ia_vision_extractors.py ..................................... [ 40%]
+.............                                                            [ 42%]
+tests\test_ia_vision_factory.py ..........                               [ 43%]
+tests\test_ia_vision_integration.py FFFFFFFFF.F.FFFF.F.F                 [ 46%]
+tests\test_ia_vision_no_persistence.py ..FFFFFFF                         [ 47%]
+tests\test_ia_vision_rate_limit.py ........                              [ 49%]
+tests\test_ia_vision_schemas.py ....................                     [ 52%]
+tests\test_image_validation.py ................                          [ 54%]
+tests\test_models_base.py ..........                                     [ 55%]
+tests\test_models_domain.py ...............                              [ 57%]
+tests\test_models_enums.py ......                                        [ 58%]
+tests\test_pago_integration.py .....FFFFFFFFFFFFFFFFFFFFFFFFFFFF         [ 63%]
+tests\test_pago_repository.py ..................                         [ 66%]
+tests\test_pago_schemas.py .....................................         [ 71%]
+tests\test_pago_service.py ...............................               [ 75%]
+tests\test_perfil_integration.py .FFFFF.FFFF.FFF                         [ 78%]
+tests\test_perfil_schemas.py .....................                       [ 81%]
+tests\test_proveedor_integration.py ..FFFFFFFFFFFFFFFFFFFF               [ 84%]
+tests\test_proveedor_repository.py .................                     [ 86%]
+tests\test_proveedor_schemas.py ..................                       [ 89%]
+tests\test_proveedor_service.py ..................                       [ 91%]
+tests\test_refresh_token_model.py ..........                             [ 93%]
+tests\test_repositories.py ..........                                    [ 94%]
+tests\test_security.py ..............                                    [ 96%]
+tests\test_usuario_perfil_service.py ..........                          [ 98%]
+tests\test_usuario_service.py ............                               [100%]
+
+============================== warnings summary ===============================
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\formparsers.py:12
+  C:\Users\pocho\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\formparsers.py:12: PendingDeprecationWarning: Please use `import python_multipart` instead.
+    import multipart
+
+tests/test_auth_integration.py::TestAuthFlow::test_registro_returns_201_without_password_hash
+  C:\Users\pocho\AppData\Local\Programs\Python\Python313\Lib\site-packages\passlib\handlers\argon2.py:716: DeprecationWarning: Accessing argon2.__version__ is deprecated and will be removed in a future release. Use importlib.metadata directly to query for argon2-cffi's packaging metadata.
+    _argon2_cffi.__version__, max_version)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_factura_integration.py::TestCreateFactura::test_create_minimal_factura
+FAILED tests/test_factura_integration.py::TestCreateFactura::test_create_with_items
+FAILED tests/test_factura_integration.py::TestCreateFactura::test_create_items_sum_mismatch_flag
+FAILED tests/test_factura_integration.py::TestCreateFactura::test_create_monto_zero_rejected
+FAILED tests/test_factura_integration.py::TestCreateFactura::test_create_future_fecha_rejected
+FAILED tests/test_factura_integration.py::TestCreateFactura::test_create_foreign_proveedor_returns_404
+FAILED tests/test_factura_integration.py::TestListFacturas::test_list_returns_user_facturas
+FAILED tests/test_factura_integration.py::TestListFacturas::test_list_with_estado_filter
+FAILED tests/test_factura_integration.py::TestListFacturas::test_list_by_proveedor_filter
+FAILED tests/test_factura_integration.py::TestListFacturas::test_list_user_isolation
+FAILED tests/test_factura_integration.py::TestGetFactura::test_get_returns_full_response
+FAILED tests/test_factura_integration.py::TestGetFactura::test_get_foreign_returns_404
+FAILED tests/test_factura_integration.py::TestGetFactura::test_get_nonexistent_returns_404
+FAILED tests/test_factura_integration.py::TestUpdateFactura::test_partial_update
+FAILED tests/test_factura_integration.py::TestUpdateFactura::test_update_foreign_returns_404
+FAILED tests/test_factura_integration.py::TestDeleteFactura::test_soft_delete_returns_204
+FAILED tests/test_factura_integration.py::TestDeleteFactura::test_delete_foreign_returns_404
+FAILED tests/test_factura_integration.py::TestFifoEndToEnd::test_fifo_estado_changes_when_pagos_added
+FAILED tests/test_ia_vision_integration.py::TestFacturaHappyPath::test_jpeg_returns_200_with_proposal
+FAILED tests/test_ia_vision_integration.py::TestFacturaHappyPath::test_png_returns_200
+FAILED tests/test_ia_vision_integration.py::TestFacturaHappyPath::test_webp_returns_200
+FAILED tests/test_ia_vision_integration.py::TestFacturaRejection::test_pdf_rejected_with_422
+FAILED tests/test_ia_vision_integration.py::TestFacturaRejection::test_gif_rejected_with_422
+FAILED tests/test_ia_vision_integration.py::TestFacturaRejection::test_heic_rejected_with_422
+FAILED tests/test_ia_vision_integration.py::TestFacturaRejection::test_oversize_rejected_with_422
+FAILED tests/test_ia_vision_integration.py::TestFacturaRejection::test_pdf_rejected_even_if_content_type_lies
+FAILED tests/test_ia_vision_integration.py::TestFacturaRejection::test_missing_file_part_rejected
+FAILED tests/test_ia_vision_integration.py::TestFacturaAuthAndError::test_extractor_error_returns_200_with_error
+FAILED tests/test_ia_vision_integration.py::TestFacturaRouteOrdering::test_post_to_extraer_ia_does_not_match_factura_id
+FAILED tests/test_ia_vision_integration.py::TestFacturaRateLimit::test_11th_request_returns_429
+FAILED tests/test_ia_vision_integration.py::TestPagoHappyPath::test_png_returns_200_with_pago_proposal
+FAILED tests/test_ia_vision_integration.py::TestPagoHappyPath::test_pdf_rejected_with_422
+FAILED tests/test_ia_vision_integration.py::TestPagoHappyPath::test_extractor_error_returns_200_with_error
+FAILED tests/test_ia_vision_integration.py::TestSharedRateLimit::test_budget_shared_between_factura_and_pago_endpoints
+FAILED tests/test_ia_vision_no_persistence.py::test_factura_extraer_ia_success_no_mutations
+FAILED tests/test_ia_vision_no_persistence.py::test_factura_extraer_ia_extractor_error_no_mutations
+FAILED tests/test_ia_vision_no_persistence.py::test_pago_extraer_ia_success_no_mutations
+FAILED tests/test_ia_vision_no_persistence.py::test_pago_extraer_ia_extractor_error_no_mutations
+FAILED tests/test_ia_vision_no_persistence.py::test_factura_extraer_ia_pdf_rejected_no_mutations
+FAILED tests/test_ia_vision_no_persistence.py::test_factura_extraer_ia_rate_limited_no_mutations
+FAILED tests/test_ia_vision_no_persistence.py::test_control_factura_crud_does_mutate
+FAILED tests/test_pago_integration.py::TestCreatePago::test_create_minimal_pago
+FAILED tests/test_pago_integration.py::TestCreatePago::test_create_with_comprobante_url
+FAILED tests/test_pago_integration.py::TestCreatePago::test_create_with_factura_id_rejected_422
+FAILED tests/test_pago_integration.py::TestCreatePago::test_create_future_fecha_rejected_422
+FAILED tests/test_pago_integration.py::TestCreatePago::test_create_monto_zero_rejected_422
+FAILED tests/test_pago_integration.py::TestCreatePago::test_create_monto_negative_rejected_422
+FAILED tests/test_pago_integration.py::TestCreatePago::test_create_invalid_metodo_rejected_422
+FAILED tests/test_pago_integration.py::TestCreatePago::test_create_foreign_proveedor_returns_404
+FAILED tests/test_pago_integration.py::TestListPagos::test_list_returns_user_pagos
+FAILED tests/test_pago_integration.py::TestListPagos::test_list_filters_by_proveedor
+FAILED tests/test_pago_integration.py::TestListPagos::test_list_foreign_proveedor_returns_404
+FAILED tests/test_pago_integration.py::TestListPagos::test_list_user_isolation
+FAILED tests/test_pago_integration.py::TestGetPago::test_get_own_pago - sqlal...
+FAILED tests/test_pago_integration.py::TestGetPago::test_get_foreign_pago_returns_404
+FAILED tests/test_pago_integration.py::TestGetPago::test_get_nonexistent_pago_returns_404
+FAILED tests/test_pago_integration.py::TestUpdatePago::test_partial_update_monto
+FAILED tests/test_pago_integration.py::TestUpdatePago::test_update_with_factura_id_rejected_422
+FAILED tests/test_pago_integration.py::TestUpdatePago::test_update_with_proveedor_id_rejected_422
+FAILED tests/test_pago_integration.py::TestUpdatePago::test_update_future_fecha_rejected_422
+FAILED tests/test_pago_integration.py::TestUpdatePago::test_update_monto_zero_rejected_422
+FAILED tests/test_pago_integration.py::TestUpdatePago::test_update_foreign_pago_returns_404
+FAILED tests/test_pago_integration.py::TestUpdatePago::test_update_nonexistent_pago_returns_404
+FAILED tests/test_pago_integration.py::TestDeletePago::test_soft_delete_returns_204
+FAILED tests/test_pago_integration.py::TestDeletePago::test_delete_foreign_pago_returns_404
+FAILED tests/test_pago_integration.py::TestDeletePago::test_delete_already_deleted_returns_404
+FAILED tests/test_pago_integration.py::TestDeletePago::test_delete_nonexistent_returns_404
+FAILED tests/test_pago_integration.py::TestFifoIntegration::test_crear_pago_feeds_factura_estado
+FAILED tests/test_pago_integration.py::TestFifoIntegration::test_delete_pago_reverses_factura_estado
+FAILED tests/test_perfil_integration.py::TestPatchMe::test_patch_me_subset_update_returns_200
+FAILED tests/test_perfil_integration.py::TestPatchMe::test_patch_me_tema_only_leaves_other_fields
+FAILED tests/test_perfil_integration.py::TestPatchMe::test_patch_me_invalid_tema_returns_422
+FAILED tests/test_perfil_integration.py::TestPatchMe::test_patch_me_identity_fields_ignored
+FAILED tests/test_perfil_integration.py::TestPatchMe::test_patch_me_empty_payload_returns_200_unchanged
+FAILED tests/test_perfil_integration.py::TestPostAvatar::test_avatar_valid_url_returns_200_with_avatar
+FAILED tests/test_perfil_integration.py::TestPostAvatar::test_avatar_malformed_url_returns_422
+FAILED tests/test_perfil_integration.py::TestPostAvatar::test_avatar_non_cloudinary_url_returns_422
+FAILED tests/test_perfil_integration.py::TestPostAvatar::test_avatar_wrong_cloud_name_returns_422
+FAILED tests/test_perfil_integration.py::TestSignedPreset::test_preset_avatar_returns_signed_payload
+FAILED tests/test_perfil_integration.py::TestSignedPreset::test_preset_response_does_not_include_secret
+FAILED tests/test_perfil_integration.py::TestSignedPreset::test_preset_unsupported_tipo_returns_422
+FAILED tests/test_proveedor_integration.py::TestPost::test_create_returns_201_with_saldo_zero
+FAILED tests/test_proveedor_integration.py::TestPost::test_create_with_valid_cuit
+FAILED tests/test_proveedor_integration.py::TestPost::test_create_with_malformed_cuit_returns_422
+FAILED tests/test_proveedor_integration.py::TestPost::test_create_without_nombre_returns_422
+FAILED tests/test_proveedor_integration.py::TestList::test_list_returns_own_suppliers
+FAILED tests/test_proveedor_integration.py::TestList::test_list_order_by_nombre
+FAILED tests/test_proveedor_integration.py::TestList::test_list_order_by_saldo
+FAILED tests/test_proveedor_integration.py::TestList::test_invalid_order_by_returns_422
+FAILED tests/test_proveedor_integration.py::TestList::test_pagination_page_param
+FAILED tests/test_proveedor_integration.py::TestGetById::test_get_own_supplier
+FAILED tests/test_proveedor_integration.py::TestGetById::test_get_foreign_supplier_returns_404
+FAILED tests/test_proveedor_integration.py::TestPatch::test_patch_own_supplier
+FAILED tests/test_proveedor_integration.py::TestPatch::test_patch_foreign_supplier_returns_404
+FAILED tests/test_proveedor_integration.py::TestDelete::test_delete_own_supplier
+FAILED tests/test_proveedor_integration.py::TestDelete::test_delete_excludes_from_listing
+FAILED tests/test_proveedor_integration.py::TestDelete::test_delete_foreign_supplier_returns_404
+FAILED tests/test_proveedor_integration.py::TestBuscar::test_buscar_not_shadowed_by_id_route
+FAILED tests/test_proveedor_integration.py::TestBuscar::test_buscar_returns_normalized_matches
+FAILED tests/test_proveedor_integration.py::TestBuscar::test_buscar_empty_nombre_returns_all_active
+FAILED tests/test_proveedor_integration.py::TestBuscar::test_buscar_excludes_other_user_results
+=========== 101 failed, 593 passed, 2 warnings in 533.04s (0:08:53) ===========

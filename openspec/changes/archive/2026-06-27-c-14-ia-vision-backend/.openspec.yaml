@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-06-27
+goal: Completar la carga asistida por IA de facturas y pagos sobre el flujo
+  manual ya funcionando; C-15 frontend se apoya en estos endpoints.

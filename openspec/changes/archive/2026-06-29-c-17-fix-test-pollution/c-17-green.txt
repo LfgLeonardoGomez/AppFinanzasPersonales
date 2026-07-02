@@ -1,0 +1,69 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.3, pytest-8.4.2, pluggy-1.6.0
+rootdir: C:\Users\pocho\Desktop\ProyectosPersonales\AppFinazasPPersonales\facturas-proveedores-api
+configfile: pyproject.toml
+plugins: anyio-4.14.0, Faker-40.23.0, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 701 items
+
+tests\test_alembic_migration.py .....                                    [  0%]
+tests\test_alembic_migration_0003.py ......                              [  1%]
+tests\test_alembic_migration_0004.py .....                               [  2%]
+tests\test_alembic_migration_0005.py .......                             [  3%]
+tests\test_auth_integration.py ...........                               [  4%]
+tests\test_auth_repositories.py ..........                               [  6%]
+tests\test_auth_schemas.py ..........                                    [  7%]
+tests\test_cloudinary_preset_comprobante.py ......                       [  8%]
+tests\test_cloudinary_signer.py ....                                     [  9%]
+tests\test_config.py .......                                             [ 10%]
+tests\test_cuenta_corriente_historial_helper.py .............            [ 11%]
+tests\test_cuenta_corriente_integration.py ............                  [ 13%]
+tests\test_cuenta_corriente_no_persistence.py ........                   [ 14%]
+tests\test_cuenta_corriente_schemas.py .........................         [ 18%]
+tests\test_cuenta_corriente_service.py ...............                   [ 20%]
+tests\test_deps.py .........                                             [ 21%]
+tests\test_factura_integration.py .....................                  [ 24%]
+tests\test_factura_repository.py ............                            [ 26%]
+tests\test_factura_schemas.py ......................                     [ 29%]
+tests\test_factura_service.py ......................                     [ 32%]
+tests\test_fifo_algorithm.py ..........                                  [ 34%]
+tests\test_health.py ....                                                [ 34%]
+tests\test_ia_vision_extractors.py ..................................... [ 40%]
+.............                                                            [ 41%]
+tests\test_ia_vision_factory.py ..........                               [ 43%]
+tests\test_ia_vision_integration.py ....................                 [ 46%]
+tests\test_ia_vision_no_persistence.py .........                         [ 47%]
+tests\test_ia_vision_rate_limit.py ........                              [ 48%]
+tests\test_ia_vision_schemas.py ....................                     [ 51%]
+tests\test_image_validation.py ................                          [ 53%]
+tests\test_models_base.py ..........                                     [ 55%]
+tests\test_models_domain.py ...............                              [ 57%]
+tests\test_models_enums.py ......                                        [ 58%]
+tests\test_pago_integration.py .................................         [ 62%]
+tests\test_pago_repository.py ..................                         [ 65%]
+tests\test_pago_schemas.py .....................................         [ 70%]
+tests\test_pago_service.py ...............................               [ 75%]
+tests\test_perfil_integration.py ...............                         [ 77%]
+tests\test_perfil_schemas.py .....................                       [ 80%]
+tests\test_pollution_fix.py .......                                      [ 81%]
+tests\test_proveedor_integration.py ......................               [ 84%]
+tests\test_proveedor_repository.py .................                     [ 86%]
+tests\test_proveedor_schemas.py ..................                       [ 89%]
+tests\test_proveedor_service.py ..................                       [ 92%]
+tests\test_refresh_token_model.py ..........                             [ 93%]
+tests\test_repositories.py ..........                                    [ 94%]
+tests\test_security.py ..............                                    [ 96%]
+tests\test_usuario_perfil_service.py ..........                          [ 98%]
+tests\test_usuario_service.py ............                               [100%]
+
+============================== warnings summary ===============================
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\formparsers.py:12
+  C:\Users\pocho\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\formparsers.py:12: PendingDeprecationWarning: Please use `import python_multipart` instead.
+    import multipart
+
+tests/test_auth_integration.py::TestAuthFlow::test_registro_returns_201_without_password_hash
+  C:\Users\pocho\AppData\Local\Programs\Python\Python313\Lib\site-packages\passlib\handlers\argon2.py:716: DeprecationWarning: Accessing argon2.__version__ is deprecated and will be removed in a future release. Use importlib.metadata directly to query for argon2-cffi's packaging metadata.
+    _argon2_cffi.__version__, max_version)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================= 701 passed, 2 warnings in 94.85s (0:01:34) ==================

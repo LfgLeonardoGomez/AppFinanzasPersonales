@@ -1,0 +1,44 @@
+# 09 · Decisiones y Supuestos
+
+> Decisiones explícitas extraídas de `docs/`, más supuestos inferidos durante la ingesta (marcados como **Suposición**).
+
+## Decisiones de diseño documentadas
+
+| # | Decisión | Razón |
+|---|---|---|
+| D-01 | Saldo y estado de factura **calculados on-demand, nunca persistidos**. | Facturas/pagos se editan libremente y los pagos no se vinculan a facturas; un contador persistido se desincronizaría. Costo despreciable para el volumen. |
+| D-02 | Pago se asocia **solo al proveedor**, sin `factura_id`. | Simplifica el modelo; el estado de factura se deriva por FIFO sobre el pool total de pagos. |
+| D-03 | Estado de factura por **FIFO** (vieja → nueva), desempate `(created_at, id)`. | Determinismo ante igual `fecha_emision`. |
+| D-04 | **Soft delete** en proveedor/factura/pago. | Permite "eliminación libre" sin perder trazabilidad. |
+| D-05 | `usuario_id` **denormalizado** en Factura y Pago. | Verificación de pertenencia barata y a prueba de fugas. |
+| D-06 | Recurso de otro usuario → **404** (no 403). | No revelar la existencia del recurso. |
+| D-07 | **Abstracción de proveedor de visión** (`VisionExtractor`) seleccionable por env. | Comparar modelos (Claude/OpenAI) sin tocar el resto del código. |
+| D-08 | IA extrae **solo cabecera**, solo sobre **imágenes**, **nunca inventa**, **nunca persiste ni asigna proveedor**. | Mantener al humano como autoridad final; evitar datos falsos. |
+| D-09 | Tema claro/oscuro persistido en **backend**, no localStorage. | Consistencia entre dispositivos. |
+| D-10 | Auth por **cookie httpOnly** (no localStorage). | Mitiga XSS. |
+| D-11 | **Rewrite/proxy** en el frontend como enfoque recomendado para cross-origin. | Evita el bloqueo de cookies de terceros en Safari/iOS y el setup de CORS. |
+| D-12 | Repos **separados** (back/front), tipos TS generados desde OpenAPI. | API-first; no duplicar definiciones de tipos. |
+| D-13 | Backend dockerizado en **Oracle Cloud Free Tier (1GB RAM)**. | Justifica FastAPI (liviano) sobre runtimes pesados. |
+| D-14 | IA se implementa **al final** del MVP, sobre el flujo manual ya funcionando. | Reduce riesgo; el core no depende de la IA. |
+| D-15 | Montos `numeric(12,2)` en **ARS**, sin multi-moneda ni IVA. | Alcance de registro simplificado. |
+| D-16 | **`id` = UUID, preferir UUIDv7** (resuelve Q-01). | Resistencia a enumeración (coherente con el baseline: 404 sin revelar existencia); v7 time-ordered evita fragmentación de índice y alinea el desempate FIFO `(…, id)` con el orden de inserción. Decidido 2026-06-19. |
+| D-17 | **Tokens opacos con rotación + revocación server-side** (resuelve Q-02). | Access = JWT stateless (HS256, `type=access`); refresh = valor opaco de alta entropía, persistido **solo su hash SHA-256**, con `revoked_at` + `expires_at` y rotación obligatoria. C-03 lo eligió sobre JWT puro para soportar logout real y revocación inmediata. Trade-off: requiere lookup a DB en cada refresh. |
+| D-18 | **`origen=IA` lo envía el cliente, no el backend** (resuelve OQ-1, **Path B** de c-15). | C-15a (archivado 2026-06-28) agregó `origen: Optional[OrigenDocumento] = None` a `FacturaCreate` y `PagoCreate`; los services usan `datos.origen or OrigenDocumento.MANUAL`. C-15 envía `origen: 'IA'` desde el cliente en el POST de confirmación del modal. `extra="forbid"` de `PagoCreate` se preserva — el campo `origen` pasa a ser conocido, no se elimina la protección anti-smuggling de `factura_id` (RN-PAG-01). |
+| D-19 | **Modal de IA bloqueante** (UX, c-15). | El `PropuestaIAModal` se monta sobre `FacturaFormPage` / `PagoFormPage` y bloquea el submit del form mientras está abierto. Decisión de UX: el usuario acaba de elegir "Cargar con IA", su intención es clara, y un sidebar no-bloqueante corre el riesgo de que confirme con campos vacíos. Revisitar si molesta. |
+| D-20 | **Settings proxy + lazy engine** (c-16, D-1/D-2 del design). | `app/core/config.py` deja `@lru_cache`; cada lectura de `settings.X` re-instancia `Settings()` leyendo el `os.environ` actual. `app/core/deps.py` construye el engine en el primer request, no al import. Resultado: tests pueden mutar `os.environ["DATABASE_URL"]` entre tests sin `cache_clear()` y el engine sigue al env. Locked in por `tests/test_config.py::TestSettingsProxyLiveEnvReads` (4 tests) y `tests/test_deps.py::TestLazyEngine` (3 tests). |
+| D-21 | **Tests de alembic apuntan a revisions específicas, no a `head`/`-1`** (c-16, D-4 del design). | `tests/test_alembic_migration_0003.py` reescrito para pasar `0003`/`0002` explícitos en lugar de `head`/`-1`, haciéndolo inmune al crecimiento futuro del chain (0006, 0007, ...). Locked in por `test_database_url_restored_after_module`. |
+| D-22 | **Suite de regresión para el pollution fix de c-17** (white-box, AST). | `facturas-proveedores-api/tests/test_pollution_fix.py` (13 tests): 1 invariante de module-identity + 6 fixture contracts (inspeccionan el AST de los 6 archivos pollutos y afirman que `get_db` se importa desde un módulo de router, NO desde `app.core.deps`) + 6 isolation regressions. Si un PR futuro revierte el import, el test falla en CI. |
+| D-23 | **C-17 fix en el consumer, no en la fuente** (c-17, decisión arquitectural). | La fuente de la pollution es el `del sys.modules` en `test_deps.py::TestLazyEngine`, que es un test **protegido** (c-16 protected: 9/9, no se puede modificar). El fix se aplica en los 6 archivos pollutos: `from app.routers.facturas import get_db` (no `app.core.deps`). Trade-off: el contrato "el consumer debe importar desde router" es un detalle de fixture, no parte de la lógica de negocio; documentado en `known-debt-resolved.md`. |
+| D-24 | **Lint de `facturas-proveedores-web` con falla pre-existente — DEFERIDO** (carry-over de c-13). | `npm run lint` queda roto por incompatibilidad entre ESLint v10 (instalado) y la config plana de v9 (legada de c-13). Fuera de alcance para cualquier change posterior; documentado aquí para que un agente futuro sepa que NO es regresión reciente y que arreglarlo requiere bumpear config o downgradear ESLint. |
+
+## Supuestos inferidos (verificar antes de codear)
+
+- ~~Suposición: El `id` será UUID o serial.~~ **RESUELTO → D-16: UUID (preferir v7).**
+- ~~Suposición: JWT puro vs tokens opacos revocables.~~ **RESUELTO → D-17: tokens opacos con rotación + revocación server-side (C-03).**
+- **Suposición:** El proxy/rewrite de Vercel es el camino por defecto de despliegue; el fallback CORS solo aplica si se decide servir front y back en orígenes realmente separados.
+- **Suposición (vigente):** TTLs concretos de access/refresh (`ACCESS_TOKEN_TTL_MIN`, `REFRESH_TOKEN_TTL_DAYS`) se setean por env var en cada deploy. El spec da ejemplos (30 min / 30 días) pero no los congela.
+- **Suposición (resuelta en spec, falta configurar en prod):** Tamaño máximo de archivo = 10 MB para todos los uploads (avatar, archivo de factura, comprobante, imagen IA). Confirmado en `openspec/specs/perfil-usuario-api/spec.md`, `openspec/specs/ia-vision-backend/spec.md`, `openspec/specs/perfil-usuario-frontend/spec.md`.
+
+## Restricciones de negocio firmes (no reabrir sin razón)
+
+Ver lista completa en `05_reglas_de_negocio.md` → "Decisiones de negocio resueltas". Resumen: edición/eliminación libre, solo monto total (sin IVA), todo ARS, pago→proveedor, saldo y estado derivados, multi-usuario con datos aislados sin roles.

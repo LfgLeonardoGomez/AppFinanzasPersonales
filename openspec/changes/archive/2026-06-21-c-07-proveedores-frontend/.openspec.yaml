@@ -1,0 +1,8 @@
+name: c-07-proveedores-frontend
+created: "2026-06-21"
+status: active
+schema: standard
+artifacts:
+  proposal: proposal.md
+  design: design.md
+  tasks: tasks.md

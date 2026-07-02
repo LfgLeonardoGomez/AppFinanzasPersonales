@@ -1,0 +1,171 @@
+## ADDED Requirements
+
+### Requirement: Paginated supplier listing with on-demand balance
+
+The system SHALL expose `GET /api/proveedores` returning the authenticated user's **active** suppliers (`deleted_at IS NULL`), paginated, each item carrying its `saldo` computed on-demand as `SUM(facturas activas.monto_total) − SUM(pagos activos.monto)` (RN-SALDO). The `saldo` SHALL NOT be read from or written to any persisted column. The supplier balances for the returned page SHALL be obtained through a single aggregate SQL query (one `GROUP BY`), never one query per supplier (no N+1). The endpoint SHALL accept a `page` parameter (1-based) and an `order_by` parameter accepting only `nombre` or `saldo`.
+
+#### Scenario: listing returns only the caller's active suppliers with balance
+
+- **WHEN** an authenticated user requests `GET /api/proveedores` and has active suppliers with active invoices and payments
+- **THEN** the response contains only that user's non-deleted suppliers, each with a `saldo` equal to the sum of its active invoices minus the sum of its active payments
+
+#### Scenario: soft-deleted suppliers are excluded from the listing
+
+- **WHEN** a supplier has `deleted_at` populated and the user requests the default listing
+- **THEN** that supplier does not appear in the response
+
+#### Scenario: balance computed in a single aggregate query
+
+- **WHEN** the listing is built for a user with N suppliers
+- **THEN** the supplier balances are produced by a single `GROUP BY` aggregate query, not by N per-supplier balance queries
+
+#### Scenario: invalid order_by is rejected
+
+- **WHEN** the request supplies `order_by` with a value other than `nombre` or `saldo`
+- **THEN** the request is rejected with a 422 validation error
+
+### Requirement: Ordering by name or by computed balance
+
+The supplier listing SHALL support ordering by `nombre` (case-insensitive, normalized) and by the **computed** `saldo` aggregate expression. Because `saldo` is derived and not a stored column, ordering by `saldo` SHALL be applied on the aggregate expression itself within the same query (not by referencing a non-existent column and not by sorting in Python after a full fetch).
+
+#### Scenario: order by name
+
+- **WHEN** the user requests `GET /api/proveedores?order_by=nombre`
+- **THEN** the suppliers are returned ordered by `nombre` case-insensitively (ascending)
+
+#### Scenario: order by computed balance
+
+- **WHEN** the user requests `GET /api/proveedores?order_by=saldo`
+- **THEN** the suppliers are returned ordered by their computed `saldo` (descending: largest debt first), with the ordering applied inside the aggregate query
+
+### Requirement: Create supplier
+
+The system SHALL expose `POST /api/proveedores` that creates a supplier owned by the authenticated user. The created supplier SHALL be persisted with `usuario_id` set to the caller's id (the client SHALL NOT be able to set `usuario_id`), `categoria` defaulting to `OTRO` when omitted, and `deleted_at = null`. The response SHALL include the supplier with `saldo = 0.00`.
+
+#### Scenario: create a supplier
+
+- **WHEN** an authenticated user POSTs a valid supplier payload (nombre present)
+- **THEN** the supplier is persisted with the caller's `usuario_id`, returned with status 201 and a `saldo` of `0.00`
+
+#### Scenario: usuario_id is taken from the session, not the payload
+
+- **WHEN** the payload attempts to include a `usuario_id` different from the caller's
+- **THEN** the persisted supplier still belongs to the authenticated caller (the payload value is ignored)
+
+#### Scenario: duplicate names are allowed
+
+- **WHEN** a user creates two suppliers with the identical `nombre`
+- **THEN** both are created successfully (nombre is not unique, RN-PROV-01)
+
+### Requirement: Read a single supplier
+
+The system SHALL expose `GET /api/proveedores/{id}` returning the supplier with its on-demand `saldo`, only when the supplier belongs to the authenticated user. A supplier that belongs to another user SHALL be indistinguishable from a non-existent one.
+
+#### Scenario: read own supplier
+
+- **WHEN** an authenticated user requests one of their own suppliers by id
+- **THEN** the supplier is returned with its computed `saldo`
+
+#### Scenario: reading a foreign supplier returns 404
+
+- **WHEN** an authenticated user requests a supplier id that belongs to another user
+- **THEN** the response is 404 Not Found (never 403)
+
+### Requirement: Update supplier with ownership check
+
+The system SHALL expose `PATCH /api/proveedores/{id}` that updates editable fields (`nombre`, `cuit`, `telefono`, `categoria`, `notas`) of a supplier owned by the authenticated user. The ownership check SHALL be enforced in the service layer by filtering on `usuario_id`; updating a supplier owned by another user SHALL return **404** (never 403). The update SHALL NOT allow changing `usuario_id`.
+
+#### Scenario: update own supplier
+
+- **WHEN** an authenticated user PATCHes editable fields of their own supplier
+- **THEN** the supplier is updated and returned with its computed `saldo`
+
+#### Scenario: updating a foreign supplier returns 404
+
+- **WHEN** an authenticated user PATCHes a supplier that belongs to another user
+- **THEN** the response is 404 Not Found and the foreign supplier is unchanged
+
+### Requirement: Soft-delete supplier reporting dependencies
+
+The system SHALL expose `DELETE /api/proveedores/{id}` that performs a **soft delete** (sets `deleted_at`, RN-PROV-03) on a supplier owned by the authenticated user, preserving the row and its foreign-key references intact. Deleting a foreign supplier SHALL return **404**. The service SHALL determine whether the supplier has associated active invoices or payments and report a `tiene_dependencias` boolean (RN-PROV-04) so the caller can decide whether confirmation was required; the deletion SHALL NOT be blocked by the presence of dependencies.
+
+#### Scenario: soft delete preserves the row and FKs
+
+- **WHEN** an authenticated user deletes their own supplier
+- **THEN** the supplier row remains in the database with `deleted_at` populated, its invoices and payments keep their `proveedor_id`, and the supplier no longer appears in the default listing
+
+#### Scenario: delete reports dependencies present
+
+- **WHEN** the deleted supplier has at least one active invoice or active payment
+- **THEN** the response reports `tiene_dependencias = true`
+
+#### Scenario: delete reports no dependencies
+
+- **WHEN** the deleted supplier has no active invoices or payments
+- **THEN** the response reports `tiene_dependencias = false`
+
+#### Scenario: deleting a foreign supplier returns 404
+
+- **WHEN** an authenticated user deletes a supplier that belongs to another user
+- **THEN** the response is 404 Not Found and the foreign supplier is not modified
+
+### Requirement: Search suppliers by name for linkage
+
+The system SHALL expose `GET /api/proveedores/buscar?nombre=` returning the authenticated user's **active** suppliers whose `nombre` matches the query after normalization (lowercase, trimmed), supporting RN-VINC linkage. The search SHALL return all matches (it SHALL NOT assume a single result), restricted to the caller's suppliers.
+
+#### Scenario: search returns normalized matches for the caller only
+
+- **WHEN** an authenticated user searches by a name fragment that matches several of their active suppliers (case- and accent-insensitively)
+- **THEN** all matching active suppliers owned by the caller are returned, and no supplier owned by another user is included
+
+#### Scenario: search excludes soft-deleted suppliers
+
+- **WHEN** a matching supplier has been soft-deleted
+- **THEN** it is not included in the search results
+
+### Requirement: CUIT format validation
+
+When a supplier payload includes a non-empty `cuit`, the system SHALL validate it against the format `^\d{2}-\d{8}-\d{1}$` (RN-PROV-02). Validation SHALL occur in the backend (Pydantic schema and/or service layer), never relying on the frontend. An absent or null `cuit` SHALL be accepted.
+
+#### Scenario: valid CUIT accepted
+
+- **WHEN** a supplier is created or updated with `cuit = "20-12345678-9"`
+- **THEN** the request succeeds
+
+#### Scenario: malformed CUIT rejected
+
+- **WHEN** a supplier is created or updated with a `cuit` that does not match `^\d{2}-\d{8}-\d{1}$` (for example `"20123456789"`)
+- **THEN** the request is rejected with a 422 validation error and the supplier is not persisted
+
+#### Scenario: missing CUIT accepted
+
+- **WHEN** a supplier is created without a `cuit`
+- **THEN** the request succeeds and `cuit` is stored as null
+
+### Requirement: All supplier endpoints require authentication
+
+Every `/api/proveedores` endpoint SHALL require a valid authenticated session (`get_current_user`). Requests without a valid `access_token` cookie SHALL be rejected with 401, and all data access SHALL be scoped to the authenticated user's `usuario_id`.
+
+#### Scenario: unauthenticated request rejected
+
+- **WHEN** a request reaches any `/api/proveedores` endpoint without a valid session
+- **THEN** the response is 401 Unauthorized
+
+### Requirement: Supplier name index migration
+
+The change SHALL include a reversible Alembic migration `0003` (revision `"0003"`, `down_revision = "0002"`) that creates a composite index on `proveedor` supporting normalized name search and name ordering for `(usuario_id, nombre)`. To make the index usable by case-insensitive search, the index SHALL be expression-based on `LOWER(nombre)` (or an equivalent collation-aware definition). The migration SHALL NOT create any `saldo` or `estado` column and its `downgrade` SHALL drop the index.
+
+#### Scenario: upgrade creates the name index
+
+- **WHEN** `alembic upgrade head` runs with the database at revision `0002`
+- **THEN** a composite index over `(usuario_id, LOWER(nombre))` exists on the `proveedor` table and the head revision becomes `0003`
+
+#### Scenario: downgrade drops the name index
+
+- **WHEN** `alembic downgrade` of revision `0003` runs
+- **THEN** the name index is removed and the schema returns to the `0002` state
+
+#### Scenario: migration introduces no derived columns
+
+- **WHEN** the `proveedor` table is inspected after the migration
+- **THEN** no `saldo` and no `estado` column exists
