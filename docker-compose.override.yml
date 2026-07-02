@@ -5,6 +5,32 @@
 # se corre `docker compose up` (Docker Compose lo detecta por nombre).
 #
 # Agrega: hot reload, montaje de código fuente, modo debug.
+#
+# C-19-fix-dev-setup:
+#   - El web service ignora el bind-mount de node_modules del host y
+#     corre `npm ci` adentro del contenedor para instalar las deps con
+#     los binarios nativos del OS del contenedor (linux-x64-gnu). Esto
+#     evita el bug "Cannot find module @rollup/rollup-linux-x64-gnu"
+#     que aparece cuando el host es Windows y los binarios nativos no
+#     matchean. Trade-off: cada --build reinstala todo (~30-60s la
+#     primera vez; los siguientes cachean la capa de npm ci).
+#   - El api corre `alembic upgrade head` antes de uvicorn para que la
+#     DB esté migrada en un `docker compose up -d --build` desde cero.
+#
+#   Implementación: el bind-mount de node_modules se mantiene (sigue
+#   siendo útil como fallback y para mantener el dev loop conocido),
+#   pero el command hace `rm -rf /app/node_modules` antes de `npm ci`
+#   para que las opcionales del host (Windows) no contaminen la
+#   instalación del contenedor (Linux). El segundo bind-mount
+#   declarado con `:ro` se ignora porque ya removimos el contenido.
+#
+#   NOTA: la opción "remover el bind-mount" del proposal original NO
+#   funciona con el Dockerfile actual: el target `dev` no corre
+#   `npm ci` (solo el target `builder`), por lo que sin el bind-mount
+#   el contenedor no tiene vite ni node_modules en absoluto. La opción
+#   "rm + npm ci dentro del contenedor" es la única viable con
+#   docker-compose-only changes (cambiar el Dockerfile sería una
+#   modificación del subrepo web).
 ###############################################################################
 
 services:
@@ -14,15 +40,11 @@ services:
     build:
       target: runtime          # mismo target, pero con código montado
     command:
-      - uvicorn
-      - app.main:app
-      - --host
-      - "0.0.0.0"
-      - --port
-      - "8000"
-      - --reload               # hot reload en desarrollo
-      - --reload-dir
-      - /app/app
+      # C-19: migraciones antes de uvicorn. Si alembic falla, uvicorn
+      # no arranca → docker ps muestra "unhealthy" → el team lo ve.
+      - sh
+      - -c
+      - "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app"
     volumes:
       # Montar código fuente para hot reload sin rebuild
       - ./facturas-proveedores-api/app:/app/app:ro
@@ -38,24 +60,28 @@ services:
     build:
       target: dev
     command:
-      - npm
-      - run
-      - dev
-      - --
-      - --host
-      - "0.0.0.0"
-      - --port
-      - "5173"
+      # C-19: eliminar el bind-mount de node_modules y reinstalar
+      # adentro. Los binarios nativos (rollup-linux-x64-gnu,
+      # esbuild-linux-x64, @tailwindcss/oxide-linux-x64-gnu, etc.)
+      # se compilan para el OS del contenedor, no del host. Si el
+      # host es Windows, los binarios del host (rollup-win32-...)
+      # no sirven. `npm ci` respeta el lockfile y es idempotente
+      # en cada arranque (los node_modules persisten en una capa
+      # de Docker, no en el bind-mount).
+      - sh
+      - -c
+      - "rm -rf /app/node_modules && npm ci --prefer-offline --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173"
     volumes:
-      # Montar código fuente y node_modules desde host para velocidad
+      # Montar código fuente desde host para hot reload
       - ./facturas-proveedores-web/src:/app/src:ro
       - ./facturas-proveedores-web/public:/app/public:ro
       - ./facturas-proveedores-web/index.html:/app/index.html:ro
       - ./facturas-proveedores-web/vite.config.ts:/app/vite.config.ts:ro
       - ./facturas-proveedores-web/tsconfig.json:/app/tsconfig.json:ro
       - ./facturas-proveedores-web/package.json:/app/package.json:ro
-      # node_modules montado desde el host (instalar con npm ci primero)
-      - ./facturas-proveedores-web/node_modules:/app/node_modules
+      # package-lock.json es necesario para `npm ci`. NO se monta
+      # node_modules: se borra y se reinstala dentro del contenedor.
+      - ./facturas-proveedores-web/package-lock.json:/app/package-lock.json:ro
     environment:
       VITE_API_URL: http://localhost:8000
 
