@@ -10,11 +10,15 @@
 facturas-proveedores-api/
 facturas-proveedores-web/
 
-# Environment files
+# Environment files & secrets
 .env
 .env.local
 *.env.local
 .envrc
+cookies.txt
+
+# Local verification artefacts (Playwright deps, screenshots, verify runner)
+.verify/
 
 # OS artefacts (Windows + Mac + Linux)
 .DS_Store

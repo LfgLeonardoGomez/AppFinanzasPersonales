@@ -83,7 +83,7 @@ services:
       # node_modules: se borra y se reinstala dentro del contenedor.
       - ./facturas-proveedores-web/package-lock.json:/app/package-lock.json:ro
     environment:
-      VITE_API_URL: http://localhost:8000
+      VITE_API_URL: http://api:8000
 
   # ── Base de datos sin restricción de puerto para tools locales ───────────────
   db:
