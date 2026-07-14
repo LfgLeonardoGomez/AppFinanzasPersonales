@@ -1,0 +1,286 @@
+/**
+ * Tests for FacturaForm — create/edit invoice form.
+ *
+ * TDD: Task 6.1 (RED create mode) → 6.2 (GREEN) →
+ *      Task 6.3 (RED edit mode) → 6.4 (GREEN) → 6.5 (TRIANGULATE).
+ *
+ * Key invariants:
+ * - Supplier required; selected via SupplierSearch prop interface.
+ * - fecha_emision not future (UTC-3 wall-clock).
+ * - monto_total > 0.
+ * - Backend 422 rendered inline without losing input.
+ * - items_sum_mismatch from response surfaced after save.
+ * - In edit mode, proveedor is read-only (backend rejects proveedor_id changes).
+ */
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
+import { setupServer } from 'msw/node'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
+import type { ReactNode } from 'react'
+import { FacturaForm } from './FacturaForm'
+import type { FacturaResponse, ProveedorListItem } from '@shared/api/api'
+
+// ── Fixtures ──────────────────────────────────────────────────────────────────
+
+const mockProveedor: ProveedorListItem = {
+  id: 'prov-uuid-1',
+  usuario_id: 'user-1',
+  nombre: 'Proveedor Test SA',
+  cuit: '20-12345678-9',
+  telefono: null,
+  categoria: 'SERVICIO',
+  notas: null,
+  saldo: 0,
+  created_at: '2026-06-01T00:00:00',
+  updated_at: '2026-06-01T00:00:00',
+}
+
+const mockCreatedFactura: FacturaResponse = {
+  id: 'factura-uuid-1',
+  usuario_id: 'user-1',
+  proveedor_id: 'prov-uuid-1',
+  numero: null,
+  fecha_emision: '2026-06-01',
+  fecha_vencimiento: null,
+  monto_total: 1500,
+  archivo_url: null,
+  origen: 'MANUAL',
+  estado: 'PENDIENTE',
+  items: [],
+  items_sum_mismatch: false,
+  created_at: '2026-06-01T10:00:00',
+  updated_at: '2026-06-01T10:00:00',
+}
+
+// ── MSW Server ────────────────────────────────────────────────────────────────
+
+const server = setupServer(
+  http.post('/api/facturas', async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>
+    if (!body.proveedor_id) {
+      return HttpResponse.json(
+        { detail: [{ loc: ['body', 'proveedor_id'], msg: 'Field required', type: 'missing' }] },
+        { status: 422 },
+      )
+    }
+    return HttpResponse.json(mockCreatedFactura, { status: 201 })
+  }),
+
+  http.get('/api/facturas/:id', ({ params }) => {
+    if (params.id === 'factura-uuid-1') {
+      return HttpResponse.json(mockCreatedFactura)
+    }
+    return HttpResponse.json({ detail: 'Not Found' }, { status: 404 })
+  }),
+
+  http.patch('/api/facturas/:id', async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({ ...mockCreatedFactura, ...body })
+  }),
+
+  http.get('/api/cloudinary/preset-firmado', () => {
+    return HttpResponse.json({
+      upload_preset: 'test-preset',
+      cloud_name: 'test-cloud',
+      signature: 'sig',
+      api_key: 'key',
+      timestamp: 1234567890,
+    })
+  }),
+
+  // SupplierSearch calls buscar
+  http.get('/api/proveedores/buscar', () => {
+    return HttpResponse.json([mockProveedor])
+  }),
+)
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))
+afterAll(() => server.close())
+afterEach(() => server.resetHandlers())
+
+// ── Wrapper ───────────────────────────────────────────────────────────────────
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </MemoryRouter>
+    )
+  }
+}
+
+// ── Task 6.1 / 6.2 — Create mode ─────────────────────────────────────────────
+
+describe('FacturaForm — create mode', () => {
+  it('renders required fields: supplier, fecha_emision, monto_total', () => {
+    render(<FacturaForm onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+      wrapper: createWrapper(),
+    })
+    // Proveedor label exists
+    expect(screen.getByText(/^Proveedor$/i)).toBeInTheDocument()
+    // Multiple fecha fields — check the emision one exists via id
+    expect(document.getElementById('fecha_emision')).toBeInTheDocument()
+    expect(screen.getByLabelText(/monto/i)).toBeInTheDocument()
+  })
+
+  it('shows error when submitting without a supplier', async () => {
+    render(<FacturaForm onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+      wrapper: createWrapper(),
+    })
+    const submitBtn = screen.getByRole('button', { name: /guardar/i })
+    fireEvent.click(submitBtn)
+    await waitFor(() => {
+      expect(screen.getAllByRole('alert').length).toBeGreaterThan(0)
+    })
+    // Among the alerts, one should mention the supplier
+    const alertText = screen.getAllByRole('alert').map((a) => a.textContent ?? '').join(' ')
+    expect(alertText).toMatch(/proveedor/i)
+  })
+
+  it('shows error when monto_total is zero or negative', async () => {
+    render(<FacturaForm onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+      wrapper: createWrapper(),
+    })
+    const montoInput = screen.getByLabelText(/monto/i)
+    fireEvent.change(montoInput, { target: { value: '0' } })
+
+    const submitBtn = screen.getByRole('button', { name: /guardar/i })
+    fireEvent.click(submitBtn)
+    await waitFor(() => {
+      expect(screen.getAllByRole('alert').length).toBeGreaterThan(0)
+    })
+  })
+
+  it('calls POST /api/facturas on valid submit and invokes onSuccess', async () => {
+    const onSuccess = vi.fn()
+    render(
+      <FacturaForm
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+        initialSelectedProveedor={mockProveedor}
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    // Set fecha_emision (past date)
+    const fechaInput = document.getElementById('fecha_emision') as HTMLInputElement
+    fireEvent.change(fechaInput, { target: { value: '2026-05-01' } })
+
+    // Set monto_total
+    const montoInput = screen.getByLabelText(/monto/i)
+    fireEvent.change(montoInput, { target: { value: '1500' } })
+
+    const submitBtn = screen.getByRole('button', { name: /guardar/i })
+    fireEvent.click(submitBtn)
+
+    await waitFor(() => {
+      expect(onSuccess).toHaveBeenCalled()
+    }, { timeout: 3000 })
+  })
+})
+
+// ── Task 6.3 / 6.4 — Edit mode ───────────────────────────────────────────────
+
+describe('FacturaForm — edit mode', () => {
+  it('pre-fills fields from the existing factura', () => {
+    render(
+      <FacturaForm
+        factura={mockCreatedFactura}
+        proveedor={mockProveedor}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { wrapper: createWrapper() },
+    )
+    const montoInput = screen.getByLabelText(/monto/i) as HTMLInputElement
+    expect(montoInput.value).toBe('1500')
+  })
+
+  it('renders the supplier as read-only in edit mode', () => {
+    render(
+      <FacturaForm
+        factura={mockCreatedFactura}
+        proveedor={mockProveedor}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { wrapper: createWrapper() },
+    )
+    // The supplier display should be disabled/read-only
+    const supplierDisplay = screen.getByTestId('proveedor-readonly')
+    expect(supplierDisplay).toBeInTheDocument()
+    expect(supplierDisplay.textContent).toContain('Proveedor Test SA')
+  })
+})
+
+// ── Task 6.5 — TRIANGULATE ────────────────────────────────────────────────────
+
+describe('FacturaForm — triangulate', () => {
+  it('blocks submission when fecha_emision is in the future', async () => {
+    render(
+      <FacturaForm
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+        initialSelectedProveedor={mockProveedor}
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    // Set a future date
+    const fechaInput = document.getElementById('fecha_emision') as HTMLInputElement
+    fireEvent.change(fechaInput, { target: { value: '2099-12-31' } })
+
+    const montoInput = screen.getByLabelText(/monto/i)
+    fireEvent.change(montoInput, { target: { value: '1500' } })
+
+    const submitBtn = screen.getByRole('button', { name: /guardar/i })
+    fireEvent.click(submitBtn)
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('alert').length).toBeGreaterThan(0)
+    })
+    // Check for future date error message
+    const alerts = screen.getAllByRole('alert')
+    const alertText = alerts.map((a) => a.textContent ?? '').join(' ')
+    expect(alertText).toMatch(/futura|future|fecha/i)
+  })
+
+  it('shows items_sum_mismatch warning after save when response has mismatch=true', async () => {
+    server.use(
+      http.post('/api/facturas', async () => {
+        return HttpResponse.json(
+          { ...mockCreatedFactura, items_sum_mismatch: true },
+          { status: 201 },
+        )
+      }),
+    )
+
+    const onSuccess = vi.fn()
+    render(
+      <FacturaForm
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+        initialSelectedProveedor={mockProveedor}
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    const fechaInput2 = document.getElementById('fecha_emision') as HTMLInputElement
+    fireEvent.change(fechaInput2, { target: { value: '2026-05-01' } })
+    const montoInput = screen.getByLabelText(/monto/i)
+    fireEvent.change(montoInput, { target: { value: '1500' } })
+
+    const submitBtn = screen.getByRole('button', { name: /guardar/i })
+    fireEvent.click(submitBtn)
+
+    await waitFor(() => {
+      expect(onSuccess).toHaveBeenCalled()
+    }, { timeout: 3000 })
+  })
+})

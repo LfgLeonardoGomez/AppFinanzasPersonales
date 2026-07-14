@@ -1,0 +1,67 @@
+"""
+Pydantic schemas for auth endpoints.
+
+All validation happens in backend (Pydantic) — never trust the frontend.
+(Regla dura #6, D-C03-5)
+
+UsuarioResponse MUST NOT expose password_hash.
+"""
+
+import uuid
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, EmailStr, field_validator
+
+
+class RegistroRequest(BaseModel):
+    """Payload for POST /api/auth/registro."""
+
+    email: EmailStr
+    nombre: str
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("La contraseña debe tener al menos 8 caracteres.")
+        return v
+
+    @field_validator("nombre")
+    @classmethod
+    def nombre_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("El nombre no puede estar vacío.")
+        return v.strip()
+
+
+class LoginRequest(BaseModel):
+    """Payload for POST /api/auth/login."""
+
+    email: EmailStr
+    password: str
+
+
+class UsuarioResponse(BaseModel):
+    """
+    Public representation of a user.
+
+    CRITICAL: password_hash is NEVER included here.
+    model_config excludes it at the schema level.
+    """
+
+    id: uuid.UUID
+    email: str
+    nombre: str
+    telefono: Optional[str] = None
+    avatar_url: Optional[str] = None
+    nombre_negocio: Optional[str] = None
+    tema_preferido: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+__all__ = ["RegistroRequest", "LoginRequest", "UsuarioResponse"]

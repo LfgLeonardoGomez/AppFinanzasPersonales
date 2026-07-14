@@ -1,0 +1,218 @@
+/**
+ * Tests for auth TanStack Query hooks.
+ *
+ * TDD: RED → GREEN → TRIANGULATE → REFACTOR
+ *
+ * Backend is mocked with MSW. Tokens must never appear in storage.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest'
+import { renderHook, waitFor, act } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { setupServer } from 'msw/node'
+import { http, HttpResponse } from 'msw'
+import type { ReactNode } from 'react'
+
+// ── jsdom base URL ────────────────────────────────────────────────────────────
+beforeAll(() => {
+  Object.defineProperty(window, 'location', {
+    value: { assign: vi.fn(), href: 'http://localhost/', origin: 'http://localhost', pathname: '/' },
+    writable: true,
+  })
+})
+
+const BASE = 'http://localhost'
+
+// ── MSW server ────────────────────────────────────────────────────────────────
+
+const server = setupServer()
+
+function makeWrapper() {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  }
+}
+
+beforeEach(() => {
+  server.listen({ onUnhandledRequest: 'error' })
+  localStorage.clear()
+  sessionStorage.clear()
+  vi.clearAllMocks()
+})
+afterEach(() => {
+  server.resetHandlers()
+  server.close()
+})
+
+// ── useRegister ───────────────────────────────────────────────────────────────
+
+describe('useRegister', () => {
+  it('resolves on successful registration (2xx)', async () => {
+    server.use(
+      http.post(`${BASE}/api/auth/registro`, () =>
+        HttpResponse.json({ id: '1', email: 'new@test.com', nombre: 'New', created_at: '' }),
+      ),
+    )
+
+    const { useRegister } = await import('./authHooks')
+    const { result } = renderHook(() => useRegister(), { wrapper: makeWrapper() })
+
+    await act(async () => {
+      result.current.mutate({ email: 'new@test.com', nombre: 'New', password: 'password123' })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+  })
+
+  it('surfaces an email-in-use error when backend signals duplicate email', async () => {
+    server.use(
+      http.post(`${BASE}/api/auth/registro`, () =>
+        HttpResponse.json({ detail: 'email_already_exists' }, { status: 400 }),
+      ),
+    )
+
+    const { useRegister } = await import('./authHooks')
+    const { result } = renderHook(() => useRegister(), { wrapper: makeWrapper() })
+
+    await act(async () => {
+      result.current.mutate({ email: 'dup@test.com', nombre: 'Dup', password: 'password123' })
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.error).toBeDefined()
+  })
+
+  it('surfaces a validation error on 422 without creating a session', async () => {
+    server.use(
+      http.post(`${BASE}/api/auth/registro`, () =>
+        HttpResponse.json(
+          { detail: [{ loc: ['body', 'password'], msg: 'too short', type: 'value_error' }] },
+          { status: 422 },
+        ),
+      ),
+    )
+
+    const { useRegister } = await import('./authHooks')
+    const { result } = renderHook(() => useRegister(), { wrapper: makeWrapper() })
+
+    await act(async () => {
+      result.current.mutate({ email: 'a@b.com', nombre: 'A', password: '123' })
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    // No session must be created
+    const { useAuthStore } = await import('../store/authStore')
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+})
+
+// ── useLogin ──────────────────────────────────────────────────────────────────
+
+describe('useLogin', () => {
+  it('populates authStore on successful login', async () => {
+    server.use(
+      http.post(`${BASE}/api/auth/login`, () =>
+        HttpResponse.json({ user: { id: '1', email: 'u@u.com', nombre: 'U', created_at: '' } }),
+      ),
+    )
+
+    const { useLogin } = await import('./authHooks')
+    const { useAuthStore } = await import('../store/authStore')
+    // Reset store
+    useAuthStore.getState().logout()
+
+    const { result } = renderHook(() => useLogin(), { wrapper: makeWrapper() })
+
+    await act(async () => {
+      result.current.mutate({ email: 'u@u.com', password: 'password123' })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(useAuthStore.getState().user?.email).toBe('u@u.com')
+  })
+
+  it('returns a generic error message for invalid credentials', async () => {
+    server.use(
+      http.post(`${BASE}/api/auth/login`, () =>
+        HttpResponse.json({ detail: 'invalid_credentials' }, { status: 401 }),
+      ),
+    )
+
+    const { useLogin } = await import('./authHooks')
+    const { result } = renderHook(() => useLogin(), { wrapper: makeWrapper() })
+
+    await act(async () => {
+      result.current.mutate({ email: 'x@x.com', password: 'wrongpassword' })
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    // The error message must be the generic one (does not reveal which field failed)
+    const { getLoginErrorMessage } = await import('./authHooks')
+    const msg = getLoginErrorMessage(result.current.error)
+    expect(msg).toBe('Credenciales inválidas')
+  })
+
+  it('returns the same generic message for both "email not found" and "wrong password" scenarios', async () => {
+    // Scenario A — email not found (backend still returns 401 with same body)
+    server.use(
+      http.post(`${BASE}/api/auth/login`, () =>
+        HttpResponse.json({ detail: 'user_not_found' }, { status: 401 }),
+      ),
+    )
+
+    const { useLogin, getLoginErrorMessage } = await import('./authHooks')
+    const { result: rA } = renderHook(() => useLogin(), { wrapper: makeWrapper() })
+
+    await act(async () => {
+      rA.current.mutate({ email: 'nonexistent@x.com', password: 'any' })
+    })
+    await waitFor(() => expect(rA.current.isError).toBe(true))
+    expect(getLoginErrorMessage(rA.current.error)).toBe('Credenciales inválidas')
+
+    // Scenario B — wrong password (same 401)
+    server.use(
+      http.post(`${BASE}/api/auth/login`, () =>
+        HttpResponse.json({ detail: 'invalid_credentials' }, { status: 401 }),
+      ),
+    )
+
+    const { result: rB } = renderHook(() => useLogin(), { wrapper: makeWrapper() })
+
+    await act(async () => {
+      rB.current.mutate({ email: 'real@x.com', password: 'wrongpassword' })
+    })
+    await waitFor(() => expect(rB.current.isError).toBe(true))
+    expect(getLoginErrorMessage(rB.current.error)).toBe('Credenciales inválidas')
+  })
+})
+
+// ── useLogout ─────────────────────────────────────────────────────────────────
+
+describe('useLogout', () => {
+  it('clears the authStore after successful logout', async () => {
+    server.use(
+      http.post(`${BASE}/api/auth/logout`, () => HttpResponse.json({ ok: true })),
+    )
+
+    const { useLogout } = await import('./authHooks')
+    const { useAuthStore } = await import('../store/authStore')
+
+    // Simulate logged-in state
+    useAuthStore.getState().login({ id: '1', email: 'a@b.com', nombre: 'A', created_at: '' })
+
+    const { result } = renderHook(() => useLogout(), { wrapper: makeWrapper() })
+
+    await act(async () => {
+      result.current.mutate()
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+    expect(useAuthStore.getState().user).toBeNull()
+  })
+})

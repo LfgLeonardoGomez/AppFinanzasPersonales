@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "facturas-proveedores-api"
+version = "0.1.0"
+description = "API REST para gestión de facturas de proveedores"
+requires-python = ">=3.11"
+
+# ── Runtime dependencies ──────────────────────────────────────────────────────
+dependencies = [
+    # Web framework
+    "fastapi>=0.111.0,<0.112",
+    "uvicorn[standard]>=0.29.0,<0.30",
+
+    # ORM / DB
+    "sqlmodel>=0.0.19,<0.1",
+    "pydantic>=2.7.0,<3",
+    "pydantic-settings>=2.3.0,<3",
+    "alembic>=1.13.0,<2",
+    "psycopg2-binary>=2.9.9,<3",
+
+    # Auth / security
+    "passlib[argon2]>=1.7.4,<2",
+    "python-jose[cryptography]>=3.3.0,<4",
+
+    # HTTP client
+    "httpx>=0.27.0,<0.28",
+
+    # File uploads / cloud
+    "cloudinary>=1.40.0,<2",
+
+    # AI / vision providers
+    "anthropic>=0.28.0,<0.29",
+    "openai>=1.30.0,<2",
+
+    # UUID utilities (D-16: uuid7 para IDs time-ordered)
+    "uuid6>=2022.10.25",
+]
+
+[project.optional-dependencies]
+# ── Dev / test dependencies ───────────────────────────────────────────────────
+dev = [
+    "pytest>=8.2.0,<9",
+    "pytest-asyncio>=0.23.0,<0.24",
+    "httpx>=0.27.0,<0.28",          # TestClient async
+    "testcontainers[postgres]>=4.7.0,<5",
+    "coverage[toml]>=7.5.0,<8",
+    "pip-audit>=2.7.0,<3",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v"
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["tests/*"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

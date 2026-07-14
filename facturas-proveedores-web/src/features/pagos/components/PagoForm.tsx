@@ -1,0 +1,362 @@
+/**
+ * PagoForm — create/edit payment form.
+ *
+ * Premium card layout with InputField wrappers. All original test contracts
+ * preserved: label names, id="fecha", data-testid="proveedor-readonly",
+ * button names, alert roles, RN-PAG-01 note.
+ */
+import { useState, useEffect, useRef, type FormEvent, type ChangeEvent } from 'react'
+import { SupplierSearch } from '@shared/components/SupplierSearch/SupplierSearch'
+import { FileUploadField } from '@features/facturas/components/FileUploadField'
+import { useCreatePago, useUpdatePago } from '../api/pagosHooks'
+import type { UseMutationResult } from '@tanstack/react-query'
+import { getTodayUTC3 } from '@shared/utils/date'
+import { InputField } from '@shared/components/InputField/InputField'
+import { Card } from '@shared/components/Card/Card'
+import type {
+  PagoResponse,
+  PagoCreate,
+  PagoUpdate,
+  PagoListItem,
+  ProveedorListItem,
+  MetodoPago,
+  PropuestaPago,
+} from '@shared/api/api'
+
+type CreatePagoMutation = UseMutationResult<PagoResponse, Error, PagoCreate>
+type UpdatePagoMutation = UseMutationResult<PagoResponse, Error, { id: string; data: PagoUpdate }>
+
+interface FormErrors {
+  proveedor?: string
+  fecha?: string
+  monto?: string
+  metodo?: string
+  backend?: string
+}
+
+interface PagoFormProps {
+  pago?: PagoListItem
+  proveedor?: ProveedorListItem | null
+  onSuccess: (saved: PagoResponse) => void
+  onCancel: () => void
+  initialSelectedProveedor?: ProveedorListItem | null
+  prefillFromProposal?: {
+    propuesta: PropuestaPago
+    selectedProveedor: ProveedorListItem
+  } | null
+  externalCreateMutation?: CreatePagoMutation
+  externalUpdateMutation?: UpdatePagoMutation
+}
+
+interface FormState {
+  fecha: string
+  monto: string
+  metodo: string
+  comprobante_url: string | null
+}
+
+function initialState(pago?: PagoListItem): FormState {
+  return {
+    fecha: pago?.fecha ?? '',
+    monto: pago ? String(pago.monto) : '',
+    metodo: pago?.metodo ?? '',
+    comprobante_url: (pago as (PagoListItem & { comprobante_url?: string | null }) | undefined)?.comprobante_url ?? null,
+  }
+}
+
+const METODO_OPTIONS: { value: string; label: string }[] = [
+  { value: 'EFECTIVO', label: 'Efectivo' },
+  { value: 'TRANSFERENCIA', label: 'Transferencia' },
+  { value: 'TARJETA', label: 'Tarjeta' },
+  { value: 'MERCADOPAGO', label: 'MercadoPago' },
+  { value: 'OTRO', label: 'Otro' },
+]
+
+export function PagoForm({
+  pago,
+  proveedor: initialProveedor,
+  onSuccess,
+  onCancel,
+  initialSelectedProveedor,
+  prefillFromProposal,
+  externalCreateMutation,
+  externalUpdateMutation,
+}: PagoFormProps) {
+  const isEditMode = Boolean(pago)
+
+  const [form, setForm] = useState<FormState>(() => initialState(pago))
+  const [selectedProveedor, setSelectedProveedor] = useState<ProveedorListItem | null>(
+    initialSelectedProveedor ?? initialProveedor ?? null,
+  )
+
+  useEffect(() => {
+    if (initialSelectedProveedor && !selectedProveedor) {
+      setSelectedProveedor(initialSelectedProveedor)
+    }
+  }, [initialSelectedProveedor, selectedProveedor])
+
+  const prefillConsumedRef = useRef(false)
+  useEffect(() => {
+    if (!prefillFromProposal || prefillConsumedRef.current) return
+    prefillConsumedRef.current = true
+    setForm((prev) => ({
+      ...prev,
+      fecha: prefillFromProposal.propuesta.fecha ?? '',
+      monto:
+        prefillFromProposal.propuesta.monto !== null &&
+        prefillFromProposal.propuesta.monto !== undefined
+          ? String(prefillFromProposal.propuesta.monto)
+          : '',
+      metodo: prefillFromProposal.propuesta.metodo ?? '',
+    }))
+    setSelectedProveedor(prefillFromProposal.selectedProveedor)
+  }, [prefillFromProposal])
+
+  const [errors, setErrors] = useState<FormErrors>({})
+
+  const createMutationInternal = useCreatePago()
+  const updateMutationInternal = useUpdatePago()
+  const createMutation = externalCreateMutation ?? createMutationInternal
+  const updateMutation = externalUpdateMutation ?? updateMutationInternal
+  const isPending = createMutation.isPending || updateMutation.isPending
+
+  function handleChange(e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
+    const { name, value } = e.target
+    setForm((prev) => ({ ...prev, [name]: value }))
+    setErrors((prev) => {
+      const next = { ...prev }
+      delete next[name as keyof FormErrors]
+      delete next.backend
+      return next
+    })
+  }
+
+  function validate(): FormErrors {
+    const errs: FormErrors = {}
+    if (!isEditMode && !selectedProveedor) {
+      errs.proveedor = 'El proveedor es requerido.'
+    }
+    const montoNum = parseFloat(form.monto)
+    if (!form.monto || isNaN(montoNum) || montoNum <= 0) {
+      errs.monto = 'El monto debe ser mayor a cero.'
+    }
+    if (!form.fecha) {
+      errs.fecha = 'La fecha es requerida.'
+    } else {
+      const today = getTodayUTC3()
+      if (form.fecha > today) {
+        errs.fecha = 'La fecha no puede ser futura.'
+      }
+    }
+    if (!form.metodo) {
+      errs.metodo = 'El método de pago es obligatorio.'
+    }
+    return errs
+  }
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    const errs = validate()
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs)
+      return
+    }
+
+    if (isEditMode && pago) {
+      const updatePayload: PagoUpdate = {
+        monto: parseFloat(form.monto),
+        fecha: form.fecha,
+        metodo: form.metodo as MetodoPago,
+        comprobante_url: form.comprobante_url,
+      }
+      updateMutation.mutate(
+        { id: pago.id, data: updatePayload },
+        {
+          onSuccess: (updated) => {
+            setErrors({})
+            onSuccess(updated)
+          },
+          onError: (err: unknown) => {
+            setErrors({ backend: extractBackendError(err) })
+          },
+        },
+      )
+    } else {
+      const createPayload: PagoCreate = {
+        proveedor_id: selectedProveedor!.id,
+        monto: parseFloat(form.monto),
+        fecha: form.fecha,
+        metodo: form.metodo as MetodoPago,
+        comprobante_url: form.comprobante_url,
+        ...(prefillConsumedRef.current ? { origen: 'IA' as const } : {}),
+      }
+      createMutation.mutate(createPayload, {
+        onSuccess: (created) => {
+          setErrors({})
+          onSuccess(created)
+        },
+        onError: (err: unknown) => {
+          setErrors({ backend: extractBackendError(err) })
+        },
+      })
+    }
+  }
+
+  return (
+    <Card>
+      <h2 className="mb-6 font-serif text-xl font-semibold text-navy-800 dark:text-zinc-100">
+        {isEditMode ? 'Editar pago' : 'Nuevo pago'}
+      </h2>
+
+      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
+        {/* Proveedor */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-navy-700 dark:text-zinc-300">
+            Proveedor
+          </label>
+          {isEditMode ? (
+            <div
+              data-testid="proveedor-readonly"
+              className="rounded-xl border border-black/[0.06] bg-cream-dark/50 px-3 py-2.5 text-sm text-navy-700 dark:border-white/10 dark:bg-white/[0.03] dark:text-zinc-300"
+            >
+              {initialProveedor?.nombre ?? pago?.proveedor_id}
+            </div>
+          ) : (
+            <>
+              <p
+                role="note"
+                className="text-xs text-navy-400 italic dark:text-zinc-500"
+              >
+                El pago se asocia al proveedor, no a una factura específica.
+              </p>
+              <div className="relative">
+                <SupplierSearch
+                  value={selectedProveedor}
+                  onChange={(p) => {
+                    setSelectedProveedor(p)
+                    if (p) {
+                      setErrors((prev) => {
+                        const next = { ...prev }
+                        delete next.proveedor
+                        return next
+                      })
+                    }
+                  }}
+                  placeholder="Buscar proveedor…"
+                  disabled={false}
+                />
+              </div>
+            </>
+          )}
+          {errors.proveedor && (
+            <span role="alert" className="text-xs font-medium text-danger">
+              {errors.proveedor}
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <InputField
+            label="Fecha"
+            id="fecha"
+            name="fecha"
+            type="date"
+            value={form.fecha}
+            onChange={handleChange}
+            error={errors.fecha}
+            required
+          />
+
+          <InputField
+            label="Monto"
+            id="monto"
+            name="monto"
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={form.monto}
+            onChange={handleChange}
+            error={errors.monto}
+            required
+          />
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="metodo" className="text-sm font-medium text-navy-700 dark:text-zinc-300">
+              Método de pago
+            </label>
+            <select
+              id="metodo"
+              name="metodo"
+              value={form.metodo}
+              onChange={handleChange}
+              aria-required="true"
+              aria-invalid={Boolean(errors.metodo)}
+              aria-describedby={errors.metodo ? 'metodo-error' : undefined}
+              className="w-full rounded-xl border border-black/[0.06] bg-white px-3 py-2.5 text-sm text-navy-800 transition-all duration-200 focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-100 dark:border-white/10 dark:bg-espresso dark:text-zinc-100 dark:focus:ring-accent-500/20"
+            >
+              <option value="">— Seleccionar —</option>
+              {METODO_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            {errors.metodo && (
+              <span id="metodo-error" role="alert" className="text-xs font-medium text-danger">
+                {errors.metodo}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Comprobante upload */}
+        <div>
+          <FileUploadField
+            tipo="comprobante"
+            onUrlChange={(url) => setForm((prev) => ({ ...prev, comprobante_url: url }))}
+            currentUrl={form.comprobante_url}
+          />
+        </div>
+
+        {errors.backend && (
+          <p role="alert" aria-live="assertive" className="text-sm text-danger">
+            {errors.backend}
+          </p>
+        )}
+
+        <div className="mt-1 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isPending}
+            className="rounded-full px-5 py-2.5 text-sm font-semibold text-navy-600 transition-colors hover:bg-cream-dark disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-white/[0.04]"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={isPending}
+            className="rounded-full bg-navy-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(10,37,64,0.20)] transition-all duration-200 ease-[var(--ease-out)] hover:bg-navy-600 hover:shadow-[0_6px_20px_rgba(10,37,64,0.28)] active:scale-[0.98] disabled:opacity-50 dark:bg-accent-500 dark:hover:bg-accent-600"
+          >
+            {isPending ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      </form>
+    </Card>
+  )
+}
+
+function extractBackendError(err: unknown): string {
+  if (typeof err === 'object' && err !== null) {
+    const e = err as { response?: { data?: { detail?: unknown } } }
+    const detail = e.response?.data?.detail
+    if (typeof detail === 'string') return detail
+    if (Array.isArray(detail) && detail.length > 0) {
+      const first = detail[0] as { msg?: string }
+      return first?.msg ?? 'Error de validación.'
+    }
+  }
+  return 'Error al guardar el pago.'
+}
+
+export default PagoForm

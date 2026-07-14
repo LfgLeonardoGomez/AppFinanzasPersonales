@@ -1,0 +1,143 @@
+/* Tailwind CSS v4 — importar con @import en lugar de @tailwind directives */
+@import "tailwindcss";
+
+/* ── Theme ──────────────────────────────────────────────────────────────── */
+@theme {
+  /* Navy palette (primary) */
+  --color-navy-50: #f0f7ff;
+  --color-navy-100: #d6e8ff;
+  --color-navy-200: #a8d0ff;
+  --color-navy-300: #6ab3ff;
+  --color-navy-400: #2e90ff;
+  --color-navy-500: #0a2540;
+  --color-navy-600: #083352;
+  --color-navy-700: #062640;
+  --color-navy-800: #041a2d;
+  --color-navy-900: #02101c;
+
+  /* Accent (premium violet, Stripe-style) */
+  --color-accent-50: #f5f3ff;
+  --color-accent-100: #ede9fe;
+  --color-accent-200: #ddd6fe;
+  --color-accent-300: #c4b5fd;
+  --color-accent-400: #a78bfa;
+  --color-accent-500: #635bff;
+  --color-accent-600: #7b79ff;
+  --color-accent-700: #5b59e6;
+
+  /* Semantic */
+  --color-success: #059669;
+  --color-success-light: #d1fae5;
+  --color-success-bg: #ecfdf5;
+
+  --color-warning: #d97706;
+  --color-warning-light: #fef3c7;
+  --color-warning-bg: #fffbeb;
+
+  --color-danger: #dc2626;
+  --color-danger-light: #fee2e2;
+  --color-danger-bg: #fef2f2;
+
+  /* Surface (warm cream / espresso) */
+  --color-cream: #f5f2eb;
+  --color-cream-dark: #ebe7de;
+  --color-cream-deep: #e2ddd3;
+  --color-espresso: #0f0e0c;
+  --color-card: #ffffff;
+  --color-card-secondary: #faf8f3;
+  --color-card-dark: #1a1a1a;
+  --color-card-dark-secondary: #252525;
+
+  /* Typography */
+  --font-sans: 'DM Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: 'Playfair Display', ui-serif, Georgia, serif;
+
+  /* Custom easing */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* ── Base layer ─────────────────────────────────────────────────────────── */
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-cream);
+    color: var(--color-navy-800);
+  }
+
+  /* Dark mode overrides */
+  html.dark body {
+    background-color: var(--color-espresso);
+    color: #e4e4e7;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  /* Focus visible ring — consistent across the app */
+  :focus-visible {
+    outline: 2px solid var(--color-accent-500);
+    outline-offset: 2px;
+  }
+
+  /* Scrollbar styling (webkit) */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-navy-200);
+    border-radius: 9999px;
+  }
+  html.dark ::-webkit-scrollbar-thumb {
+    background-color: #3f3f46;
+  }
+}
+
+/* ── Animation utilities ──────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 500ms var(--ease-out) forwards;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}

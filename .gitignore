@@ -6,10 +6,6 @@
 # monorepo: KB, specs, docs, config compartida, etc.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Subrepos (cada uno con su .git/ propio)
-facturas-proveedores-api/
-facturas-proveedores-web/
-
 # Environment files & secrets
 .env
 .env.local
