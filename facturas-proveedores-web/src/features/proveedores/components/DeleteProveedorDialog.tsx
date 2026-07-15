@@ -1,24 +1,39 @@
 /**
- * DeleteProveedorDialog — confirmation modal for supplier deletion.
+ * DeleteProveedorDialog — destructive confirmation for supplier deletion (C-20).
  *
- * Business rule RN-PROV-04: if the supplier has active invoices or payments
- * (tiene_dependencias=true), the user must explicitly confirm the deletion.
- * If there are no dependencies, this dialog is NOT shown (delete proceeds silently).
+ * Migrated from a custom modal to Radix Dialog with role="alertdialog"
+ * (the visual + behavioral pattern of a destructive confirmation).
  *
- * The deletion is NOT blocked by dependencies — it's a confirmation only.
+ * The destructive pattern requires:
+ *   - role="alertdialog" (semantic) with aria-modal="true" and
+ *     aria-label="Confirmar eliminación".
+ *   - Initial focus on the Cancelar button (safer than focusing the
+ *     destructive action).
+ *   - Backdrop click does NOT close the dialog (the user must explicitly
+ *     choose Confirmar or Cancelar).
+ *   - Esc closes (handled by Radix) and returns focus to the trigger.
+ *
+ * Why Dialog + role=alertdialog instead of @radix-ui/react-alert-dialog:
+ * the AlertDialog component intentionally omits onPointerDownOutside and
+ * onInteractOutside so backdrop dismissal cannot be disabled — that is
+ * the right call for accessibility on non-destructive flows, but for
+ * destructive confirmations the spec requires the user to make an
+ * explicit choice, so we use Dialog with the alertdialog role and
+ * suppress the dismiss handlers ourselves.
+ *
+ * Business rule RN-PROV-04: only shown when the supplier has active
+ * invoices or payments (tiene_dependencias=true). When hasDependencies is
+ * false, this dialog is NOT rendered by the parent (the delete proceeds
+ * silently).
  */
+import * as Dialog from '@radix-ui/react-dialog'
 import type { Proveedor } from '@shared/api/api'
 
 interface DeleteProveedorDialogProps {
-  /** Whether the dialog is visible */
   open: boolean
-  /** The supplier to be deleted */
   proveedor: Proveedor | null
-  /** Whether the supplier has active invoices or payments */
   hasDependencies: boolean
-  /** Called when user confirms deletion */
   onConfirm: () => void
-  /** Called when user cancels */
   onCancel: () => void
 }
 
@@ -32,55 +47,65 @@ export function DeleteProveedorDialog({
   if (!open || !proveedor) return null
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="delete-dialog-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 backdrop-blur-sm dark:bg-black/40"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onCancel()
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onCancel()
       }}
     >
-      <div
-        className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-[0_8px_32px_rgba(10,37,64,0.12)] ring-1 ring-black/[0.04] dark:bg-espresso dark:shadow-[0_8px_32px_rgba(0,0,0,0.4)] dark:ring-white/10"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2
-          id="delete-dialog-title"
-          className="mb-2 font-serif text-lg font-semibold text-navy-800 dark:text-zinc-100"
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm dark:bg-black/40" />
+        <Dialog.Content
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Confirmar eliminación"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            const cancel = document.querySelector<HTMLButtonElement>(
+              '[data-testid="delete-dialog-cancel"]',
+            )
+            cancel?.focus()
+          }}
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
+          className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-6 shadow-[0_8px_32px_rgba(10,37,64,0.12)] ring-1 ring-black/[0.04] focus:outline-none dark:bg-espresso dark:shadow-[0_8px_32px_rgba(0,0,0,0.4)] dark:ring-white/10"
         >
-          Eliminar proveedor
-        </h2>
+          <Dialog.Title className="mb-2 font-serif text-lg font-semibold text-navy-800 dark:text-zinc-100">
+            Eliminar proveedor
+          </Dialog.Title>
 
-        <p className="text-sm text-navy-600 dark:text-zinc-300">
-          ¿Querés eliminar a <strong>{proveedor.nombre}</strong>?
-        </p>
+          <Dialog.Description className="text-sm text-navy-600 dark:text-zinc-300">
+            ¿Querés eliminar a <strong>{proveedor.nombre}</strong>?
+          </Dialog.Description>
 
-        {hasDependencies && (
-          <p role="alert" className="mt-3 text-sm text-danger">
-            Este proveedor tiene facturas o pagos asociados. La eliminación es permanente.
-            ¿Confirmar eliminación?
-          </p>
-        )}
+          {hasDependencies && (
+            <p role="alert" className="mt-3 text-sm text-danger">
+              Este proveedor tiene facturas o pagos asociados. La eliminación es permanente.
+              ¿Confirmar eliminación?
+            </p>
+          )}
 
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-full px-5 py-2.5 text-sm font-semibold text-navy-600 transition-colors hover:bg-cream-dark dark:text-zinc-300 dark:hover:bg-white/[0.04]"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="rounded-full bg-danger px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(220,38,38,0.20)] transition-all duration-200 ease-[var(--ease-out)] hover:bg-danger/90 hover:shadow-[0_6px_20px_rgba(220,38,38,0.28)] active:scale-[0.98]"
-          >
-            Confirmar
-          </button>
-        </div>
-      </div>
-    </div>
+          <div className="mt-6 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              data-testid="delete-dialog-cancel"
+              onClick={onCancel}
+              className="rounded-full px-5 py-2.5 text-sm font-semibold text-navy-600 transition-colors hover:bg-cream-dark dark:text-zinc-300 dark:hover:bg-white/[0.04]"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              data-testid="delete-dialog-confirm"
+              onClick={onConfirm}
+              className="rounded-full bg-danger px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(220,38,38,0.20)] transition-all duration-200 ease-[var(--ease-out)] hover:bg-danger/90 hover:shadow-[0_6px_20px_rgba(220,38,38,0.28)] active:scale-[0.98]"
+            >
+              Confirmar
+            </button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }
 

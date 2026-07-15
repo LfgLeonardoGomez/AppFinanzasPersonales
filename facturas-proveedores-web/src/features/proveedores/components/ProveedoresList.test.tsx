@@ -149,7 +149,7 @@ describe('ProveedoresList', () => {
     fireEvent.click(betaDeleteBtn)
     // Dialog now opens for ALL deletes (regression-guard for the
     // pre-fix code that only opened it for suppliers with dependencies).
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toBeInTheDocument())
   })
 
   it('clicking Eliminar on supplier with dependencies opens the confirmation dialog (c-18 FE-008)', async () => {
@@ -162,7 +162,7 @@ describe('ProveedoresList', () => {
     const alfaDeleteBtn = deleteButtons[0]
     if (!alfaDeleteBtn) throw new Error('Alfa delete button not found')
     fireEvent.click(alfaDeleteBtn)
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toBeInTheDocument())
   })
 
   // ── C-13: "Ver cuenta corriente" link per row ─────────────────────────────
@@ -222,7 +222,7 @@ describe('ProveedoresList — FE-008 delete confirmation before mutation', () =>
     fireEvent.click(alfaDeleteBtn)
 
     // Dialog opens
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toBeInTheDocument())
     // No DELETE fired yet
     expect(deleteRequests).toEqual([])
   })
@@ -248,7 +248,7 @@ describe('ProveedoresList — FE-008 delete confirmation before mutation', () =>
     fireEvent.click(alfaDeleteBtn)
 
     // Dialog opens, no DELETE yet
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toBeInTheDocument())
     expect(deleteRequests).toEqual([])
 
     // Click Confirmar
@@ -275,7 +275,7 @@ describe('ProveedoresList — FE-008 delete confirmation before mutation', () =>
     if (!alfaDeleteBtn) throw new Error('Alfa delete button not found')
     fireEvent.click(alfaDeleteBtn)
 
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toBeInTheDocument())
     // Click Cancelar
     fireEvent.click(screen.getByRole('button', { name: /cancelar/i }))
 
