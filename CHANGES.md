@@ -503,7 +503,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `openspec/changes/archive/2026-07-01-c-19-fix-dev-setup/`
 
 ### [C-20] `radix-ui-and-feedback`
-- **Estado**: `[ ]` propuesto (este change)
+- **Estado**: `[x]` archivado 2026-07-14
 - **Scope**:
   - Migrar modales custom (ProveedoresPage, DeleteProveedorDialog) a Radix Primitives (Dialog, AlertDialog) para ganar a11y (focus trap, Esc, aria-modal, scroll lock).
   - Adoptar `sonner` para toasts no-bloqueantes; deprecá `SuccessMessage` (no se borra en este change).
@@ -547,10 +547,10 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-17 | fix-test-pollution | MEDIO | C-13 (housekeeping post-MVP) |
 | C-18 | housekeeping-fixes | BAJO | C-13 (housekeeping post-MVP, archivado 2026-07-01) |
 | C-19 | fix-dev-setup | BAJO | C-13 (housekeeping post-MVP, archivado 2026-07-01) |
-| C-20 | radix-ui-and-feedback | BAJO | C-13 (housekeeping post-MVP, propuesto) |
+| C-20 | radix-ui-and-feedback | BAJO | C-13 (housekeeping post-MVP, archivado 2026-07-14) |
 
 **Total: 20 changes · 9 fases + housekeeping post-MVP · 12 gates de paralelismo**
 
-**Estado del MVP**: el MVP está completo y archivado (C-13 ✓ 2026-06-27). Los 5 changes de housekeeping post-MVP (C-15a, C-16, C-17, C-18, C-19) son fixes mecánicos, refactors y drift de docs; no introducen funcionalidades nuevas. C-20 es housekeeping opcional (frontend-only, sin migraciones, sin cambios de reglas de negocio).
+**Estado del MVP**: el MVP está completo y archivado (C-13 ✓ 2026-06-27). Los 6 changes de housekeeping post-MVP (C-15a, C-16, C-17, C-18, C-19, C-20) son fixes mecánicos, refactors y drift de docs; no introducen funcionalidades nuevas.
 
 **Para el siguiente change**: si quedan items del `known-debt.md` de C-18 (MED-002/003/005, META-002/003/004, LOW-*, FE-009+, META-005+), se puede proponer un C-21 housekeeping-fixes-2 (o absorber en C-20 si el alcance lo permite). Si se va a una funcionalidad nueva, abrir el backlog del orquestador.
