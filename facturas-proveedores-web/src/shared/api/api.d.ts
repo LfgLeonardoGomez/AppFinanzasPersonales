@@ -57,7 +57,7 @@ export interface MeResponse extends Usuario {}
  * Supplier category enum (backend: app/models/proveedor.py).
  * SERVICIO covers services, OTRO is the default.
  */
-export type Categoria = 'SERVICIO' | 'OTRO'
+export type Categoria = 'INSUMO' | 'SERVICIO' | 'OTRO'
 
 /**
  * Full supplier object returned by GET /api/proveedores/{id}.

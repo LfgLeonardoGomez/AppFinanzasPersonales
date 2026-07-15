@@ -35,7 +35,7 @@ const server = setupServer(
   http.post('/api/proveedores', async ({ request }) => {
     const body = await request.json() as Record<string, unknown>
     return HttpResponse.json(
-      { ...mockPagedResponse.items[0], id: 'uuid-new', nombre: body.nombre },
+      { ...mockPagedResponse[0], id: 'uuid-new', nombre: body.nombre },
       { status: 201 },
     )
   }),
