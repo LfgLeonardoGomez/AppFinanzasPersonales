@@ -482,7 +482,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `app/core/config.py` (read-through proxy pattern)
 
 ### [C-18] `housekeeping-fixes`
-- **Estado**: `[ ]` en curso (este change)
+- **Estado**: `[x]` archivado 2026-07-01
 - **Scope**:
   - 11 fixes mecánicos post-MVP: 4 críticos (FE-001 SPA navigation, FE-002 PWA icons, FE-003 IA button disabled-while-pending, FE-004 HomePage Link), 2 altos (FE-005 proveedor_nombre en PagoResponse, FE-008 delete confirmation before mutation), 4 medios (FE-006 inline type imports, FE-007 formatSaldo dedup, MED-001 __import__ cleanup, MED-004 deterministic ordering), 1 doc (META-001).
   - Sin cambios de reglas de negocio, sin migraciones de DB, sin nuevos endpoints (FE-005 es additive: nuevo campo opcional en `PagoResponse`).
@@ -490,9 +490,36 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 - **Dependencias**: `C-13`
 - **Governance**: BAJO
 - **Leer antes**:
-  - `openspec/changes/c-18-housekeeping-fixes/proposal.md`
-  - `openspec/changes/c-18-housekeeping-fixes/design.md` (decisiones D-1 a D-5)
-  - `openspec/changes/c-18-housekeeping-fixes/known-debt.md` (MED-002/003/005, META-002/003/004 deferred)
+  - `openspec/changes/archive/2026-07-01-c-18-housekeeping-fixes/`
+
+### [C-19] `fix-dev-setup`
+- **Estado**: `[x]` archivado 2026-07-01
+- **Scope**:
+  - Fix mecánico del dev setup tras la absorción del monorepo: `VITE_API_URL` apunta al servicio interno `api` del compose; `node_modules` se instalan dentro del contenedor del web; alembic corre en el start del api.
+  - Sin cambios de reglas de negocio, sin migraciones, sin nuevos endpoints.
+- **Dependencias**: `C-13`
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/archive/2026-07-01-c-19-fix-dev-setup/`
+
+### [C-20] `radix-ui-and-feedback`
+- **Estado**: `[ ]` propuesto (este change)
+- **Scope**:
+  - Migrar modales custom (ProveedoresPage, DeleteProveedorDialog) a Radix Primitives (Dialog, AlertDialog) para ganar a11y (focus trap, Esc, aria-modal, scroll lock).
+  - Adoptar `sonner` para toasts no-bloqueantes; deprecá `SuccessMessage` (no se borra en este change).
+  - Aplicar `animate-shimmer` ya definido en `index.css:120-128` a `LoadingState` (skeleton en lugar de spinner).
+  - Hook `useGlobalShortcuts` con shortcuts `n` (nueva factura), `/` (focus search), `g+p`/`g+f`/`g+c` (navegación).
+  - **Setup from scratch de ESLint v9 con config plana** (resuelve D-24 — el proyecto no tiene config de ESLint hoy, solo el script `lint` apunta a una dep que no está en `package.json`): `typescript-eslint` + `eslint-plugin-react` + `eslint-plugin-react-hooks` + `eslint-plugin-react-refresh`. Reglas conservadoras que pasen limpio contra el código actual.
+  - Test de regression-guard que ejecuta `npm run lint` y asserta exit 0 (lockea la capability `frontend-lint-baseline`).
+  - Sin features nuevas, sin migraciones, sin cambios de backend, sin cambios en la IA. El modal IA bloqueante (D-19) se preserva sin migrar.
+- **Dependencias**: `C-13` (corre sobre el MVP completo, housekeeping post-MVP paralelo a C-15a/C-16/C-17/C-18/C-19)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-20-radix-ui-and-feedback/proposal.md`
+  - `openspec/changes/c-20-radix-ui-and-feedback/specs/frontend-ui-polish/spec.md`
+  - `openspec/changes/c-20-radix-ui-and-feedback/specs/frontend-lint-baseline/spec.md`
+  - `openspec/changes/c-20-radix-ui-and-feedback/specs/proveedores-frontend/spec.md` (delta sobre C-07)
+  - `knowledge-base/09_decisiones_y_supuestos.md` D-19, D-24
 
 ---
 
@@ -518,10 +545,12 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-15a | origen-ia-backend | BAJO | C-10 (housekeeping post-MVP) |
 | C-16 | fix-suite | MEDIO | C-13 (housekeeping post-MVP) |
 | C-17 | fix-test-pollution | MEDIO | C-13 (housekeeping post-MVP) |
-| C-18 | housekeeping-fixes | BAJO | C-13 (housekeeping post-MVP, en curso) |
+| C-18 | housekeeping-fixes | BAJO | C-13 (housekeeping post-MVP, archivado 2026-07-01) |
+| C-19 | fix-dev-setup | BAJO | C-13 (housekeeping post-MVP, archivado 2026-07-01) |
+| C-20 | radix-ui-and-feedback | BAJO | C-13 (housekeeping post-MVP, propuesto) |
 
-**Total: 18 changes · 9 fases + housekeeping post-MVP · 12 gates de paralelismo**
+**Total: 20 changes · 9 fases + housekeeping post-MVP · 12 gates de paralelismo**
 
-**Estado del MVP**: el MVP está completo y archivado (C-13 ✓ 2026-06-27). Los 4 changes de housekeeping post-MVP (C-15a, C-16, C-17, C-18) son fixes mecánicos, refactors y drift de docs; no introducen funcionalidades nuevas.
+**Estado del MVP**: el MVP está completo y archivado (C-13 ✓ 2026-06-27). Los 5 changes de housekeeping post-MVP (C-15a, C-16, C-17, C-18, C-19) son fixes mecánicos, refactors y drift de docs; no introducen funcionalidades nuevas. C-20 es housekeeping opcional (frontend-only, sin migraciones, sin cambios de reglas de negocio).
 
-**Para el siguiente change**: si quedan items del `known-debt.md` de C-18 (MED-002/003/005, META-002/003/004, LOW-*, FE-009+, META-005+), se puede proponer un C-19 housekeeping-fixes-2. Si se va a una funcionalidad nueva, abrir el backlog del orquestador.
+**Para el siguiente change**: si quedan items del `known-debt.md` de C-18 (MED-002/003/005, META-002/003/004, LOW-*, FE-009+, META-005+), se puede proponer un C-21 housekeeping-fixes-2 (o absorber en C-20 si el alcance lo permite). Si se va a una funcionalidad nueva, abrir el backlog del orquestador.
