@@ -1,21 +1,22 @@
 /**
- * LoadingState — consistent spinner / skeleton for async boundaries.
+ * LoadingState — consistent shimmer skeleton for async boundaries (C-20).
+ *
+ * Three stacked placeholder blocks with the `animate-shimmer` keyframe
+ * (defined in src/app/index.css) replace the previous spinner. The container
+ * exposes role=status with aria-busy=true and an aria-label for screen
+ * readers; sighted users see only the skeleton shimmer.
  */
 export function LoadingState({ label = 'Cargando…' }: { label?: string }) {
   return (
     <div
       role="status"
+      aria-busy="true"
       aria-label={label}
-      className="flex min-h-[12rem] flex-col items-center justify-center gap-3"
+      className="flex min-h-[12rem] w-full max-w-md flex-col gap-3"
     >
-      <div className="relative h-8 w-8">
-        <div className="absolute inset-0 rounded-full border-2 border-navy-100 dark:border-zinc-700" />
-        <div className="absolute inset-0 rounded-full border-2 border-t-accent-500 animate-spin" />
-      </div>
-      <span className="sr-only">{label}</span>
-      <span className="text-xs font-medium uppercase tracking-[0.15em] text-navy-300 dark:text-zinc-600">
-        {label}
-      </span>
+      <div className="h-4 w-3/4 animate-shimmer rounded-md bg-navy-100 dark:bg-zinc-800" />
+      <div className="h-4 w-2/3 animate-shimmer rounded-md bg-navy-100 dark:bg-zinc-800" />
+      <div className="h-4 w-1/2 animate-shimmer rounded-md bg-navy-100 dark:bg-zinc-800" />
     </div>
   )
 }
