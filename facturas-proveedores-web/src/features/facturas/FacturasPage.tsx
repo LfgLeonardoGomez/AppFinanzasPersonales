@@ -6,10 +6,11 @@
  *
  * Route: /facturas (private, behind RequireAuthWithBootstrap)
  */
+import { useEffect } from 'react'
 import { useSearchParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { FacturasFilters } from './components/FacturasFilters'
 import { FacturasList } from './components/FacturasList'
-import { SuccessMessage } from '@shared/components/SuccessMessage/SuccessMessage'
+import { toast } from '@shared/components/Toaster/toast'
 import type { FacturasFilters as FacturasFiltersType, FacturaListItem, EstadoFactura } from '@shared/api/api'
 
 function parseFiltersFromParams(params: URLSearchParams): FacturasFiltersType {
@@ -44,6 +45,13 @@ export function FacturasPage() {
   const location = useLocation()
   const successMessage = (location.state as { successMessage?: string } | null)?.successMessage
 
+  useEffect(() => {
+    if (successMessage) {
+      toast.success(successMessage)
+      navigate(location.pathname + location.search, { replace: true, state: null })
+    }
+  }, [successMessage, navigate, location.pathname, location.search])
+
   function handleFiltersChange(next: FacturasFiltersType) {
     setSearchParams(filtersToParams(next), { replace: true })
   }
@@ -55,12 +63,6 @@ export function FacturasPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      {successMessage && (
-        <SuccessMessage
-          message={successMessage}
-          onDismiss={() => navigate('/facturas', { replace: true, state: null })}
-        />
-      )}
       <div className="flex items-center justify-between gap-4 mb-4">
         <h1 className="text-xl font-semibold">Facturas</h1>
         <Link to="/facturas/nueva">Cargar factura</Link>

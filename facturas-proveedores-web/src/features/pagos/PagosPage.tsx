@@ -6,10 +6,11 @@
  *
  * Route: /pagos (private, behind RequireAuthWithBootstrap)
  */
+import { useEffect } from 'react'
 import { useSearchParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { PagosFilters } from './components/PagosFilters'
 import { PagosList } from './components/PagosList'
-import { SuccessMessage } from '@shared/components/SuccessMessage/SuccessMessage'
+import { toast } from '@shared/components/Toaster/toast'
 import type {
   PagosFilters as PagosFiltersType,
   PagoListItem,
@@ -38,6 +39,13 @@ export function PagosPage() {
   const location = useLocation()
   const successMessage = (location.state as { successMessage?: string } | null)?.successMessage
 
+  useEffect(() => {
+    if (successMessage) {
+      toast.success(successMessage)
+      navigate(location.pathname + location.search, { replace: true, state: null })
+    }
+  }, [successMessage, navigate, location.pathname, location.search])
+
   function handleFiltersChange(next: PagosFiltersType) {
     setSearchParams(filtersToParams(next), { replace: true })
   }
@@ -49,12 +57,6 @@ export function PagosPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      {successMessage && (
-        <SuccessMessage
-          message={successMessage}
-          onDismiss={() => navigate('/pagos', { replace: true, state: null })}
-        />
-      )}
       <div className="flex items-center justify-between gap-4 mb-4">
         <h1 className="text-xl font-semibold">Pagos</h1>
         <Link to="/pagos/nuevo">Cargar pago</Link>

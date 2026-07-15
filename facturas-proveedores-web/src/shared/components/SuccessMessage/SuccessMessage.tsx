@@ -1,6 +1,12 @@
 /**
  * SuccessMessage — transient confirmation banner for form submissions.
  *
+ * @deprecated Use `toast.success(message)` from
+ * `@shared/components/Toaster/toast` instead. This component is kept
+ * for backward compatibility during the C-20 migration window and will
+ * be removed in a subsequent change once all call sites have been
+ * migrated. New code MUST use the toast API.
+ *
  * Auto-dismisses after 4 seconds so it does not clutter the UI.
  */
 import { useEffect } from 'react'

@@ -2,14 +2,15 @@
  * ProveedoresPage — route entry point for supplier management.
  *
  * Composes ProveedoresList + ProveedorDialog (C-20) + DeleteProveedorDialog.
- * Modal open/close state is local to this page (D-C07-3).
+ * Success messages use the global toast system (C-20) instead of the
+ * deprecated SuccessMessage inline banner.
  *
  * Route: /proveedores (private, behind RequireAuthWithBootstrap)
  */
 import { useState } from 'react'
-import ProveedoresList from './components/ProveedoresList'
+import { ProveedoresList } from './components/ProveedoresList'
 import { ProveedorDialog } from './components/ProveedorDialog'
-import { SuccessMessage } from '@shared/components/SuccessMessage/SuccessMessage'
+import { toast } from '@shared/components/Toaster/toast'
 import type { ProveedorListItem, Proveedor } from '@shared/api/api'
 
 type ModalMode = 'closed' | 'create' | 'edit'
@@ -17,7 +18,6 @@ type ModalMode = 'closed' | 'create' | 'edit'
 export function ProveedoresPage() {
   const [modalMode, setModalMode] = useState<ModalMode>('closed')
   const [editTarget, setEditTarget] = useState<Proveedor | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   function openCreate() {
     setEditTarget(null)
@@ -36,7 +36,7 @@ export function ProveedoresPage() {
 
   function handleFormSuccess(saved: Proveedor) {
     closeModal()
-    setSuccessMessage(
+    toast.success(
       editTarget
         ? `Proveedor "${saved.nombre}" actualizado exitosamente.`
         : `Proveedor "${saved.nombre}" creado exitosamente.`,
@@ -45,9 +45,6 @@ export function ProveedoresPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      {successMessage && (
-        <SuccessMessage message={successMessage} onDismiss={() => setSuccessMessage(null)} />
-      )}
       <ProveedoresList onNewProveedor={openCreate} onEditProveedor={openEdit} />
 
       <ProveedorDialog
