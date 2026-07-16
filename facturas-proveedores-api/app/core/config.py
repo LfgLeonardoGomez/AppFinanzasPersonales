@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     # ── Proveedor de visión IA ────────────────────────────────────────────────
     VISION_PROVIDER: str = Field(
         ...,
-        description="Proveedor de IA para extracción de facturas. Opciones: claude | openai",
+        description="Proveedor de IA para extracción de facturas. Opciones: claude | openai | gemini",
     )
     ANTHROPIC_API_KEY: str = Field(
         default="",
@@ -71,6 +71,15 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = Field(
         default="",
         description="API key de OpenAI. Requerida si VISION_PROVIDER=openai",
+    )
+    GEMINI_API_KEY: str = Field(
+        default="",
+        description="API key de Google Gemini (AI Studio). Requerida si VISION_PROVIDER=gemini",
+    )
+    GEMINI_MODEL: str = Field(
+        default="gemini-flash-latest",
+        description="Modelo de visión de Gemini. Default 'gemini-flash-latest' (tiene free tier). "
+        "Alternativas: gemini-2.0-flash, gemini-flash-lite-latest",
     )
 
     # ── Tokens de sesión ─────────────────────────────────────────────────────
@@ -113,7 +122,7 @@ class Settings(BaseSettings):
     @field_validator("VISION_PROVIDER")
     @classmethod
     def vision_provider_must_be_valid(cls, v: str) -> str:
-        allowed = {"claude", "openai"}
+        allowed = {"claude", "openai", "gemini"}
         if v.lower() not in allowed:
             raise ValueError(
                 f"VISION_PROVIDER debe ser uno de {allowed}. Recibido: '{v}'"

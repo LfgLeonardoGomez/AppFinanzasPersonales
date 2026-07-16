@@ -201,6 +201,34 @@ def _strip_unused_fields(
     return {k: v for k, v in data.items() if k in keep}
 
 
+def _parse_model_json(text: str) -> dict:
+    """
+    Parse the model's text response into a JSON object.
+
+    Vision models sometimes wrap the JSON in a markdown code fence
+    (```json ... ```) even when told not to — notably Gemini via its
+    OpenAI-compatible endpoint. This helper strips an optional fence and
+    surrounding whitespace before parsing.
+
+    Raises `json.JSONDecodeError` if the text is not valid JSON, or
+    `ValueError` if the parsed value is not a JSON object. Both extractors
+    catch these and encapsulate them into `error=True` (RN-IA-05).
+    """
+    s = text.strip()
+    if s.startswith("```"):
+        s = s[3:]
+        if s[:4].lower() == "json":
+            s = s[4:]
+        s = s.rstrip()
+        if s.endswith("```"):
+            s = s[:-3]
+        s = s.strip()
+    data = json.loads(s)
+    if not isinstance(data, dict):
+        raise ValueError("model response is not a JSON object")
+    return data
+
+
 def _normalize_metodo(value: Any) -> Optional[MetodoPago]:
     """
     Uppercase + strip the model's response and map it to a `MetodoPago`
@@ -339,9 +367,7 @@ class ClaudeVisionExtractor:
             return PropuestaPago(error=True, error_message=error_msg)
 
         try:
-            data = json.loads(text)
-            if not isinstance(data, dict):
-                raise ValueError("model response is not a JSON object")
+            data = _parse_model_json(text)
             data = _strip_unused_fields(data, documento)
         except (json.JSONDecodeError, ValueError) as exc:
             latency_ms = int((time.monotonic() - start) * 1000)
@@ -417,8 +443,16 @@ class OpenAIVisionExtractor:
     PROVIDER = "openai"
     DEFAULT_MODEL = "gpt-4o-mini"
 
-    def __init__(self, api_key: str, model: Optional[str] = None) -> None:
-        self._client = openai.OpenAI(api_key=api_key)
+    def __init__(
+        self,
+        api_key: str,
+        model: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ) -> None:
+        # base_url=None → the SDK's default (OpenAI). A non-null base_url
+        # repoints the same client at any OpenAI-compatible endpoint
+        # (Gemini, Groq, Ollama, …) — see GeminiVisionExtractor.
+        self._client = openai.OpenAI(api_key=api_key, base_url=base_url)
         self._model = model or self.DEFAULT_MODEL
 
     def _call_sync(self, system: str, user_text: str, image_b64: str, content_type: str) -> str:
@@ -487,9 +521,7 @@ class OpenAIVisionExtractor:
             return PropuestaPago(error=True, error_message=error_msg)
 
         try:
-            data = json.loads(text)
-            if not isinstance(data, dict):
-                raise ValueError("model response is not a JSON object")
+            data = _parse_model_json(text)
             data = _strip_unused_fields(data, documento)
         except (json.JSONDecodeError, ValueError) as exc:
             latency_ms = int((time.monotonic() - start) * 1000)
@@ -549,6 +581,35 @@ class OpenAIVisionExtractor:
         return propuesta
 
 
+# ── GeminiVisionExtractor ─────────────────────────────────────────────────────
+
+
+class GeminiVisionExtractor(OpenAIVisionExtractor):
+    """
+    Extracts invoice / payment headers using Google Gemini through its
+    OpenAI-compatible endpoint (https://ai.google.dev/gemini-api/docs/openai).
+
+    Gemini speaks the OpenAI Chat Completions protocol, so this class reuses
+    every bit of `OpenAIVisionExtractor`'s request/parse logic and only
+    overrides the provider label (for the IA log), the default model, and the
+    base_url the SDK points at. Same contract: never raises, never persists,
+    never matches the supplier (RN-IA-01..06).
+
+    The model name is intentionally configurable (`GEMINI_MODEL`) because
+    Gemini model identifiers change often; the default is a safe, vision-capable
+    free-tier flash model.
+    """
+
+    PROVIDER = "gemini"
+    # `*-latest` alias auto-tracks Google's current flash model and, unlike the
+    # pinned `gemini-2.0-flash`, has free-tier quota on AI Studio keys.
+    DEFAULT_MODEL = "gemini-flash-latest"
+    BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+    def __init__(self, api_key: str, model: Optional[str] = None) -> None:
+        super().__init__(api_key=api_key, model=model, base_url=self.BASE_URL)
+
+
 # ── Factory ──────────────────────────────────────────────────────────────────
 
 
@@ -569,6 +630,10 @@ def get_vision_extractor() -> VisionExtractor:
         return ClaudeVisionExtractor(api_key=cfg.ANTHROPIC_API_KEY)
     if provider == "openai":
         return OpenAIVisionExtractor(api_key=cfg.OPENAI_API_KEY)
+    if provider == "gemini":
+        return GeminiVisionExtractor(
+            api_key=cfg.GEMINI_API_KEY, model=cfg.GEMINI_MODEL
+        )
     raise ValueError(f"VISION_PROVIDER desconocido: {provider!r}")
 
 
@@ -576,10 +641,12 @@ __all__ = [
     "VisionExtractor",
     "ClaudeVisionExtractor",
     "OpenAIVisionExtractor",
+    "GeminiVisionExtractor",
     "get_vision_extractor",
     "validate_image_bytes",  # re-export not required but harmless
     "_parse_amount",
     "_parse_date",
+    "_parse_model_json",
     "_strip_unused_fields",
     "_normalize_metodo",
     "_build_prompt",
