@@ -30,6 +30,16 @@
 import { useState, useRef, type DragEvent, type ChangeEvent } from 'react'
 
 const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+// Accept the same formats by extension too. `file.type` is unreliable across
+// OSes and file sources: WhatsApp images frequently arrive with an empty MIME
+// type or as `.jfif` (a JPEG variant), and would be wrongly rejected by a
+// MIME-only check. The C-14 backend validates magic bytes authoritatively
+// (RN-IA-01), so accepting by extension here is safe — anything that isn't a
+// real JPEG/PNG/WebP is still rejected server-side.
+const ACCEPTED_EXT = /\.(jpe?g|jfif|png|webp)$/i
+// `accept` attribute value: MIME types plus extensions, so the OS file dialog
+// still surfaces `.jfif` / `.jpg` files that some systems don't map to a MIME.
+const ACCEPT_ATTR = 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.jfif,.png,.webp'
 const MAX_SIZE_BYTES = 10 * 1024 * 1024
 
 const FORMAT_ERROR =
@@ -42,7 +52,10 @@ export interface ImagenPickerProps {
 }
 
 function validate(file: File): string | null {
-  if (!ACCEPTED_TYPES.has(file.type)) return FORMAT_ERROR
+  // Accept by MIME type OR by extension. HEIC, PDF, etc. match neither and are
+  // rejected here (defense in depth — the backend rejects them too).
+  const isAccepted = ACCEPTED_TYPES.has(file.type) || ACCEPTED_EXT.test(file.name)
+  if (!isAccepted) return FORMAT_ERROR
   if (file.size > MAX_SIZE_BYTES) return SIZE_ERROR
   return null
 }
@@ -108,7 +121,7 @@ export function ImagenPicker({ onPick, disabled = false }: ImagenPickerProps) {
         <input
           ref={inputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept={ACCEPT_ATTR}
           aria-label="Elegir imagen para extraer datos con IA"
           disabled={disabled}
           onChange={handleInputChange}

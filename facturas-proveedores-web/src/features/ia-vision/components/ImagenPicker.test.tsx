@@ -27,12 +27,16 @@ describe('ImagenPicker — file input (Task 3.1)', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders a file input with accept="image/jpeg,image/png,image/webp"', () => {
+  it('renders a file input whose accept includes the image MIME types and extensions', () => {
     render(<ImagenPicker onPick={vi.fn()} />)
     const input = screen.getByLabelText(/imagen/i) as HTMLInputElement
     expect(input).toBeInstanceOf(HTMLInputElement)
     expect(input.type).toBe('file')
-    expect(input.accept).toBe('image/jpeg,image/png,image/webp')
+    // Extensions (.jfif etc.) are included so WhatsApp images show up in the
+    // OS file dialog, which filters by the accept attribute.
+    expect(input.accept).toBe(
+      'image/jpeg,image/png,image/webp,.jpg,.jpeg,.jfif,.png,.webp',
+    )
   })
 
   it('calls onPick with a valid JPEG file', async () => {
@@ -41,6 +45,27 @@ describe('ImagenPicker — file input (Task 3.1)', () => {
     const input = screen.getByLabelText(/imagen/i) as HTMLInputElement
     const file = makeFile('factura.jpg', 'image/jpeg', 1024)
     await userEvent.upload(input, file)
+    expect(onPick).toHaveBeenCalledTimes(1)
+    expect(onPick).toHaveBeenCalledWith(file)
+  })
+
+  it('accepts a JPEG whose type is empty (WhatsApp/OS quirk) via its extension', () => {
+    const onPick = vi.fn()
+    render(<ImagenPicker onPick={onPick} />)
+    const input = screen.getByLabelText(/imagen/i) as HTMLInputElement
+    // WhatsApp / some OSes report an empty MIME type for a valid JPEG.
+    const file = makeFile('IMG-20260101-WA0001.jpg', '', 1024)
+    fireEvent.change(input, { target: { files: [file] } })
+    expect(onPick).toHaveBeenCalledTimes(1)
+    expect(onPick).toHaveBeenCalledWith(file)
+  })
+
+  it('accepts a .jfif file (common WhatsApp/Windows JPEG variant)', () => {
+    const onPick = vi.fn()
+    render(<ImagenPicker onPick={onPick} />)
+    const input = screen.getByLabelText(/imagen/i) as HTMLInputElement
+    const file = makeFile('IMG-20260101-WA0001.jfif', '', 1024)
+    fireEvent.change(input, { target: { files: [file] } })
     expect(onPick).toHaveBeenCalledTimes(1)
     expect(onPick).toHaveBeenCalledWith(file)
   })
