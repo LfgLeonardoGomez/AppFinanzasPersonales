@@ -128,8 +128,10 @@ function CreateFacturaPage() {
     selectedProveedor: ProveedorListItem
   } | null>(null)
 
-  function handleSuccess(_saved: FacturaResponse) {
-    void navigate('/facturas', {
+  function handleSuccess(saved: FacturaResponse) {
+    // After a successful create, land on the supplier's current account
+    // (cuenta corriente) so the user sees the invoice reflected in the ledger.
+    void navigate(`/proveedores/${saved.proveedor_id}`, {
       state: { successMessage: 'Factura creada exitosamente.' },
     })
   }
