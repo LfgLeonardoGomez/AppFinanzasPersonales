@@ -174,7 +174,12 @@ export function PropuestaIAModal({ open, tipo, onClose, onConfirm, onManualLoad 
     if (!editablePropuesta || !selectedProveedor) return
     onConfirm(editablePropuesta, selectedProveedor)
     dispatch({ kind: 'CONFIRM' })
-    onClose()
+    // Do NOT call onClose() here. The parent closes the modal by
+    // transitioning its own state (the modal's `open` is derived from that
+    // state). Calling onClose() would additionally fire the parent's cancel
+    // handler and clobber the confirm transition — e.g. bouncing back to the
+    // mode selector instead of showing the prefilled form, so the invoice
+    // never gets created.
   }
 
   function handleCancel(): void {
