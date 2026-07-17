@@ -30,6 +30,7 @@ import { setupServer } from 'msw/node'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useExtraerFacturaIA, useExtraerPagoIA } from './iaVisionHooks'
+import { extraerFacturaIA } from './iaVisionApi'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -79,6 +80,27 @@ const server = setupServer(
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))
 afterAll(() => server.close())
+
+// ── Wire-format regression (Content-Type) ─────────────────────────────────────
+
+describe('IA vision request wire format', () => {
+  it('sends the upload as multipart/form-data, not application/json', async () => {
+    let capturedContentType: string | null = null
+    server.use(
+      http.post('/api/facturas/extraer-ia', ({ request }) => {
+        capturedContentType = request.headers.get('content-type')
+        return HttpResponse.json(fullPropuestaFactura, { status: 200 })
+      }),
+    )
+    const file = new File([new Uint8Array([255, 216, 255, 0])], 'factura.jpg', {
+      type: 'image/jpeg',
+    })
+    await extraerFacturaIA(file)
+    // The shared apiClient defaults to application/json; the upload MUST
+    // override it so FastAPI can parse the multipart body (else 422).
+    expect(capturedContentType).toMatch(/^multipart\/form-data/)
+  })
+})
 afterEach(() => {
   server.resetHandlers()
   facturaExtractHitCount = 0

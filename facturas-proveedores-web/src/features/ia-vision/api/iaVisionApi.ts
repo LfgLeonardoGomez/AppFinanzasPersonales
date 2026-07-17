@@ -19,70 +19,24 @@
 import { apiClient } from '@shared/api/client'
 import type { PropuestaFactura, PropuestaPago } from '@shared/api/api'
 
-// ── Multipart serialization ──────────────────────────────────────────────────
+// ── File → bytes (cross-environment) ──────────────────────────────────────────
 
 /**
- * Serialize a WHATWG `FormData` instance to a `Buffer` with the
- * `multipart/form-data` content-type and a deterministic boundary.
- *
- * Why this is needed: the default Axios `http` adapter, when handed a
- * WHATWG `FormData` (browser / Node 18+ global / jsdom), serializes it
- * via a stream path that does NOT set `Content-Type` / `Content-Length`
- * correctly in the Vitest + jsdom environment — and the request never
- * completes (MSW receives an unparseable body, or the request hangs).
- * The per-call `adapter: 'fetch'` was tried and fixes the 422/429/500
- * paths, but the 200 success path still hangs in Vitest + jsdom. The
- * robust fix is to bypass Axios's FormData handling entirely and ship
- * a plain `Buffer` with the right `Content-Type: multipart/form-data;
- * boundary=...` header — the wire format that both MSW (test) and the
- * FastAPI backend (prod) accept.
- *
- * Implementation note on the file bytes: in production (real browser),
- * this serializer would need to read the `File` bytes via
- * `blob.arrayBuffer()` (the spec-compliant WHATWG path) and the
- * function would be `async`. In the Vitest + jsdom test environment,
- * jsdom's `File` class lacks `arrayBuffer()` and the async path
- * deadlocks, so we use a synchronous approach that produces a
- * boundary-correct multipart envelope. The 15 MSW tests in
- * `iaVisionHooks.test.tsx` verify the API contract (URL, response
- * shape, 5 response shapes × 2 endpoints) — none of them read the
- * request body — so the empty file content in test is acceptable. A
- * future change that ships real images through this endpoint in test
- * would need to switch to the async `arrayBuffer()` path and use a
- * `fetch`-based MSW setup.
+ * Read a File's bytes as a `Uint8Array`. Real browsers expose
+ * `Blob.arrayBuffer()`, but jsdom's `File` does not, so we fall back to
+ * `FileReader` (available in both). This is what lets the same code path be
+ * exercised by the Vitest + jsdom tests and run correctly in production.
  */
-function serializeFormData(form: FormData): { body: Buffer; contentType: string } {
-  const boundary = `----IAVisionBoundary${Math.random().toString(36).slice(2, 10)}`
-  const chunks: Buffer[] = []
-  const pushString = (s: string): void => {
-    chunks.push(Buffer.from(s, 'utf8'))
+function readFileBytes(file: File): Promise<Uint8Array> {
+  if (typeof file.arrayBuffer === 'function') {
+    return file.arrayBuffer().then((buf) => new Uint8Array(buf))
   }
-
-  for (const [name, value] of form.entries()) {
-    if (typeof value === 'string') {
-      pushString(`--${boundary}\r\n`)
-      pushString(`Content-Disposition: form-data; name="${name}"\r\n\r\n`)
-      pushString(`${value}\r\n`)
-      continue
-    }
-    // Blob / File: emit a zero-byte part with the right headers. The
-    // MSW test contract does not read the body, so the empty content
-    // is intentional and the boundary-correct envelope is what
-    // matters for the request to be parseable on the wire.
-    const blob = value as Blob & { name?: string; type?: string }
-    const filename = blob.name ?? 'blob'
-    const contentType = blob.type || 'application/octet-stream'
-    pushString(`--${boundary}\r\n`)
-    pushString(`Content-Disposition: form-data; name="${name}"; filename="${filename}"\r\n`)
-    pushString(`Content-Type: ${contentType}\r\n\r\n`)
-    pushString(`\r\n`)
-  }
-  pushString(`--${boundary}--\r\n`)
-
-  return {
-    body: Buffer.concat(chunks),
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  }
+  return new Promise<Uint8Array>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer))
+    reader.onerror = () => reject(reader.error ?? new Error('FileReader error'))
+    reader.readAsArrayBuffer(file)
+  })
 }
 
 // ── Shared POST helper ────────────────────────────────────────────────────────
@@ -90,23 +44,39 @@ function serializeFormData(form: FormData): { body: Buffer; contentType: string 
 /**
  * Post a single file as multipart/form-data to an /extraer-ia endpoint.
  * The `file` part is the only field; the backend validates magic bytes
- * and size (C-14, RN-IA-01).
- *
- * Implementation note: we pre-serialize the WHATWG `FormData` to a
- * `Buffer` with the right multipart boundary (via `serializeFormData`),
- * then send the `Buffer` as the request body with explicit
- * `Content-Type` and `Content-Length` headers. This sidesteps the
- * Axios `http` adapter's stream-based FormData path (which doesn't set
- * the Content-Type / Content-Length correctly in the Vitest + jsdom
- * test environment) and produces a wire-compatible request that MSW
- * (test) and the FastAPI backend (prod) both accept.
+ * and size (C-14, RN-IA-01). Axios serializes the native `FormData`
+ * (correct boundary + real file bytes) in both the browser and the
+ * MSW-backed jsdom tests, which do not read the request body.
  */
 async function postExtraerIA<T>(endpoint: string, file: File): Promise<T> {
-  const formData = new FormData()
-  formData.append('file', file)
-  const { body, contentType } = serializeFormData(formData)
+  // Build the multipart/form-data body by hand as a `Uint8Array`. This is the
+  // one representation that works in BOTH environments:
+  //   - real browser: `Buffer` is undefined (Node-only), and letting Axios
+  //     auto-serialize a native `FormData` leaves the apiClient's default
+  //     `Content-Type: application/json` in place → FastAPI drops the `file`
+  //     field → 422 "Field required".
+  //   - jsdom tests: Axios cannot transport a native `FormData` (the XHR
+  //     adapter hangs, the fetch adapter throws DataCloneError).
+  // A `Uint8Array` body with an explicit boundary sidesteps both: it carries
+  // the REAL file bytes (read via `arrayBuffer()`, not the old zero-byte bug)
+  // and we set the matching `multipart/form-data; boundary=…` Content-Type
+  // ourselves, so nothing depends on runtime auto-serialization.
+  const boundary = `----IAVisionBoundary${Math.random().toString(36).slice(2, 12)}`
+  const enc = new TextEncoder()
+  const head = enc.encode(
+    `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="file"; filename="${file.name || 'image'}"\r\n` +
+      `Content-Type: ${file.type || 'application/octet-stream'}\r\n\r\n`,
+  )
+  const fileBytes = await readFileBytes(file)
+  const tail = enc.encode(`\r\n--${boundary}--\r\n`)
+  const body = new Uint8Array(head.length + fileBytes.length + tail.length)
+  body.set(head, 0)
+  body.set(fileBytes, head.length)
+  body.set(tail, head.length + fileBytes.length)
+
   const res = await apiClient.post<T>(endpoint, body, {
-    headers: { 'Content-Type': contentType, 'Content-Length': String(body.length) },
+    headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
   })
   return res.data
 }
