@@ -62,6 +62,13 @@ export default defineConfig({
 
   server: {
     port: 5173,
+    // Bind-mounted source on Windows/Docker does not emit native FS events,
+    // so Vite's watcher never invalidates modules and HMR silently serves
+    // stale code. Polling forces change detection across the mount boundary.
+    watch: {
+      usePolling: true,
+      interval: 300,
+    },
     // Proxy para evitar CORS en desarrollo local
     proxy: {
       '/api': {
