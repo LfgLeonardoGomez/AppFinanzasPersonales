@@ -113,6 +113,25 @@ def _make_factura(engine, usuario_id, proveedor_id, monto: Decimal):
         s.commit()
 
 
+def _create_factura(
+    client: TestClient,
+    proveedor_id: str,
+    fecha_emision: date,
+    monto_total: str = "100.00",
+) -> dict:
+    """Create a factura via the public API (token already set on client cookies)."""
+    resp = client.post(
+        "/api/facturas",
+        json={
+            "proveedor_id": proveedor_id,
+            "fecha_emision": fecha_emision.isoformat(),
+            "monto_total": monto_total,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
 # ── Authentication guard ──────────────────────────────────────────────────────
 
 
@@ -493,3 +512,116 @@ class TestBuscar:
         assert resp.status_code == 200
         # User 2 has no suppliers with that name — result must be empty
         assert resp.json() == []
+
+
+# ── GET / — ultima_factura_fecha (Home redesign backend addition) ────────────
+
+
+class TestUltimaFacturaFecha:
+    def test_list_item_has_ultima_factura_fecha_field(self, prov_client: TestClient):
+        """Spec: ProveedorListItem always carries the ultima_factura_fecha key."""
+        token = _register_and_login(prov_client)
+        prov_client.cookies.clear()
+        prov_client.cookies.set("access_token", token)
+
+        prov_client.post("/api/proveedores", json={"nombre": "NoFacturas"})
+
+        resp = prov_client.get("/api/proveedores")
+        prov_client.cookies.clear()
+
+        assert resp.status_code == 200
+        item = next(r for r in resp.json() if r["nombre"] == "NoFacturas")
+        assert "ultima_factura_fecha" in item
+
+    def test_supplier_without_facturas_returns_null(self, prov_client: TestClient):
+        """Spec: a supplier with no active facturas → ultima_factura_fecha is null."""
+        token = _register_and_login(prov_client)
+        prov_client.cookies.clear()
+        prov_client.cookies.set("access_token", token)
+
+        prov_client.post("/api/proveedores", json={"nombre": "SinFacturas"})
+
+        resp = prov_client.get("/api/proveedores")
+        prov_client.cookies.clear()
+
+        item = next(r for r in resp.json() if r["nombre"] == "SinFacturas")
+        assert item["ultima_factura_fecha"] is None
+
+    def test_supplier_with_facturas_returns_max_fecha_emision(
+        self, prov_client: TestClient
+    ):
+        """Spec: ultima_factura_fecha is the MAX fecha_emision among active facturas."""
+        token = _register_and_login(prov_client)
+        prov_client.cookies.clear()
+        prov_client.cookies.set("access_token", token)
+
+        create_resp = prov_client.post(
+            "/api/proveedores", json={"nombre": "ConFacturas"}
+        )
+        proveedor_id = create_resp.json()["id"]
+
+        oldest = date(2026, 1, 10)
+        newest = date(2026, 3, 5)
+        middle = date(2026, 2, 1)
+        for fecha in (oldest, newest, middle):
+            _create_factura(prov_client, proveedor_id, fecha)
+
+        resp = prov_client.get("/api/proveedores")
+        prov_client.cookies.clear()
+
+        item = next(r for r in resp.json() if r["id"] == proveedor_id)
+        assert item["ultima_factura_fecha"] == newest.isoformat()
+
+    def test_soft_deleted_facturas_excluded_from_max(self, prov_client: TestClient):
+        """Spec: soft-deleted facturas are excluded from the MAX computation."""
+        token = _register_and_login(prov_client)
+        prov_client.cookies.clear()
+        prov_client.cookies.set("access_token", token)
+
+        create_resp = prov_client.post(
+            "/api/proveedores", json={"nombre": "ConFacturaBorrada"}
+        )
+        proveedor_id = create_resp.json()["id"]
+
+        older = date(2026, 1, 10)
+        newer = date(2026, 3, 5)
+        older_factura = _create_factura(prov_client, proveedor_id, older)
+        newer_factura = _create_factura(prov_client, proveedor_id, newer)
+
+        # Soft-delete the newer factura — MAX should fall back to the older one.
+        del_resp = prov_client.delete(f"/api/facturas/{newer_factura['id']}")
+        assert del_resp.status_code == 204
+
+        resp = prov_client.get("/api/proveedores")
+        prov_client.cookies.clear()
+
+        item = next(r for r in resp.json() if r["id"] == proveedor_id)
+        assert item["ultima_factura_fecha"] == older.isoformat()
+
+    def test_ultima_factura_fecha_isolated_across_users(
+        self, prov_client: TestClient
+    ):
+        """Spec: one user's facturas never influence another user's aggregate."""
+        token1 = _register_and_login(prov_client)
+        prov_client.cookies.clear()
+        prov_client.cookies.set("access_token", token1)
+        create_resp1 = prov_client.post(
+            "/api/proveedores", json={"nombre": "IsoUser1"}
+        )
+        proveedor_id1 = create_resp1.json()["id"]
+        _create_factura(prov_client, proveedor_id1, date(2026, 5, 1))
+        prov_client.cookies.clear()
+
+        token2 = _register_and_login(prov_client)
+        prov_client.cookies.clear()
+        prov_client.cookies.set("access_token", token2)
+        create_resp2 = prov_client.post(
+            "/api/proveedores", json={"nombre": "IsoUser2"}
+        )
+        proveedor_id2 = create_resp2.json()["id"]
+
+        resp = prov_client.get("/api/proveedores")
+        prov_client.cookies.clear()
+
+        item2 = next(r for r in resp.json() if r["id"] == proveedor_id2)
+        assert item2["ultima_factura_fecha"] is None

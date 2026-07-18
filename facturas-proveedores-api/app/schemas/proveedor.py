@@ -13,7 +13,7 @@ CUIT format: ^\\d{2}-\\d{8}-\\d{1}$ (RN-PROV-02).
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -123,6 +123,10 @@ class ProveedorListItem(BaseModel):
 
     Keeps payload smaller than ProveedorResponse (no notas, timestamps).
     saldo is always Decimal.
+
+    ultima_factura_fecha (Home redesign, C-Home): MAX fecha_emision among
+    the supplier's ACTIVE (non-deleted) facturas. None when the supplier
+    has no facturas at all.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -132,6 +136,7 @@ class ProveedorListItem(BaseModel):
     cuit: Optional[str] = None
     categoria: CategoriaProveedor
     saldo: Decimal
+    ultima_factura_fecha: Optional[date] = None
 
 
 class ProveedorDeleteResponse(BaseModel):

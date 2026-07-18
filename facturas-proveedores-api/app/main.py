@@ -16,6 +16,7 @@ from app.routers import proveedores as proveedores_router
 from app.routers import facturas as facturas_router
 from app.routers import pagos as pagos_router
 from app.routers import cloudinary_preset as cloudinary_preset_router
+from app.routers import actividad as actividad_router
 
 # ── Instancia FastAPI ─────────────────────────────────────────────────────────
 app = FastAPI(
@@ -46,6 +47,7 @@ app.include_router(proveedores_router.router)
 app.include_router(facturas_router.router)
 app.include_router(pagos_router.router)
 app.include_router(cloudinary_preset_router.router)
+app.include_router(actividad_router.router)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

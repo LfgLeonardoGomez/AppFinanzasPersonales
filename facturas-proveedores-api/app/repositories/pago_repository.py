@@ -98,5 +98,27 @@ class PagoRepository(BaseRepository[Pago]):
 
         return items, total
 
+    def list_recientes(self, usuario_id: uuid.UUID, limit: int) -> list[Pago]:
+        """
+        Return the `limit` most recent active pagos for a user.
+
+        Ordered by (fecha DESC, created_at DESC, id DESC) — newest first.
+        Used by the actividad-reciente feed (Home redesign): see
+        FacturaRepository.list_recientes for the k-way merge rationale
+        that makes a single LIMIT query on each source sufficient.
+        """
+        statement = (
+            select(Pago)
+            .where(Pago.usuario_id == usuario_id)
+            .where(Pago.deleted_at == None)  # noqa: E711
+            .order_by(
+                Pago.fecha.desc(),
+                Pago.created_at.desc(),
+                Pago.id.desc(),
+            )
+            .limit(limit)
+        )
+        return list(self.session.exec(statement).all())
+
 
 __all__ = ["PagoRepository"]

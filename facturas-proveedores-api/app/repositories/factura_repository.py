@@ -90,6 +90,30 @@ class FacturaRepository(BaseRepository[Factura]):
         )
         return list(self.session.exec(statement).all())
 
+    def list_recientes(self, usuario_id: uuid.UUID, limit: int) -> list[Factura]:
+        """
+        Return the `limit` most recent active facturas for a user.
+
+        Ordered by (fecha_emision DESC, created_at DESC, id DESC) — newest
+        first. Used by the actividad-reciente feed (Home redesign): the
+        service merges this with PagoRepository.list_recientes and takes
+        the overall top-N, which only requires the top-N from each source
+        (k-way merge argument), so a single LIMIT query here is sufficient
+        — no N+1, no full-table scan.
+        """
+        statement = (
+            select(Factura)
+            .where(Factura.usuario_id == usuario_id)
+            .where(Factura.deleted_at == None)  # noqa: E711
+            .order_by(
+                Factura.fecha_emision.desc(),
+                Factura.created_at.desc(),
+                Factura.id.desc(),
+            )
+            .limit(limit)
+        )
+        return list(self.session.exec(statement).all())
+
     # ── Single entity with items ──────────────────────────────────────────────
 
     def get_with_items(

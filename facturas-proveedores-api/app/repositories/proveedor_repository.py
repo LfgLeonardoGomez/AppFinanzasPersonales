@@ -17,6 +17,7 @@ Design decisions (design.md):
 """
 
 import uuid
+from datetime import date
 from decimal import Decimal
 from typing import Optional
 
@@ -43,10 +44,12 @@ class ProveedorConSaldo:
     __slots__ = (
         "id", "usuario_id", "nombre", "cuit", "telefono",
         "categoria", "notas", "saldo", "created_at", "updated_at", "deleted_at",
+        "ultima_factura_fecha",
     )
 
     def __init__(self, row) -> None:
         # row is a SQLAlchemy Row with columns: all Proveedor columns + saldo label
+        # (+ ultima_factura_fecha label, C-Home addition)
         self.id = row.id
         self.usuario_id = row.usuario_id
         self.nombre = row.nombre
@@ -58,6 +61,8 @@ class ProveedorConSaldo:
         self.created_at = row.created_at
         self.updated_at = row.updated_at
         self.deleted_at = row.deleted_at
+        # None when the supplier has no active facturas (LEFT JOIN miss).
+        self.ultima_factura_fecha = getattr(row, "ultima_factura_fecha", None)
 
 
 class ProveedorRepository(BaseRepository[Proveedor]):
@@ -182,6 +187,20 @@ class ProveedorRepository(BaseRepository[Proveedor]):
             .subquery()
         )
 
+        # Subquery: MAX(fecha_emision) among active facturas per proveedor
+        # (Home redesign — ultima_factura_fecha). Same LEFT JOIN pattern as
+        # factura_sums/pago_sums above: a single grouped aggregate, no N+1.
+        factura_fecha_max = (
+            select(
+                Factura.proveedor_id.label("proveedor_id"),
+                func.max(Factura.fecha_emision).label("ultima_factura_fecha"),
+            )
+            .where(Factura.usuario_id == usuario_id)
+            .where(Factura.deleted_at == None)  # noqa: E711
+            .group_by(Factura.proveedor_id)
+            .subquery()
+        )
+
         # Saldo expression labeled so ORDER BY can reference the alias (D3)
         saldo_expr = (
             func.coalesce(factura_sums.c.total_facturas, 0)
@@ -201,11 +220,15 @@ class ProveedorRepository(BaseRepository[Proveedor]):
                 Proveedor.updated_at,
                 Proveedor.deleted_at,
                 saldo_expr,
+                factura_fecha_max.c.ultima_factura_fecha,
             )
             .where(Proveedor.usuario_id == usuario_id)
             .where(Proveedor.deleted_at == None)  # noqa: E711
             .outerjoin(factura_sums, Proveedor.id == factura_sums.c.proveedor_id)
             .outerjoin(pago_sums, Proveedor.id == pago_sums.c.proveedor_id)
+            .outerjoin(
+                factura_fecha_max, Proveedor.id == factura_fecha_max.c.proveedor_id
+            )
         )
 
         # Apply ordering (D3)
@@ -243,6 +266,29 @@ class ProveedorRepository(BaseRepository[Proveedor]):
             .where(func.lower(Proveedor.nombre).like(f"%{normalized}%"))
         )
         return list(self.session.exec(statement).all())
+
+    # ── Bulk name lookup (Home redesign — actividad-reciente) ────────────────
+
+    def get_nombres_by_ids(
+        self, proveedor_ids: set[uuid.UUID]
+    ) -> dict[uuid.UUID, str]:
+        """
+        Return {proveedor_id: nombre} for the given ids, active suppliers only.
+
+        Soft-deleted or missing suppliers are simply absent from the dict —
+        callers treat a missing key as "name unknown" (same convention as
+        PagoResponse.proveedor_nombre, C-18 FE-005). Single query, no N+1.
+        """
+        if not proveedor_ids:
+            return {}
+
+        statement = (
+            select(Proveedor.id, Proveedor.nombre)
+            .where(Proveedor.id.in_(proveedor_ids))
+            .where(Proveedor.deleted_at == None)  # noqa: E711
+        )
+        rows = self.session.exec(statement).all()
+        return {row.id: row.nombre for row in rows}
 
     # ── tiene_dependencias (C-06, D6, task 2.5) ──────────────────────────────
 

@@ -144,6 +144,7 @@ def list_proveedores(
             cuit=r.cuit,
             categoria=r.categoria,
             saldo=r.saldo,
+            ultima_factura_fecha=r.ultima_factura_fecha,
         )
         for r in results
     ]
