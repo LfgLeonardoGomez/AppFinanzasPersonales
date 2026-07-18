@@ -215,4 +215,37 @@ describe('useLogout', () => {
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
     expect(useAuthStore.getState().user).toBeNull()
   })
+
+  it('removes the cached /me query so the bootstrap guard cannot keep rendering the app', async () => {
+    server.use(
+      http.post(`${BASE}/api/auth/logout`, () => HttpResponse.json({ ok: true })),
+    )
+
+    const { useLogout, AUTH_QUERY_KEYS } = await import('./authHooks')
+    const { useAuthStore } = await import('../store/authStore')
+
+    // Shared client so we can seed and inspect the /me cache.
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    // Seed a stale-but-successful /me result (the state after a prior login).
+    qc.setQueryData(AUTH_QUERY_KEYS.me, { id: '1', email: 'a@b.com', nombre: 'A', created_at: '' })
+    expect(qc.getQueryData(AUTH_QUERY_KEYS.me)).toBeDefined()
+
+    useAuthStore.getState().login({ id: '1', email: 'a@b.com', nombre: 'A', created_at: '' })
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useLogout(), { wrapper })
+
+    await act(async () => {
+      result.current.mutate()
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    // The cached /me success must be gone — otherwise RequireAuthWithBootstrap
+    // would keep rendering children and never redirect to /login.
+    expect(qc.getQueryData(AUTH_QUERY_KEYS.me)).toBeUndefined()
+  })
 })

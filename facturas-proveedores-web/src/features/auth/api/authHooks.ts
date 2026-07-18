@@ -5,7 +5,7 @@
  * Tokens are NEVER read from responses — they live in HttpOnly cookies.
  * The store is updated with user-profile data only.
  */
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@shared/api/client'
 import { useAuthStore } from '../store/authStore'
 import type {
@@ -91,17 +91,25 @@ export function getLoginErrorMessage(_error: unknown): string {
 
 export function useLogout() {
   const logout = useAuthStore((s) => s.logout)
+  const queryClient = useQueryClient()
+
+  // Clearing the store alone is NOT enough: the `/me` bootstrap query stays
+  // cached as `success` (staleTime 5 min), and `RequireAuthWithBootstrap`
+  // renders children whenever that query is a cached success — so the guard
+  // would keep showing the app after logout. Removing the query forces a
+  // re-verification against the backend (whose cookie is now cleared → 401),
+  // which drives the redirect to /login.
+  const clearSession = () => {
+    logout()
+    queryClient.removeQueries({ queryKey: AUTH_QUERY_KEYS.me })
+  }
 
   return useMutation({
     mutationFn: async () => {
       await apiClient.post('/auth/logout')
     },
-    onSuccess: () => {
-      logout()
-    },
-    onError: () => {
-      // Even if the backend call fails, clear local session
-      logout()
-    },
+    onSuccess: clearSession,
+    // Even if the backend call fails, clear local session
+    onError: clearSession,
   })
 }
