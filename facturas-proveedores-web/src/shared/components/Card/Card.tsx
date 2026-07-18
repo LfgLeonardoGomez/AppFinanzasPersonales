@@ -1,8 +1,11 @@
 /**
- * Card — premium container with subtle depth and haptic hover.
+ * Card — the base container of the new design system (DESIGN_SYSTEM.md:
+ * "el ladrillo del Home y de casi toda la app"). Mucho aire interno,
+ * bordes redondeados, sombra apenas perceptible.
  *
- * Uses a "single bezel" approach (outer wrapper with ring + shadow)
- * to keep the DOM lean while retaining a machined feel.
+ * Visuals only were updated to the new violet/beige/Inter tokens — props
+ * and DOM shape (a single wrapping <div>) are unchanged, so existing
+ * callers keep working as-is.
  */
 import type { ReactNode } from 'react'
 
@@ -17,12 +20,12 @@ export function Card({ children, className = '', noPadding = false, hover = true
   return (
     <div
       className={`
-        rounded-[1.5rem] bg-card
-        shadow-[0_2px_8px_rgba(10,37,64,0.04)]
-        ring-1 ring-black/[0.04]
+        rounded-card bg-surface font-inter
+        shadow-card
+        ring-1 ring-border-subtle
         transition-all duration-300 ease-[var(--ease-out)]
         dark:bg-card-dark dark:ring-white/10
-        ${hover ? 'hover:shadow-[0_8px_24px_rgba(10,37,64,0.10)] dark:hover:shadow-[0_8px_24px_rgba(0,0,0,0.30)]' : ''}
+        ${hover ? 'hover:shadow-[0_2px_4px_rgba(24,21,31,0.04),0_16px_40px_rgba(24,21,31,0.10)] dark:hover:shadow-[0_8px_24px_rgba(0,0,0,0.30)]' : ''}
         ${noPadding ? '' : 'p-6 lg:p-8'}
         ${className}
       `}

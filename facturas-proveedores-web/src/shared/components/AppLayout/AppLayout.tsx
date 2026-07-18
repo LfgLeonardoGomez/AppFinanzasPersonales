@@ -1,244 +1,147 @@
 /**
- * AppLayout — premium sidebar + header layout for authenticated pages.
+ * AppLayout — the app shell, rebuilt to the new design system.
  *
- * Architecture:
- *  - Fixed sidebar (desktop) / overlay drawer (mobile)
- *  - Top header with user menu + theme toggle
- *  - Main scrollable area
+ * Per specs/design/LAYOUT.md ("una única definición de navegación") and
+ * the Claude Design handoff (Home.dc.html):
+ *  - Desktop (>=lg): fixed 232px sidebar — logo, 5 nav items, compact
+ *    account footer (avatar link to /perfil + logout).
+ *  - Mobile (<lg): slim top bar (logo + avatar link to /perfil) + a
+ *    5-item bottom tab bar, sidebar hidden.
  *
- * Responsive:
- *  - >=1024px: sidebar always visible, main has left margin
- *  - <1024px: sidebar hidden, hamburger toggles overlay
+ * Routing (`<Outlet/>`) and nav destinations (/, /proveedores, /facturas,
+ * /pagos, /perfil) are unchanged from the previous shell. The old
+ * top-header ThemeToggle/UserMenu dropdown is removed — dark mode already
+ * lives in PerfilPage's own toggle (`role="switch"`), and logout is now a
+ * direct icon action here instead of a dropdown, matching the new
+ * "silent nav" shell (BRAND.md: componentes livianos, sin ruido).
  */
-import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  Users,
-  FileText,
-  CreditCard,
-  BarChart3,
-  UserCircle,
-  Menu,
-  X,
-  LogOut,
-  Sun,
-  Moon,
-  ChevronDown,
-} from 'lucide-react'
+import { Home, Users, FileText, CreditCard, UserCircle, LogOut } from 'lucide-react'
 import { useAuthStore } from '@features/auth/store/authStore'
 import { useLogout } from '@features/auth/api/authHooks'
-import { useThemeStore } from '@app/theme/themeStore'
-import { useUpdateTema } from '@app/theme/useUpdateTema'
-import type { TemaPreferido } from '@shared/api/api'
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Inicio', icon: LayoutDashboard },
-  { to: '/proveedores', label: 'Proveedores', icon: Users },
-  { to: '/facturas', label: 'Facturas', icon: FileText },
-  { to: '/pagos', label: 'Pagos', icon: CreditCard },
-  { to: '/proveedores', label: 'Cuenta corriente', icon: BarChart3 },
-  { to: '/perfil', label: 'Perfil', icon: UserCircle },
-]
+  { to: '/', label: 'Home', icon: Home, end: true },
+  { to: '/proveedores', label: 'Proveedores', icon: Users, end: false },
+  { to: '/facturas', label: 'Facturas', icon: FileText, end: false },
+  { to: '/pagos', label: 'Pagos', icon: CreditCard, end: false },
+  { to: '/perfil', label: 'Perfil', icon: UserCircle, end: false },
+] as const
 
-function ThemeToggle() {
-  const runtimeTema = useThemeStore((s) => s.tema)
-  const updateTema = useUpdateTema()
+function useIsActive() {
+  const location = useLocation()
+  return (to: string, end: boolean) => (end ? location.pathname === to : location.pathname.startsWith(to))
+}
 
-  const next: TemaPreferido = runtimeTema === 'OSCURO' ? 'CLARO' : 'OSCURO'
-  const isDark = runtimeTema === 'OSCURO'
-
+function UserAvatar({ initial }: { initial: string }) {
   return (
-    <button
-      type="button"
-      aria-label={isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
-      onClick={() => updateTema.mutate(next)}
-      className="relative h-7 w-12 rounded-full bg-navy-200 transition-colors duration-300 ease-[var(--ease-out)] dark:bg-accent-700"
-    >
-      <span
-        className="absolute top-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm transition-all duration-300 ease-[var(--ease-drawer)]"
-        style={{ left: isDark ? 'calc(100% - 1.625rem)' : '2px' }}
-      >
-        {isDark ? (
-          <Moon className="h-3.5 w-3.5 text-navy-500" />
-        ) : (
-          <Sun className="h-3.5 w-3.5 text-navy-500" />
-        )}
-      </span>
-    </button>
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-50 text-[13px] font-bold text-violet-500">
+      {initial}
+    </span>
   )
 }
 
-function UserMenu() {
-  const user = useAuthStore((s) => s.user)
-  const logoutMutation = useLogout()
-  const [open, setOpen] = useState(false)
-
-  if (!user) return null
-
+function LogoMark() {
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-full px-2 py-1 transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
-      >
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-500 text-[11px] font-bold text-white">
-          {user.nombre?.charAt(0).toUpperCase() ?? 'U'}
-        </div>
-        <span className="hidden text-sm font-medium text-navy-700 dark:text-zinc-300 md:inline">
-          {user.nombre}
-        </span>
-        <ChevronDown className="h-3.5 w-3.5 text-navy-400 dark:text-zinc-500" />
-      </button>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-50 mt-2 w-56 rounded-[1rem] bg-card p-2 shadow-[0_8px_32px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.04] dark:bg-card-dark dark:ring-white/10 animate-fade-in-up">
-            <div className="px-3 py-2">
-              <p className="text-sm font-semibold text-navy-800 dark:text-zinc-100">
-                {user.nombre}
-              </p>
-              <p className="text-xs text-navy-400 dark:text-zinc-500">
-                {user.email}
-              </p>
-            </div>
-            <div className="my-1 h-px bg-black/[0.04] dark:bg-white/10" />
-            <Link
-              to="/perfil"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-navy-700 transition-colors hover:bg-cream-dark dark:text-zinc-300 dark:hover:bg-white/[0.04]"
-            >
-              <UserCircle className="h-4 w-4" />
-              Mi perfil
-            </Link>
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false)
-                logoutMutation.mutate()
-              }}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-danger transition-colors hover:bg-danger-bg dark:hover:bg-danger/10"
-            >
-              <LogOut className="h-4 w-4" />
-              Cerrar sesión
-            </button>
-          </div>
-        </>
-      )}
-    </div>
+    <span
+      aria-hidden="true"
+      className="h-7 w-7 shrink-0 rounded-full"
+      style={{ background: 'linear-gradient(135deg,#7c3aed,#e0459b)' }}
+    />
   )
 }
 
 export function AppLayout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const location = useLocation()
-
-  const isActive = (path: string) => {
-    if (path === '/') return location.pathname === '/'
-    return location.pathname.startsWith(path)
-  }
+  const isActive = useIsActive()
+  const user = useAuthStore((s) => s.user)
+  const logoutMutation = useLogout()
+  const initial = user?.nombre?.charAt(0).toUpperCase() ?? 'U'
 
   return (
-    <div className="flex min-h-[100dvh]">
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        className={`
-          fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-black/[0.04] bg-card
-          transition-transform duration-500 ease-[var(--ease-drawer)]
-          dark:border-white/10 dark:bg-card-dark
-          lg:translate-x-0 lg:static
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        `}
-      >
-        {/* Brand */}
-        <div className="flex h-16 items-center gap-3 px-6">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-navy-500 text-white">
-            <BarChart3 className="h-5 w-5" />
-          </div>
-          <span className="font-serif text-lg font-semibold tracking-tight text-navy-800 dark:text-zinc-100">
-            Facturas
-          </span>
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(false)}
-            className="ml-auto lg:hidden"
-            aria-label="Cerrar menú"
-          >
-            <X className="h-5 w-5 text-navy-500 dark:text-zinc-400" />
-          </button>
+    <div className="flex min-h-[100dvh] flex-col bg-page font-inter lg:flex-row">
+      {/* ── Desktop sidebar (>=lg) ──────────────────────────────────────── */}
+      <aside className="hidden shrink-0 flex-col gap-7 border-r border-border-subtle bg-surface-alt px-4 py-7 lg:flex lg:w-[232px]">
+        <div className="flex items-center gap-2.5 px-2">
+          <LogoMark />
+          <span className="text-[15px] font-bold tracking-tight text-ink">Finanzas</span>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 px-4 py-4" aria-label="Navegación principal">
-          <ul className="flex flex-col gap-1">
-            {NAV_ITEMS.map((item) => {
-              const active = isActive(item.to)
-              const Icon = item.icon
-              return (
-                <li key={item.to + item.label}>
-                  <Link
-                    to={item.to}
-                    onClick={() => setSidebarOpen(false)}
-                    className={`
-                      flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-[var(--ease-out)]
-                      ${active
-                        ? 'bg-navy-50 text-navy-700 shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)] ring-1 ring-black/[0.04] dark:bg-navy-800/40 dark:text-zinc-100 dark:shadow-none dark:ring-white/10'
-                        : 'text-navy-500 hover:bg-black/[0.03] hover:text-navy-700 dark:text-zinc-400 dark:hover:bg-white/[0.03] dark:hover:text-zinc-200'
-                      }
-                    `}
-                  >
-                    <Icon className={`h-[18px] w-[18px] ${active ? 'text-accent-500' : 'text-navy-400 dark:text-zinc-500'}`} />
-                    {item.label}
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
+        <nav className="flex flex-col gap-0.5" aria-label="Navegación principal">
+          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => {
+            const active = isActive(to, end)
+            return (
+              <Link
+                key={to}
+                to={to}
+                aria-current={active ? 'page' : undefined}
+                className={`
+                  flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm transition-colors duration-160 ease-[var(--ease-out)]
+                  ${active ? 'bg-violet-50 font-semibold text-violet-900' : 'font-medium text-ink-soft-2 hover:bg-black/[0.03]'}
+                `}
+              >
+                <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-violet-500' : 'text-ink-soft'}`} />
+                {label}
+              </Link>
+            )
+          })}
         </nav>
 
-        {/* Footer brand */}
-        <div className="px-6 py-4 text-[10px] uppercase tracking-[0.15em] text-navy-300 dark:text-zinc-600">
-          v0.1.0
+        <div className="mt-auto flex items-center gap-2 border-t border-border-subtle px-2 pt-4">
+          <Link to="/perfil" className="flex min-w-0 flex-1 items-center gap-2.5">
+            <UserAvatar initial={initial} />
+            <span className="truncate text-sm font-medium text-ink-soft-2">
+              {user?.nombre ?? 'Mi cuenta'}
+            </span>
+          </Link>
+          <button
+            type="button"
+            onClick={() => logoutMutation.mutate()}
+            aria-label="Cerrar sesión"
+            className="rounded-lg p-2 text-ink-soft transition-colors hover:bg-black/[0.04] hover:text-danger"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </aside>
 
-      {/* Main area */}
-      <div className="flex flex-1 flex-col min-w-0">
-        {/* Header */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-black/[0.04] bg-cream/80 px-4 backdrop-blur-xl dark:border-white/10 dark:bg-espresso/80 lg:px-8">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(true)}
-              className="rounded-lg p-2 text-navy-500 transition-colors hover:bg-black/[0.04] dark:text-zinc-400 dark:hover:bg-white/[0.04] lg:hidden"
-              aria-label="Abrir menú"
+      {/* ── Mobile top bar (<lg) ────────────────────────────────────────── */}
+      <header className="flex items-center justify-between border-b border-border-subtle bg-surface px-5 py-3 lg:hidden">
+        <div className="flex items-center gap-2">
+          <LogoMark />
+          <span className="text-sm font-bold tracking-tight text-ink">Finanzas</span>
+        </div>
+        <Link to="/perfil" aria-label="Mi perfil">
+          <UserAvatar initial={initial} />
+        </Link>
+      </header>
+
+      {/* ── Content ─────────────────────────────────────────────────────── */}
+      <main className="flex-1 min-w-0 overflow-y-auto p-4 pb-24 lg:p-10 lg:pb-10">
+        <Outlet />
+      </main>
+
+      {/* ── Mobile bottom tab bar (<lg) ─────────────────────────────────── */}
+      <nav
+        aria-label="Navegación principal"
+        className="fixed inset-x-0 bottom-0 z-30 flex justify-around border-t border-border-subtle bg-surface px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 lg:hidden"
+      >
+        {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => {
+          const active = isActive(to, end)
+          return (
+            <Link
+              key={to}
+              to={to}
+              aria-current={active ? 'page' : undefined}
+              className="flex flex-col items-center gap-1 px-2 py-1"
             >
-              <Menu className="h-5 w-5" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <ThemeToggle />
-            <div className="h-5 w-px bg-black/[0.06] dark:bg-white/10" />
-            <UserMenu />
-          </div>
-        </header>
-
-        {/* Content */}
-        <main className="flex-1 p-4 lg:p-8">
-          <Outlet />
-        </main>
-      </div>
+              <Icon className={`h-[18px] w-[18px] ${active ? 'text-violet-500' : 'text-ink-soft'}`} />
+              <span className={`text-[10.5px] font-semibold ${active ? 'text-violet-900' : 'text-ink-soft'}`}>
+                {label}
+              </span>
+            </Link>
+          )
+        })}
+      </nav>
     </div>
   )
 }
