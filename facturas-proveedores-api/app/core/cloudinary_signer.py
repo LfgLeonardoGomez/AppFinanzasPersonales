@@ -96,11 +96,16 @@ def _build_preset(
     creds = _parse_cloudinary_url(settings.CLOUDINARY_URL)
     timestamp = _now_timestamp()
 
+    # Only sign params Cloudinary actually recognizes for signed uploads.
+    # `max_file_size` is NOT a Cloudinary upload parameter — Cloudinary
+    # silently drops it when rebuilding its own string-to-sign, so signing
+    # it here produced a signature Cloudinary could never reproduce (400
+    # "Invalid Signature"). It is returned to the client for informational
+    # use only, never signed and never sent to Cloudinary.
     signed_params: Dict[str, Any] = {
         "timestamp": timestamp,
         "folder": folder,
         "allowed_formats": list(allowed_formats),
-        "max_file_size": max_file_size,
     }
 
     signature = _call_cloudinary_sign(

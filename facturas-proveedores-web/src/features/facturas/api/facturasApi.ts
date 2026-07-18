@@ -22,14 +22,15 @@ import type {
 } from '@shared/api/api'
 
 // ── CloudinaryPreset response shape ──────────────────────────────────────────
+//
+// C-21: the canonical shape now lives alongside the shared
+// `uploadToCloudinary` helper (`@shared/utils/uploadToCloudinary`), reused
+// by both `FileUploadField` and `PropuestaIAModal`. Re-exported here so
+// existing importers (`facturasHooks.ts`, tests) don't need to change.
 
-export interface CloudinaryPreset {
-  upload_preset: string
-  cloud_name: string
-  signature: string
-  api_key: string
-  timestamp: number
-}
+import type { CloudinaryPreset } from '@shared/utils/uploadToCloudinary'
+
+export type { CloudinaryPreset } from '@shared/utils/uploadToCloudinary'
 
 // ── List (paginated, filtered) ────────────────────────────────────────────────
 

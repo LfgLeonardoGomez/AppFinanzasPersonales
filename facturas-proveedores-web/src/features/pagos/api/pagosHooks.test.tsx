@@ -118,11 +118,13 @@ const server = setupServer(
     const tipo = url.searchParams.get('tipo')
     if (tipo === 'comprobante') {
       return HttpResponse.json({
-        upload_preset: 'signed-preset-comprobante',
         cloud_name: 'test-cloud',
         signature: 'test-sig',
         api_key: 'test-key',
         timestamp: 1234567890,
+        folder: 'comprobantes',
+        allowed_formats: ['pdf', 'jpg', 'png'],
+        max_file_size: 10485760,
       })
     }
     return HttpResponse.json({ detail: 'Not Found' }, { status: 404 })
@@ -264,7 +266,7 @@ describe('useCloudinaryPreset (comprobante)', () => {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.data?.upload_preset).toBe('signed-preset-comprobante')
+    expect(result.current.data?.folder).toBe('comprobantes')
   })
 
   it('is disabled when tipo is empty', async () => {

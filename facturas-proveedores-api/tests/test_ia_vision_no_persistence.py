@@ -341,10 +341,13 @@ def test_factura_extraer_ia_pdf_rejected_no_mutations(
 
 
 def test_factura_extraer_ia_rate_limited_no_mutations(
-    client_with_mocked_sdk, mutation_capture
+    client_with_mocked_sdk, mutation_capture, monkeypatch
 ):
+    """C-21: IA_RATE_MAX_REQUESTS is set explicitly to 10 to preserve this
+    test's original scenario now that the Settings default is 60."""
     from app.core.rate_limit_ia import reset_ia_rate_limit_store
 
+    monkeypatch.setenv("IA_RATE_MAX_REQUESTS", "10")
     reset_ia_rate_limit_store()
     client, _ = client_with_mocked_sdk
     headers = _register_login(client)

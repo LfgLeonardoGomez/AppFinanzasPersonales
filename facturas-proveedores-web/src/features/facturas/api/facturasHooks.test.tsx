@@ -102,11 +102,13 @@ const server = setupServer(
     const tipo = url.searchParams.get('tipo')
     if (tipo === 'factura') {
       return HttpResponse.json({
-        upload_preset: 'signed-preset-factura',
         cloud_name: 'test-cloud',
         signature: 'test-sig',
         api_key: 'test-key',
         timestamp: 1234567890,
+        folder: 'facturas',
+        allowed_formats: ['pdf', 'jpg', 'png'],
+        max_file_size: 10485760,
       })
     }
     return HttpResponse.json({ detail: 'Not Found' }, { status: 404 })
@@ -270,7 +272,7 @@ describe('useCloudinaryPreset', () => {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.data?.upload_preset).toBe('signed-preset-factura')
+    expect(result.current.data?.folder).toBe('facturas')
     expect(result.current.data?.cloud_name).toBe('test-cloud')
   })
 

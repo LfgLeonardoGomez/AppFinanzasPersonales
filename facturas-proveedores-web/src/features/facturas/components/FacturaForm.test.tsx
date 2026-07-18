@@ -82,11 +82,13 @@ const server = setupServer(
 
   http.get('/api/cloudinary/preset-firmado', () => {
     return HttpResponse.json({
-      upload_preset: 'test-preset',
       cloud_name: 'test-cloud',
       signature: 'sig',
       api_key: 'key',
       timestamp: 1234567890,
+      folder: 'facturas',
+      allowed_formats: ['pdf', 'jpg', 'png'],
+      max_file_size: 10485760,
     })
   }),
 

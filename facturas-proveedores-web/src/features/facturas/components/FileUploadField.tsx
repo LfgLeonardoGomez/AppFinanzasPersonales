@@ -7,6 +7,7 @@
  */
 import { useState, useRef, type ChangeEvent } from 'react'
 import { useCloudinaryPreset } from '../api/facturasHooks'
+import { uploadToCloudinary } from '@shared/utils/uploadToCloudinary'
 import { Upload, File, X, Eye } from 'lucide-react'
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024
@@ -67,31 +68,11 @@ export function FileUploadField({ tipo, onUrlChange, currentUrl }: FileUploadFie
     setUploadError(null)
 
     try {
-      const formData = new FormData()
-      formData.append('file', selectedFile)
-      formData.append('upload_preset', preset.upload_preset)
-      formData.append('api_key', preset.api_key)
-      formData.append('timestamp', String(preset.timestamp))
-      formData.append('signature', preset.signature)
-
-      const res = await fetch(
-        `https://api.cloudinary.com/v1_1/${preset.cloud_name}/auto/upload`,
-        { method: 'POST', body: formData },
-      )
-
-      const data = (await res.json()) as { secure_url?: string; error?: { message: string } }
-
-      if (!res.ok || data.error) {
-        setUploadError(data.error?.message ?? 'Error al subir el archivo.')
-        return
-      }
-
-      if (data.secure_url) {
-        onUrlChange(data.secure_url)
-        setSelectedFile(null)
-      }
-    } catch {
-      setUploadError('Error de conexión al subir el archivo.')
+      const url = await uploadToCloudinary(selectedFile, preset)
+      onUrlChange(url)
+      setSelectedFile(null)
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Error de conexión al subir el archivo.')
     } finally {
       setIsUploading(false)
     }

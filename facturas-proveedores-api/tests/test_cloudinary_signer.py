@@ -70,7 +70,13 @@ class TestSigningHelper:
         # Constraints baked into the signed params
         assert signed_params.get("folder") == "avatars"
         assert set(signed_params.get("allowed_formats", [])) == {"pdf", "jpg", "png"}
-        assert signed_params.get("max_file_size", 0) <= 10_485_760
+        # max_file_size must NOT be signed: it is not a Cloudinary upload
+        # parameter, so Cloudinary drops it when rebuilding its string-to-sign.
+        # Signing it yields a signature Cloudinary can never reproduce (400
+        # "Invalid Signature"). It is still returned to the client (line above)
+        # for informational use, but never signed.
+        assert "max_file_size" not in signed_params
+        assert result["max_file_size"] <= 10_485_760  # returned, not signed
         # The secret is passed in (to sign) but never returned
         assert kwargs.get("api_secret")  # present, used to sign
         assert "api_secret" not in result  # absent from response

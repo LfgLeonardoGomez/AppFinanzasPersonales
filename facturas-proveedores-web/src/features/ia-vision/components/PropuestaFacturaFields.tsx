@@ -1,20 +1,26 @@
 /**
  * PropuestaFacturaFields — presentational field group for the
- * C-14 `PropuestaFactura` proposal (C-15, section 4).
+ * C-14 `PropuestaFactura` proposal (C-15, section 4; auto-match +
+ * inline create added in C-21, D4/D5).
  *
  * Renders four inputs:
  *   - numero (text)
  *   - fecha_emision (date)
  *   - monto_total (number, ARS)
- *   - SupplierSearch (C-07) for proveedor matching
+ *   - SupplierMatchControl (SupplierSearch + auto-match + inline
+ *     create — C-21) for proveedor matching
  *
  * Every input is editable. The parent (PropuestaIAModal) owns the
  * state and passes it back via `onChange`. The component is purely
- * presentational — no business logic, no API calls, no local
- * persistence. This is the D-3 / RN-IA-03 / RN-IA-06 contract:
- *   - null proposal fields render as empty inputs (never invent)
- *   - the SupplierSearch value is null even when the proposal has a
- *     non-null `proveedor_nombre` (the IA never pre-selects)
+ * presentational — no business logic beyond delegating to
+ * `SupplierMatchControl` for the supplier auto-match/inline-create
+ * capability. This is the D-3 / RN-IA-03 contract for the plain
+ * fields (null proposal fields render as empty inputs — never
+ * invent) and the D4/RN-IA-06 contract for the supplier: the
+ * detected name is auto-matched against the user's own suppliers on
+ * a unique normalized-exact hit (pre-selected, changeable); anything
+ * less than that surfaces an inline "Crear «X»" action instead of
+ * silently guessing.
  *
  * Visual: same soft-structuralism language as the rest of the app
  * (D12). Inputs are stack-aligned with subtle ring focus rings,
@@ -22,7 +28,7 @@
  * numerics; the ARS suffix is a small text-xs text-slate-500 span
  * next to the input (mirrors the C-09 / C-11 form pages).
  */
-import { SupplierSearch } from '@shared/components/SupplierSearch/SupplierSearch'
+import { SupplierMatchControl } from './SupplierMatchControl'
 import type { PropuestaFactura, ProveedorListItem } from '@shared/api/api'
 
 export interface PropuestaFacturaFieldsProps {
@@ -102,19 +108,11 @@ export function PropuestaFacturaFields({
         </div>
       </div>
 
-      <div>
-        <label className="block text-xs font-medium text-slate-600 mb-1">Proveedor</label>
-        <SupplierSearch
-          value={selectedProveedor}
-          onChange={onProveedorChange ?? (() => {})}
-          placeholder="Buscar proveedor…"
-        />
-        {propuesta.proveedor_nombre ? (
-          <p className="text-xs text-slate-500 mt-1">
-            Detectado por IA: <span className="font-medium">{propuesta.proveedor_nombre}</span>
-          </p>
-        ) : null}
-      </div>
+      <SupplierMatchControl
+        proveedorNombre={propuesta.proveedor_nombre}
+        selectedProveedor={selectedProveedor}
+        onProveedorChange={onProveedorChange ?? (() => {})}
+      />
     </div>
   )
 }

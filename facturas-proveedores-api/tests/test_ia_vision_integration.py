@@ -446,9 +446,12 @@ class TestFacturaRouteOrdering:
 
 
 class TestFacturaRateLimit:
-    def test_11th_request_returns_429(self, ia_client):
+    def test_11th_request_returns_429(self, ia_client, monkeypatch):
+        """C-21: the limit is driven by IA_RATE_MAX_REQUESTS (here set to 10
+        to preserve this test's original scenario), not a hardcoded constant."""
         from app.core.rate_limit_ia import reset_ia_rate_limit_store
 
+        monkeypatch.setenv("IA_RATE_MAX_REQUESTS", "10")
         reset_ia_rate_limit_store()
         client = _client(ia_client)
         headers = _register_login(client)
@@ -562,10 +565,17 @@ class TestPagoRouteOrdering:
 
 
 class TestSharedRateLimit:
-    def test_budget_shared_between_factura_and_pago_endpoints(self, ia_client):
-        """D-IA-2: 10 requests TOTAL per usuario_id across BOTH endpoints."""
+    def test_budget_shared_between_factura_and_pago_endpoints(
+        self, ia_client, monkeypatch
+    ):
+        """D-IA-2: 10 requests TOTAL per usuario_id across BOTH endpoints.
+
+        C-21: IA_RATE_MAX_REQUESTS is set explicitly to 10 to preserve this
+        test's original scenario now that the Settings default is 60.
+        """
         from app.core.rate_limit_ia import reset_ia_rate_limit_store
 
+        monkeypatch.setenv("IA_RATE_MAX_REQUESTS", "10")
         reset_ia_rate_limit_store()
         client = _client(ia_client)
         headers = _register_login(client)

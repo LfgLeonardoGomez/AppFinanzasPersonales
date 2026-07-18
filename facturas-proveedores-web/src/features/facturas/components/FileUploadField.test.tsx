@@ -22,11 +22,13 @@ const server = setupServer(
     const url = new URL(request.url)
     if (url.searchParams.get('tipo') === 'factura') {
       return HttpResponse.json({
-        upload_preset: 'signed-preset-factura',
         cloud_name: 'test-cloud',
         signature: 'test-sig',
         api_key: 'test-key',
         timestamp: 1234567890,
+        folder: 'facturas',
+        allowed_formats: ['pdf', 'jpg', 'png'],
+        max_file_size: 10485760,
       })
     }
     return HttpResponse.json({ detail: 'Not Found' }, { status: 404 })

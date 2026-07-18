@@ -180,3 +180,87 @@ class TestSettingsProxyLiveEnvReads:
         assert settings.VISION_PROVIDER == "claude"
         assert settings.FRONTEND_ORIGIN == "http://localhost:5173"
         assert settings.COOKIE_DOMAIN == "localhost"
+
+
+class TestIARateLimitSettings:
+    """
+    C-21: the IA rate limit (`/extraer-ia` endpoints) is configurable via
+    env instead of the C-14 hardcoded 10/3600s. `Settings` exposes
+    `IA_RATE_MAX_REQUESTS` (default 60) and `IA_RATE_WINDOW_SECONDS`
+    (default 3600), both required to be `> 0`, and read live through the
+    C-16 proxy — mirrors `TestSettingsProxyLiveEnvReads`.
+    """
+
+    def test_defaults_are_60_requests_per_3600_seconds(self, env_vars):
+        """
+        WHEN neither IA_RATE_MAX_REQUESTS nor IA_RATE_WINDOW_SECONDS is set
+        THEN Settings defaults to 60 requests / 3600 seconds.
+        """
+        from app.core.config import Settings
+
+        original_max = os.environ.pop("IA_RATE_MAX_REQUESTS", None)
+        original_window = os.environ.pop("IA_RATE_WINDOW_SECONDS", None)
+        try:
+            s = Settings(_env_file=None)  # type: ignore[call-arg]
+            assert s.IA_RATE_MAX_REQUESTS == 60
+            assert s.IA_RATE_WINDOW_SECONDS == 3600
+        finally:
+            if original_max is not None:
+                os.environ["IA_RATE_MAX_REQUESTS"] = original_max
+            if original_window is not None:
+                os.environ["IA_RATE_WINDOW_SECONDS"] = original_window
+
+    def test_ia_rate_max_requests_must_be_positive(self, env_vars):
+        """WHEN IA_RATE_MAX_REQUESTS is 0 THEN Settings rejects it (gt=0)."""
+        from app.core.config import Settings
+
+        original = os.environ.get("IA_RATE_MAX_REQUESTS")
+        os.environ["IA_RATE_MAX_REQUESTS"] = "0"
+        try:
+            with pytest.raises(ValidationError):
+                Settings(_env_file=None)  # type: ignore[call-arg]
+        finally:
+            if original is not None:
+                os.environ["IA_RATE_MAX_REQUESTS"] = original
+            else:
+                os.environ.pop("IA_RATE_MAX_REQUESTS", None)
+
+    def test_ia_rate_window_seconds_must_be_positive(self, env_vars):
+        """WHEN IA_RATE_WINDOW_SECONDS is negative THEN Settings rejects it (gt=0)."""
+        from app.core.config import Settings
+
+        original = os.environ.get("IA_RATE_WINDOW_SECONDS")
+        os.environ["IA_RATE_WINDOW_SECONDS"] = "-1"
+        try:
+            with pytest.raises(ValidationError):
+                Settings(_env_file=None)  # type: ignore[call-arg]
+        finally:
+            if original is not None:
+                os.environ["IA_RATE_WINDOW_SECONDS"] = original
+            else:
+                os.environ.pop("IA_RATE_WINDOW_SECONDS", None)
+
+    def test_settings_proxy_reads_ia_rate_limit_live(self, env_vars):
+        """
+        C-16 D-1: mutating `os.environ["IA_RATE_MAX_REQUESTS"]` between two
+        `settings.IA_RATE_MAX_REQUESTS` reads MUST be observed by the
+        second read (no caching, no import-time freeze).
+        """
+        from app.core.config import settings
+
+        original = os.environ.get("IA_RATE_MAX_REQUESTS")
+        try:
+            os.environ["IA_RATE_MAX_REQUESTS"] = "5"
+            first_read = settings.IA_RATE_MAX_REQUESTS
+            assert first_read == 5
+
+            os.environ["IA_RATE_MAX_REQUESTS"] = "15"
+            second_read = settings.IA_RATE_MAX_REQUESTS
+            assert second_read == 15, (
+                "Second read should reflect the new env (no caching)."
+            )
+        finally:
+            if original is not None:
+                os.environ["IA_RATE_MAX_REQUESTS"] = original
+            else:
+                os.environ.pop("IA_RATE_MAX_REQUESTS", None)

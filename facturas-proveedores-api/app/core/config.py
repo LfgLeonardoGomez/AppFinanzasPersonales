@@ -94,6 +94,20 @@ class Settings(BaseSettings):
         description="Duración del refresh token en días. Recomendado: 30",
     )
 
+    # ── Rate limit IA ─────────────────────────────────────────────────────────
+    IA_RATE_MAX_REQUESTS: int = Field(
+        default=60,
+        gt=0,
+        description="Máximo de requests a /extraer-ia (facturas + pagos) por "
+        "usuario dentro de la ventana. Default 60 (cómodo para MVP mono-usuario).",
+    )
+    IA_RATE_WINDOW_SECONDS: int = Field(
+        default=3600,
+        gt=0,
+        description="Ventana deslizante en segundos para el rate limit de IA. "
+        "Default 3600 (1 hora).",
+    )
+
     # ── CORS ──────────────────────────────────────────────────────────────────
     FRONTEND_ORIGIN: str = Field(
         ...,

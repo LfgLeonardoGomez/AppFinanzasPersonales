@@ -1,20 +1,32 @@
 /**
  * PropuestaIAModal — the blocking modal that wraps the C-14 vision
- * extraction flow (C-15, section 6).
+ * extraction flow (C-15, section 6; made TERMINAL in C-21).
  *
- * The modal is a CONTROLLED pre-fill surface. It NEVER persists
- * anything (RN-IA-04). On `Confirmar`, it calls `onConfirm(propuesta,
- * selectedProveedor)` with the proposal and the user-picked supplier;
- * the parent form is responsible for setting its state and firing
- * the manual `POST /api/facturas` / `POST /api/pagos` via the
- * existing C-09 / C-11 mutations. The modal closes after `Confirmar`.
+ * C-21 (D1) SUPERSEDES the C-15 decision that "the modal does not
+ * POST; the form creates on its own Confirmar" (D-19). The modal is
+ * now terminal for the IA path: a single "Confirmar" uploads the
+ * picked image to Cloudinary, builds the create payload, and fires
+ * the injected `createResource` (backed by `useCreateFactura` /
+ * `useCreatePago` in the parent page) directly. On success it reports
+ * the created resource via `onCreated` so the page can redirect to
+ * `/proveedores/:id`.
+ *
+ * RN-IA-04 is UNCHANGED: it governs the `/extraer-ia` EXTRACTION
+ * endpoint, which still never persists anything. What changed is that
+ * the human confirm — inside this modal — now creates the resource
+ * instead of routing back to the big manual form. The IA proposes,
+ * the human still explicitly confirms (RN-IA-06 intact).
  *
  * STATE MACHINE (see `propuestaModalReducer.ts`):
  *   7 states: idle / extracting / proposal / error_422 / error_429 /
  *             error_extractor / error_generic
  *   10 transitions, all in the reducer. The component owns the
  *   `useReducer` + the per-state UI + the side effects (mutation
- *   fire, ESC handling, focus trap, 429 countdown).
+ *   fire, ESC handling, focus trap, 429 countdown). The confirm-time
+ *   upload + create orchestration (D1/D2/D3) is component-local state
+ *   (`pickedFile` / `isConfirming` / `confirmError`) layered ON TOP of
+ *   the reducer — it stays in the `proposal` state throughout so the
+ *   user can correct fields and re-confirm on a validation error.
  *
  * ARIA / accessibility (D-2):
  *   - `aria-busy="true"` while extracting
@@ -49,8 +61,19 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
-import type { PropuestaFactura, PropuestaPago, ProveedorListItem } from '@shared/api/api'
+import type {
+  FacturaCreate,
+  FacturaResponse,
+  PagoCreate,
+  PagoResponse,
+  PropuestaFactura,
+  PropuestaPago,
+  ProveedorListItem,
+} from '@shared/api/api'
 import { useExtraerFacturaIA, useExtraerPagoIA } from '../api/iaVisionHooks'
+import { useCloudinaryPreset } from '@features/facturas/api/facturasHooks'
+import { uploadToCloudinary } from '@shared/utils/uploadToCloudinary'
+import { buildCreatePayload } from '../lib/buildCreatePayload'
 import { ImagenPicker } from './ImagenPicker'
 import { PropuestaFacturaFields } from './PropuestaFacturaFields'
 import { PropuestaPagoFields } from './PropuestaPagoFields'
@@ -66,12 +89,22 @@ const RATE_LIMIT_ERROR = (minutes: number): string =>
   `Demasiadas solicitudes. Has alcanzado el límite de extracciones con IA (10 por hora). Intentá en ${minutes} ${minutes === 1 ? 'minuto' : 'minutos'}.`
 const EXTRACTOR_ERROR_FALLBACK = 'No se pudo leer la imagen. La IA no pudo extraer los datos.'
 const GENERIC_ERROR = 'Algo salió mal. Reintentá o cargá manualmente.'
+const UPLOAD_ERROR_FALLBACK = 'Error al subir el archivo.'
+const CREATE_ERROR_FALLBACK = 'No se pudo guardar. Revisá los datos e intentá de nuevo.'
 
 export interface PropuestaIAModalProps {
   open: boolean
   tipo: 'factura' | 'pago'
   onClose: () => void
-  onConfirm: (propuesta: PropuestaFactura | PropuestaPago, selectedProveedor: ProveedorListItem) => void
+  /** Fired after the resource is successfully created — the parent redirects. */
+  onCreated: (created: FacturaResponse | PagoResponse) => void
+  /**
+   * Injected create mutation (D1): the page owns `useCreateFactura` /
+   * `useCreatePago` (so cache invalidation + success handling stay in
+   * ONE place) and passes a thin async function the modal calls once
+   * the image is uploaded and the payload is built.
+   */
+  createResource: (payload: FacturaCreate | PagoCreate) => Promise<FacturaResponse | PagoResponse>
   onManualLoad?: () => void
 }
 
@@ -79,16 +112,32 @@ function isAxiosError(e: unknown): e is { response?: { status: number; headers?:
   return typeof e === 'object' && e !== null && 'response' in e
 }
 
-export function PropuestaIAModal({ open, tipo, onClose, onConfirm, onManualLoad }: PropuestaIAModalProps) {
+export function PropuestaIAModal({
+  open,
+  tipo,
+  onClose,
+  onCreated,
+  createResource,
+  onManualLoad,
+}: PropuestaIAModalProps) {
   const [state, dispatch] = useReducer(propuestaModalReducer, undefined, initialModalState)
   const [selectedProveedor, setSelectedProveedor] = useState<ProveedorListItem | null>(null)
   const [countdown, setCountdown] = useState(0)
   const [editablePropuesta, setEditablePropuesta] = useState<PropuestaFactura | PropuestaPago | null>(null)
+  const [pickedFile, setPickedFile] = useState<File | null>(null)
+  const [isConfirming, setIsConfirming] = useState(false)
+  const [confirmError, setConfirmError] = useState<string | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
   const previouslyFocusedRef = useRef<HTMLElement | null>(null)
 
   const facturaMutation = useExtraerFacturaIA()
   const pagoMutation = useExtraerPagoIA()
+
+  // The Cloudinary preset for the confirmed upload (D3). Fetched only
+  // once a proposal is on screen — mirrors FileUploadField's pattern
+  // of not fetching a signed preset before it's needed.
+  const presetTipo = tipo === 'factura' ? 'factura' : 'comprobante'
+  const { data: cloudinaryPreset } = useCloudinaryPreset(state.kind === 'proposal' ? presetTipo : '')
 
   // Reset state on open/close
   useEffect(() => {
@@ -96,6 +145,9 @@ export function PropuestaIAModal({ open, tipo, onClose, onConfirm, onManualLoad 
       dispatch({ kind: 'RETRY' }) // resets to idle
       setSelectedProveedor(null)
       setEditablePropuesta(null)
+      setPickedFile(null)
+      setConfirmError(null)
+      setIsConfirming(false)
       setCountdown(0)
       previouslyFocusedRef.current = document.activeElement as HTMLElement | null
     } else {
@@ -157,9 +209,11 @@ export function PropuestaIAModal({ open, tipo, onClose, onConfirm, onManualLoad 
   )
 
   // When the user picks a file, the ImagenPicker fires onPick; we move
-  // the reducer to extracting and fire the mutation.
+  // the reducer to extracting, remember the file (it's uploaded on
+  // confirm — D3), and fire the extraction mutation.
   function handlePick(file: File): void {
     dispatch({ kind: 'PICK_FILE', file })
+    setPickedFile(file)
     fireExtraction(file)
   }
 
@@ -168,18 +222,46 @@ export function PropuestaIAModal({ open, tipo, onClose, onConfirm, onManualLoad 
   // pick a new file).
   function handleRetry(): void {
     dispatch({ kind: 'RETRY' })
+    setPickedFile(null)
+    setConfirmError(null)
   }
 
-  function handleConfirm(): void {
-    if (!editablePropuesta || !selectedProveedor) return
-    onConfirm(editablePropuesta, selectedProveedor)
-    dispatch({ kind: 'CONFIRM' })
-    // Do NOT call onClose() here. The parent closes the modal by
-    // transitioning its own state (the modal's `open` is derived from that
-    // state). Calling onClose() would additionally fire the parent's cancel
-    // handler and clobber the confirm transition — e.g. bouncing back to the
-    // mode selector instead of showing the prefilled form, so the invoice
-    // never gets created.
+  // Terminal confirm (D1/D2/D3): upload the picked image, build the
+  // create payload, and fire the injected `createResource`. Stays in
+  // the `proposal` state throughout (via local `isConfirming` /
+  // `confirmError`) so a failure lets the user correct fields and
+  // re-confirm without losing the edited proposal.
+  async function handleConfirm(): Promise<void> {
+    if (!editablePropuesta || !selectedProveedor || !pickedFile || isConfirming) return
+
+    setConfirmError(null)
+    setIsConfirming(true)
+
+    let url: string
+    try {
+      if (!cloudinaryPreset) {
+        throw new Error('No se pudo preparar la subida de la imagen. Reintentá.')
+      }
+      url = await uploadToCloudinary(pickedFile, cloudinaryPreset)
+    } catch (err) {
+      setConfirmError(err instanceof Error ? err.message : UPLOAD_ERROR_FALLBACK)
+      setIsConfirming(false)
+      return
+    }
+
+    try {
+      const payload =
+        tipo === 'factura'
+          ? buildCreatePayload('factura', editablePropuesta as PropuestaFactura, selectedProveedor.id, url)
+          : buildCreatePayload('pago', editablePropuesta as PropuestaPago, selectedProveedor.id, url)
+      const created = await createResource(payload)
+      dispatch({ kind: 'CONFIRM' })
+      onCreated(created)
+    } catch {
+      setConfirmError(CREATE_ERROR_FALLBACK)
+    } finally {
+      setIsConfirming(false)
+    }
   }
 
   function handleCancel(): void {
@@ -304,7 +386,9 @@ export function PropuestaIAModal({ open, tipo, onClose, onConfirm, onManualLoad 
         {state.kind === 'proposal' ? (
           <ProposalFooter
             selectedProveedor={selectedProveedor}
-            onConfirm={handleConfirm}
+            isConfirming={isConfirming}
+            confirmError={confirmError}
+            onConfirm={() => void handleConfirm()}
             onCancel={handleCancel}
             onRetry={handleRetry}
           />
@@ -400,7 +484,14 @@ function ProposalState({
       />
     )
   }
-  return <PropuestaPagoFields propuesta={propuesta as PropuestaPago} onChange={(next) => onChange(next)} />
+  return (
+    <PropuestaPagoFields
+      propuesta={propuesta as PropuestaPago}
+      onChange={(next) => onChange(next)}
+      selectedProveedor={selectedProveedor}
+      onProveedorChange={onProveedorChange}
+    />
+  )
 }
 
 function ErrorState({
@@ -474,40 +565,53 @@ function Error429State({
 
 function ProposalFooter({
   selectedProveedor,
+  isConfirming,
+  confirmError,
   onConfirm,
   onCancel,
   onRetry,
 }: {
   selectedProveedor: ProveedorListItem | null
+  isConfirming: boolean
+  confirmError: string | null
   onConfirm: () => void
   onCancel: () => void
   onRetry: () => void
 }) {
-  const canConfirm = selectedProveedor !== null
+  const canConfirm = selectedProveedor !== null && !isConfirming
   return (
-    <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-      <button
-        type="button"
-        onClick={onRetry}
-        className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]"
-      >
-        Reintentar
-      </button>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]"
-      >
-        Cancelar
-      </button>
-      <button
-        type="button"
-        onClick={onConfirm}
-        disabled={!canConfirm}
-        className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]"
-      >
-        Confirmar
-      </button>
+    <div className="flex flex-col gap-2 pt-3 border-t border-slate-100">
+      {confirmError ? (
+        <p role="alert" className="text-sm text-rose-600">
+          {confirmError}
+        </p>
+      ) : null}
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={isConfirming}
+          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Reintentar
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isConfirming}
+          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={!canConfirm}
+          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]"
+        >
+          {isConfirming ? 'Guardando…' : 'Confirmar'}
+        </button>
+      </div>
     </div>
   )
 }

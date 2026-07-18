@@ -13,12 +13,14 @@
  * to the form. The form's `SupplierSearch` still allows clearing and
  * picking a different supplier — the pre-fill is purely additive.
  *
- * C-15: the create page also renders the "Cargar con imagen (IA)" button
- * (hidden in edit mode) that opens the `PropuestaIAModal` scoped to the
- * invoice flow. On confirm, the proposal + the user-picked supplier are
- * passed to the form as `prefillFromProposal`; the form syncs its state
- * and tags the create payload with `origen: 'IA'` (OQ-1 RESOLVED via
- * c-15a — Path B).
+ * C-21 (D1, supersedes C-15's D-19): the create page also renders the
+ * "Cargar con imagen (IA)" button (hidden in edit mode) that opens the
+ * `PropuestaIAModal` scoped to the invoice flow. The modal is now
+ * TERMINAL — on its single "Confirmar" it uploads the read image, builds
+ * the `FacturaCreate` payload, and fires `useCreateFactura` directly
+ * (injected as `createResource`). The IA path no longer falls through to
+ * the big manual form; `onCreated` performs the same
+ * `/proveedores/:id` redirect as the manual path.
  */
 import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -26,7 +28,7 @@ import { FacturaForm } from './components/FacturaForm'
 import { useFactura, useCreateFactura, useUpdateFactura } from './api/facturasHooks'
 import { useProveedor } from '@features/proveedores/api/proveedoresHooks'
 import { PropuestaIAModal } from '@features/ia-vision/components/PropuestaIAModal'
-import type { FacturaResponse, PropuestaFactura, PropuestaPago, ProveedorListItem } from '@shared/api/api'
+import type { FacturaCreate, FacturaResponse, PagoResponse } from '@shared/api/api'
 
 // ── Edit mode: load existing factura ─────────────────────────────────────────
 
@@ -123,10 +125,6 @@ function CreateFacturaPage() {
   const updateMutation = useUpdateFactura()
 
   const [mode, setMode] = useState<'selector' | 'form' | 'ia'>('selector')
-  const [iaPrefill, setIaPrefill] = useState<{
-    propuesta: PropuestaFactura
-    selectedProveedor: ProveedorListItem
-  } | null>(null)
 
   function handleSuccess(saved: FacturaResponse) {
     // After a successful create, land on the supplier's current account
@@ -136,9 +134,12 @@ function CreateFacturaPage() {
     })
   }
 
-  function handleIAConfirm(propuesta: PropuestaFactura | PropuestaPago, selectedProveedor: ProveedorListItem) {
-    setIaPrefill({ propuesta: propuesta as PropuestaFactura, selectedProveedor })
-    setMode('form')
+  // C-21 (D1): the modal is terminal — it creates the factura directly
+  // via `createResource` (backed by the same `createMutation` the manual
+  // form uses) and reports the created resource here. No `mode='form'`
+  // transition for the IA path anymore.
+  function handleIACreated(created: FacturaResponse | PagoResponse) {
+    handleSuccess(created as FacturaResponse)
   }
 
   if (mode === 'selector') {
@@ -168,7 +169,7 @@ function CreateFacturaPage() {
             onSuccess={handleSuccess}
             onCancel={() => void navigate('/facturas')}
             initialSelectedProveedor={proveedorQuery.data ?? null}
-            prefillFromProposal={iaPrefill}
+            prefillFromProposal={null}
             externalCreateMutation={createMutation}
             externalUpdateMutation={updateMutation}
           />
@@ -178,7 +179,8 @@ function CreateFacturaPage() {
         open={mode === 'ia'}
         tipo="factura"
         onClose={() => setMode('selector')}
-        onConfirm={handleIAConfirm}
+        onCreated={handleIACreated}
+        createResource={(payload) => createMutation.mutateAsync(payload as FacturaCreate)}
         onManualLoad={() => setMode('form')}
       />
     </div>

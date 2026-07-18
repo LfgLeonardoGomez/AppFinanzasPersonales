@@ -1,20 +1,25 @@
 /**
  * PropuestaPagoFields — presentational field group for the
- * C-14 `PropuestaPago` proposal (C-15, section 5).
+ * C-14 `PropuestaPago` proposal (C-15, section 5; supplier control
+ * added in C-21, D4/D5 — the pago path had none before).
  *
- * Renders three inputs plus a visual chip for the detected metodo:
+ * Renders three inputs plus a visual chip for the detected metodo,
+ * plus the shared supplier control:
  *   - monto (number, ARS)
  *   - fecha (date)
  *   - metodo (select: EFECTIVO | TRANSFERENCIA | TARJETA | MERCADOPAGO | OTRO)
  *   - MetodoBadge (C-11) — a small visual chip that confirms the IA's
  *     read; rendered when `propuesta.metodo` is non-null.
+ *   - SupplierMatchControl (SupplierSearch + auto-match + inline
+ *     create — C-21) — mirrors `PropuestaFacturaFields` exactly so
+ *     the pago path behaves identically to the factura path (D4).
  *
  * Every input is editable. The parent (PropuestaIAModal) owns the
  * state and passes it back via `onChange`. The component is purely
- * presentational — no business logic, no API calls, no local
- * persistence. This is the RN-IA-03 contract: null fields render
- * as empty inputs (never invent). The metodo select allows the
- * user to override the IA's pick (per OQ-6 in the design).
+ * presentational — no business logic beyond delegating to
+ * `SupplierMatchControl`. This is the RN-IA-03 contract: null fields
+ * render as empty inputs (never invent). The metodo select allows
+ * the user to override the IA's pick (per OQ-6 in the design).
  *
  * Visual: same soft-structuralism language as the rest of the app
  * (D12). The MetodoBadge sits inline with the select — the chip
@@ -22,11 +27,15 @@
  * a different metodo (the chip re-renders with the new value).
  */
 import { MetodoBadge } from '@features/pagos/components/MetodoBadge'
-import type { PropuestaPago, MetodoPago } from '@shared/api/api'
+import { SupplierMatchControl } from './SupplierMatchControl'
+import type { PropuestaPago, MetodoPago, ProveedorListItem } from '@shared/api/api'
 
 export interface PropuestaPagoFieldsProps {
   propuesta: PropuestaPago
   onChange: (next: PropuestaPago) => void
+  /** Controlled supplier (selected by the user via SupplierMatchControl). */
+  selectedProveedor?: ProveedorListItem | null
+  onProveedorChange?: (proveedor: ProveedorListItem | null) => void
 }
 
 const METODO_OPTIONS: { value: MetodoPago; label: string }[] = [
@@ -46,7 +55,12 @@ function montoString(value: number | null): string {
   return String(value)
 }
 
-export function PropuestaPagoFields({ propuesta, onChange }: PropuestaPagoFieldsProps) {
+export function PropuestaPagoFields({
+  propuesta,
+  onChange,
+  selectedProveedor = null,
+  onProveedorChange,
+}: PropuestaPagoFieldsProps) {
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -114,6 +128,12 @@ export function PropuestaPagoFields({ propuesta, onChange }: PropuestaPagoFields
           </select>
         </div>
       </div>
+
+      <SupplierMatchControl
+        proveedorNombre={propuesta.proveedor_nombre}
+        selectedProveedor={selectedProveedor}
+        onProveedorChange={onProveedorChange ?? (() => {})}
+      />
     </div>
   )
 }

@@ -107,15 +107,15 @@ const server = setupServer(
     return HttpResponse.json({ detail: 'Not Found' }, { status: 404 })
   }),
 
-  http.get('/api/cloudinary/preset-firmado', ({ request }) => {
-    const url = new URL(request.url)
-    const tipo = url.searchParams.get('tipo')
+  http.get('/api/cloudinary/preset-firmado', () => {
     return HttpResponse.json({
-      upload_preset: `test-preset-${tipo ?? 'default'}`,
       cloud_name: 'test-cloud',
       signature: 'sig',
       api_key: 'key',
       timestamp: 1234567890,
+      folder: 'comprobantes',
+      allowed_formats: ['pdf', 'jpg', 'png'],
+      max_file_size: 10485760,
     })
   }),
 

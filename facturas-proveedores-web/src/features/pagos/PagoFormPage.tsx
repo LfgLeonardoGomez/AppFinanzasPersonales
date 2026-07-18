@@ -13,15 +13,16 @@
  * to the form. The form's `SupplierSearch` still allows clearing and
  * picking a different supplier — the pre-fill is purely additive.
  *
- * C-15: the create page also renders the "Cargar con imagen (IA)" button
- * (hidden in edit mode) that opens the `PropuestaIAModal` scoped to the
- * payment flow. On confirm, the proposal + the user-picked supplier are
- * passed to the form as `prefillFromProposal`; the form syncs its state
- * and tags the create payload with `origen: 'IA'` (OQ-1 RESOLVED via
- * c-15a — Path B). The payload NEVER carries a `factura_id` (RN-PAG-01
- * — the form has no such field by design; this invariant is preserved
- * through the IA flow because the form's existing mutation payload is
- * unchanged).
+ * C-21 (D1, D7, supersedes C-15's D-19): the create page also renders the
+ * "Cargar con imagen (IA)" button (hidden in edit mode) that opens the
+ * `PropuestaIAModal` scoped to the payment flow. The modal is now
+ * TERMINAL — on its single "Confirmar" it uploads the read comprobante
+ * image (`tipo='comprobante'`), builds the `PagoCreate` payload, and
+ * fires `useCreatePago` directly (injected as `createResource`). The IA
+ * path no longer falls through to the big manual form; `onCreated`
+ * performs the same `/proveedores/:id` redirect as the manual path
+ * (D7). The payload NEVER carries a `factura_id` (RN-PAG-01 —
+ * `buildCreatePayload('pago', ...)` never sets that key).
  */
 import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -29,7 +30,7 @@ import { PagoForm } from './components/PagoForm'
 import { usePago, useCreatePago, useUpdatePago } from './api/pagosHooks'
 import { useProveedor } from '@features/proveedores/api/proveedoresHooks'
 import { PropuestaIAModal } from '@features/ia-vision/components/PropuestaIAModal'
-import type { PagoResponse, PropuestaFactura, PropuestaPago, ProveedorListItem } from '@shared/api/api'
+import type { FacturaResponse, PagoCreate, PagoResponse, ProveedorListItem } from '@shared/api/api'
 
 // ── Edit mode: load existing pago ────────────────────────────────────────────
 
@@ -163,20 +164,22 @@ function CreatePagoPage() {
   const updateMutation = useUpdatePago()
 
   const [mode, setMode] = useState<'selector' | 'form' | 'ia'>('selector')
-  const [iaPrefill, setIaPrefill] = useState<{
-    propuesta: PropuestaPago
-    selectedProveedor: ProveedorListItem
-  } | null>(null)
 
-  function handleSuccess(_saved: PagoResponse) {
-    void navigate('/pagos', {
+  function handleSuccess(saved: PagoResponse) {
+    // After a successful create, land on the supplier's current account
+    // (cuenta corriente) so the user sees the payment reflected in the
+    // ledger — mirrors FacturaFormPage (D7).
+    void navigate(`/proveedores/${saved.proveedor_id}`, {
       state: { successMessage: 'Pago creado exitosamente.' },
     })
   }
 
-  function handleIAConfirm(propuesta: PropuestaPago | PropuestaFactura, selectedProveedor: ProveedorListItem) {
-    setIaPrefill({ propuesta: propuesta as PropuestaPago, selectedProveedor })
-    setMode('form')
+  // C-21 (D1): the modal is terminal — it creates the pago directly via
+  // `createResource` (backed by the same `createMutation` the manual
+  // form uses) and reports the created resource here. No `mode='form'`
+  // transition for the IA path anymore.
+  function handleIACreated(created: FacturaResponse | PagoResponse) {
+    handleSuccess(created as PagoResponse)
   }
 
   if (mode === 'selector') {
@@ -206,7 +209,7 @@ function CreatePagoPage() {
             onSuccess={handleSuccess}
             onCancel={() => void navigate('/pagos')}
             initialSelectedProveedor={proveedorQuery.data ?? null}
-            prefillFromProposal={iaPrefill}
+            prefillFromProposal={null}
             externalCreateMutation={createMutation}
             externalUpdateMutation={updateMutation}
           />
@@ -216,7 +219,8 @@ function CreatePagoPage() {
         open={mode === 'ia'}
         tipo="pago"
         onClose={() => setMode('selector')}
-        onConfirm={handleIAConfirm}
+        onCreated={handleIACreated}
+        createResource={(payload) => createMutation.mutateAsync(payload as PagoCreate)}
         onManualLoad={() => setMode('form')}
       />
     </div>
