@@ -93,10 +93,15 @@ describe('CuentaCorrientePage', () => {
     expect(screen.getByTestId('tabla-facturas-row-f-2')).toBeInTheDocument()
   })
 
-  it('renders the HistorialCronologico with the full historial array', () => {
+  it('renders the HistorialCronologico with the full historial array after selecting the Historial tab', () => {
+    // C-13 redesign (Detalle Proveedor toggle): Facturas / Pagos / Historial
+    // share one panel — only the selected tab's content is rendered.
     render(<CuentaCorrientePage cuentaCorriente={triple} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }))
     expect(screen.getByTestId('historial-row-f-1')).toBeInTheDocument()
     expect(screen.getByTestId('historial-row-f-2')).toBeInTheDocument()
+    // Switching away from Facturas hides its rows.
+    expect(screen.queryByTestId('tabla-facturas-row-f-1')).not.toBeInTheDocument()
   })
 
   it('the empty triple (saldo=0, empty arrays) shows the empty state', () => {
@@ -128,13 +133,30 @@ describe('CuentaCorrientePage', () => {
   it('cross-block invariant: the last historial row saldo_acumulado equals the SaldoBadge.saldo', () => {
     // C-12 D10 invariant: the last historial row's saldo_acumulado
     // equals the response's saldo. The page composes both blocks; we
-    // assert the rendered values match.
+    // assert the rendered values match (after selecting the Historial tab).
     render(<CuentaCorrientePage cuentaCorriente={triple} />)
     const badge = screen.getByTestId('saldo-badge')
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }))
     const lastRow = screen.getByTestId('historial-row-f-2')
     const lastCell = within(lastRow).getByTestId('historial-saldo-acumulado')
     // Both render the ARS-formatted 2000.00 with the same sign.
     expect(badge.textContent).toContain('2.000,00')
     expect(lastCell.textContent).toContain('2.000,00')
+  })
+
+  it('the Pagos tab renders payment entries derived from the historial array', () => {
+    // C-13 redesign: the Pagos tab has no dedicated query — it filters
+    // the same historial array the page already received (tipo === 'PAGO').
+    const withPago: CuentaCorrienteResponse = {
+      ...triple,
+      historial: [
+        ...triple.historial,
+        { id: 'pago-1', tipo: 'PAGO', fecha: '2026-06-25', monto: 300, saldo_acumulado: 1700 },
+      ],
+    }
+    render(<CuentaCorrientePage cuentaCorriente={withPago} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Pagos' }))
+    expect(screen.getByTestId('pagos-row-pago-1')).toBeInTheDocument()
+    expect(screen.queryByTestId('tabla-facturas-row-f-1')).not.toBeInTheDocument()
   })
 })

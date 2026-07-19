@@ -72,17 +72,17 @@ export function FiltrosFacturas({ filters, onChange }: FiltrosFacturasProps) {
     <div
       role="group"
       aria-label="Filtros de facturas"
-      className="flex flex-wrap items-end gap-3 rounded-xl border border-black/[0.04] bg-cream-dark/20 p-3 dark:border-white/5 dark:bg-white/[0.02]"
+      className="flex flex-wrap items-end gap-3 rounded-card-sm border border-border-subtle bg-page/20 p-3"
     >
       <div className="flex flex-col gap-1">
-        <label htmlFor="filtro-estado" className="text-xs font-medium text-navy-500 dark:text-zinc-400">
+        <label htmlFor="filtro-estado" className="text-xs font-medium text-ink-soft">
           Estado
         </label>
         <select
           id="filtro-estado"
           value={filters.estado ?? ''}
           onChange={handleEstado}
-          className="rounded-lg border border-black/[0.06] bg-white px-2 py-1.5 text-sm text-navy-800 focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-100 dark:border-white/10 dark:bg-espresso dark:text-zinc-100 dark:focus:ring-accent-500/20"
+          className="rounded-lg border border-border-subtle bg-surface px-2 py-1.5 text-sm text-ink focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
         >
           {ESTADO_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -93,7 +93,7 @@ export function FiltrosFacturas({ filters, onChange }: FiltrosFacturasProps) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="filtro-fecha-desde" className="text-xs font-medium text-navy-500 dark:text-zinc-400">
+        <label htmlFor="filtro-fecha-desde" className="text-xs font-medium text-ink-soft">
           Fecha desde
         </label>
         <input
@@ -101,12 +101,12 @@ export function FiltrosFacturas({ filters, onChange }: FiltrosFacturasProps) {
           type="date"
           value={filters.fecha_desde ?? ''}
           onChange={handleFechaDesde}
-          className="rounded-lg border border-black/[0.06] bg-white px-2 py-1.5 text-sm text-navy-800 focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-100 dark:border-white/10 dark:bg-espresso dark:text-zinc-100 dark:focus:ring-accent-500/20"
+          className="rounded-lg border border-border-subtle bg-surface px-2 py-1.5 text-sm text-ink focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
         />
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="filtro-fecha-hasta" className="text-xs font-medium text-navy-500 dark:text-zinc-400">
+        <label htmlFor="filtro-fecha-hasta" className="text-xs font-medium text-ink-soft">
           Fecha hasta
         </label>
         <input
@@ -114,7 +114,7 @@ export function FiltrosFacturas({ filters, onChange }: FiltrosFacturasProps) {
           type="date"
           value={filters.fecha_hasta ?? ''}
           onChange={handleFechaHasta}
-          className="rounded-lg border border-black/[0.06] bg-white px-2 py-1.5 text-sm text-navy-800 focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-100 dark:border-white/10 dark:bg-espresso dark:text-zinc-100 dark:focus:ring-accent-500/20"
+          className="rounded-lg border border-border-subtle bg-surface px-2 py-1.5 text-sm text-ink focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
         />
       </div>
 
@@ -122,7 +122,7 @@ export function FiltrosFacturas({ filters, onChange }: FiltrosFacturasProps) {
         <button
           type="button"
           onClick={handleClear}
-          className="mb-0.5 self-end text-sm font-semibold text-navy-500 underline-offset-2 transition-colors hover:text-navy-700 hover:underline dark:text-zinc-400 dark:hover:text-zinc-200"
+          className="mb-0.5 self-end text-sm font-semibold text-ink-soft underline-offset-2 transition-colors hover:text-ink-soft-2 hover:underline"
         >
           Limpiar filtros
         </button>

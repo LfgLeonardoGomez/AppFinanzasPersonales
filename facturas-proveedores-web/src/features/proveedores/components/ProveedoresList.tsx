@@ -1,19 +1,26 @@
 /**
- * ProveedoresList — paginated, sortable list of suppliers.
+ * ProveedoresList — low-density card grid of suppliers (redesign:
+ * design/screen-proveedores — "Listado Proveedores" handoff).
  *
- * Redesigned with premium table styling, category badges, and icon actions.
- * All original test contracts preserved (button/link names, dialog roles).
+ * LAYOUT.md: outside of the cuenta-corriente ledger, the app never shows
+ * tables — cards and simple lists only. This replaces the previous
+ * premium-table layout with a grid of cards (search on top, saldo +
+ * quick actions per card), matching the Claude Design handoff.
+ *
+ * All original test contracts preserved (button/link names, dialog roles,
+ * empty-state copy, "Ver cuenta corriente" href per row).
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useProveedores, useDeleteProveedor } from '../api/proveedoresHooks'
 import { DeleteProveedorDialog } from './DeleteProveedorDialog'
 import { formatSaldo } from '@shared/utils/currency'
 import { PageHeader } from '@shared/components/PageHeader/PageHeader'
 import { Card } from '@shared/components/Card/Card'
+import { Button } from '@shared/components/Button/Button'
 import { EmptyState } from '@shared/components/EmptyState/EmptyState'
 import { LoadingState } from '@shared/components/LoadingState/LoadingState'
-import { Pencil, Trash2, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Pencil, Trash2, ArrowUpDown, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import type { Proveedor, ProveedorListItem } from '@shared/api/api'
 
 type OrderBy = 'nombre' | 'saldo'
@@ -23,9 +30,25 @@ interface ProveedoresListProps {
   onEditProveedor: (proveedor: ProveedorListItem) => void
 }
 
+function matchesSearch(p: ProveedorListItem, term: string): boolean {
+  const needle = term.trim().toLowerCase()
+  if (!needle) return true
+  return (
+    p.nombre.toLowerCase().includes(needle) ||
+    Boolean(p.cuit?.toLowerCase().includes(needle))
+  )
+}
+
+function saldoColorClass(saldo: number): string {
+  if (saldo > 0) return 'text-danger'
+  if (saldo < 0) return 'text-success'
+  return 'text-ink'
+}
+
 export function ProveedoresList({ onNewProveedor, onEditProveedor }: ProveedoresListProps) {
   const [orderBy, setOrderBy] = useState<OrderBy>('nombre')
   const [page, setPage] = useState(1)
+  const [search, setSearch] = useState('')
 
   const [pendingDelete, setPendingDelete] = useState<Proveedor | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
@@ -53,122 +76,83 @@ export function ProveedoresList({ onNewProveedor, onEditProveedor }: Proveedores
     setShowConfirmDialog(false)
   }
 
+  const items = Array.isArray(data) ? data : []
+  const filteredItems = useMemo(
+    () => items.filter((p) => matchesSearch(p, search)),
+    [items, search],
+  )
+  const hasMore = items.length === 20 // backend page_size heuristic
+
   if (isLoading) {
     return <LoadingState label="Cargando proveedores…" />
   }
 
   if (isError) {
     return (
-      <div role="alert" className="rounded-xl bg-danger-bg p-4 text-sm text-danger ring-1 ring-danger/10">
+      <div role="alert" className="rounded-card-sm bg-danger-bg p-4 text-sm text-danger ring-1 ring-danger/10">
         Error al cargar los proveedores.
       </div>
     )
   }
 
-  const items = Array.isArray(data) ? data : []
-  const hasMore = items.length === 20 // backend page_size heuristic
-
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <PageHeader eyebrow="Gestión" title="Proveedores" />
-        <button
-          type="button"
-          onClick={onNewProveedor}
-          className="inline-flex items-center gap-2 rounded-full bg-navy-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(10,37,64,0.20)] transition-all duration-200 ease-[var(--ease-out)] hover:bg-navy-600 hover:shadow-[0_6px_20px_rgba(10,37,64,0.28)] active:scale-[0.98] dark:bg-accent-500 dark:hover:bg-accent-600"
-        >
-          Nuevo proveedor
-        </button>
+        <Button onClick={onNewProveedor}>+ Nuevo proveedor</Button>
       </div>
 
-      {/* Sort controls */}
-      <div className="flex items-center gap-2" role="group" aria-label="Ordenar por">
-        <SortPill
-          label="Nombre"
-          active={orderBy === 'nombre'}
-          onClick={() => { setOrderBy('nombre'); setPage(1) }}
-        />
-        <SortPill
-          label="Saldo"
-          active={orderBy === 'saldo'}
-          onClick={() => { setOrderBy('saldo'); setPage(1) }}
-        />
+      {/* Search + sort row */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <label className="relative flex w-full items-center gap-2 rounded-card-sm border border-border-subtle bg-surface px-4 py-1 sm:max-w-sm">
+          <Search className="h-4 w-4 shrink-0 text-ink-soft" aria-hidden="true" />
+          <span className="sr-only">Buscar proveedor</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar proveedor por nombre o CUIT"
+            className="w-full border-none bg-transparent py-2.5 text-sm text-ink placeholder:text-ink-soft focus:outline-none"
+          />
+        </label>
+
+        <div className="flex items-center gap-2" role="group" aria-label="Ordenar por">
+          <SortPill
+            label="Nombre"
+            active={orderBy === 'nombre'}
+            onClick={() => { setOrderBy('nombre'); setPage(1) }}
+          />
+          <SortPill
+            label="Saldo"
+            active={orderBy === 'saldo'}
+            onClick={() => { setOrderBy('saldo'); setPage(1) }}
+          />
+        </div>
       </div>
 
-      {/* List */}
+      {/* Grid */}
       {items.length === 0 ? (
         <EmptyState
           title="Sin proveedores"
           description="No hay proveedores cargados."
         />
+      ) : filteredItems.length === 0 ? (
+        <EmptyState
+          title="Sin resultados"
+          description="Ningún proveedor coincide con la búsqueda."
+        />
       ) : (
-        <Card noPadding className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-black/[0.04] bg-cream-dark/40 dark:border-white/5 dark:bg-white/[0.02]">
-                  <th className="px-6 py-3.5 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
-                    Nombre
-                  </th>
-                  <th className="px-6 py-3.5 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
-                    Categoría
-                  </th>
-                  <th className="px-6 py-3.5 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
-                    Saldo
-                  </th>
-                  <th className="px-6 py-3.5 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-black/[0.04] dark:divide-white/5">
-                {items.map((p) => (
-                  <tr
-                    key={p.id}
-                    className="transition-colors hover:bg-cream-dark/30 dark:hover:bg-white/[0.02]"
-                  >
-                    <td className="px-6 py-4 font-medium text-navy-800 dark:text-zinc-100">
-                      {p.nombre}
-                    </td>
-                    <td className="px-6 py-4">
-                      <CategoryBadge categoria={p.categoria} />
-                    </td>
-                    <td className="px-6 py-4 font-sans tabular-nums text-navy-700 dark:text-zinc-300">
-                      {formatSaldo(p.saldo)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Link
-                          to={`/proveedores/${p.id}`}
-                          className="text-xs font-medium text-navy-500 underline-offset-2 transition-colors hover:text-navy-700 hover:underline dark:text-zinc-400 dark:hover:text-zinc-200"
-                        >
-                          Ver cuenta corriente
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => onEditProveedor(p)}
-                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-navy-600 transition-colors hover:bg-navy-50 dark:text-zinc-300 dark:hover:bg-white/[0.04]"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteClick(p)}
-                          disabled={deleteMutation.isPending}
-                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger-bg dark:hover:bg-danger/10"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredItems.map((p) => (
+            <ProveedorCard
+              key={p.id}
+              proveedor={p}
+              onEdit={() => onEditProveedor(p)}
+              onDelete={() => handleDeleteClick(p)}
+              deleting={deleteMutation.isPending}
+            />
+          ))}
+        </div>
       )}
 
       {/* Pagination */}
@@ -178,19 +162,19 @@ export function ProveedoresList({ onNewProveedor, onEditProveedor }: Proveedores
             type="button"
             disabled={page <= 1}
             onClick={() => setPage((p) => p - 1)}
-            className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-navy-600 transition-colors hover:bg-cream-dark disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-white/[0.04]"
+            className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-ink-soft-2 transition-colors hover:bg-page disabled:opacity-40"
           >
             <ChevronLeft className="h-4 w-4" />
             Anterior
           </button>
-          <span className="text-sm text-navy-400 dark:text-zinc-500">
+          <span className="text-sm text-ink-soft">
             Página {page}
           </span>
           <button
             type="button"
             disabled={!hasMore}
             onClick={() => setPage((p) => p + 1)}
-            className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-navy-600 transition-colors hover:bg-cream-dark disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-white/[0.04]"
+            className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-ink-soft-2 transition-colors hover:bg-page disabled:opacity-40"
           >
             Siguiente
             <ChevronRight className="h-4 w-4" />
@@ -216,10 +200,10 @@ function SortPill({ label, active, onClick }: { label: string; active: boolean; 
       aria-pressed={active}
       onClick={onClick}
       className={`
-        inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200
+        inline-flex items-center gap-1.5 rounded-pill px-3 py-1.5 font-inter text-xs font-medium transition-all duration-200
         ${active
-          ? 'bg-navy-500 text-white shadow-sm dark:bg-accent-500'
-          : 'bg-cream-dark text-navy-600 hover:bg-navy-100 dark:bg-white/[0.04] dark:text-zinc-300 dark:hover:bg-white/[0.08]'
+          ? 'bg-violet-500 text-white shadow-sm'
+          : 'bg-page text-ink-soft-2 hover:bg-violet-50'
         }
       `}
     >
@@ -229,20 +213,87 @@ function SortPill({ label, active, onClick }: { label: string; active: boolean; 
   )
 }
 
-function CategoryBadge({ categoria }: { categoria: string }) {
-  const isServicio = categoria === 'SERVICIO'
+interface ProveedorCardProps {
+  proveedor: ProveedorListItem
+  onEdit: () => void
+  onDelete: () => void
+  deleting: boolean
+}
+
+function ProveedorCard({ proveedor, onEdit, onDelete, deleting }: ProveedorCardProps) {
+  const initial = proveedor.nombre.charAt(0).toUpperCase()
+
   return (
-    <span
-      className={`
-        inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide
-        ${isServicio
-          ? 'bg-accent-50 text-accent-700 ring-1 ring-accent-200 dark:bg-accent-500/10 dark:text-accent-300 dark:ring-accent-500/20'
-          : 'bg-navy-50 text-navy-600 ring-1 ring-navy-200 dark:bg-navy-800/30 dark:text-navy-300 dark:ring-navy-700/30'
-        }
-      `}
-    >
-      {categoria}
-    </span>
+    <Card noPadding className="flex flex-col gap-4 p-[18px]">
+      <div className="flex items-start justify-between gap-2">
+        <Link
+          to={`/proveedores/${proveedor.id}`}
+          aria-label="Ver cuenta corriente"
+          className="flex min-w-0 items-center gap-2.5"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-chip bg-violet-50 text-[13px] font-bold text-violet-500">
+            {initial}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate font-inter text-sm font-semibold text-ink">
+              {proveedor.nombre}
+            </span>
+            {proveedor.cuit && (
+              <span className="block truncate font-inter text-[11.5px] text-ink-soft">
+                {proveedor.cuit}
+              </span>
+            )}
+          </span>
+        </Link>
+
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="rounded-lg p-1.5 text-ink-soft transition-colors hover:bg-violet-50 hover:text-violet-900"
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="sr-only">Editar</span>
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleting}
+            className="rounded-lg p-1.5 text-ink-soft transition-colors hover:bg-danger-bg hover:text-danger"
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="sr-only">Eliminar</span>
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <p className="font-inter text-[10.5px] font-semibold uppercase tracking-[0.03em] text-ink-soft">
+          Saldo
+        </p>
+        <p className={`mt-0.5 font-inter text-base font-bold ${saldoColorClass(proveedor.saldo)}`}>
+          {formatSaldo(proveedor.saldo)}
+        </p>
+      </div>
+
+      {/* TODO(carga-unificada): once the unified IA/manual carga modal (C-21)
+          lands, these should open it pre-set to tipo=factura|pago and
+          proveedor_id={proveedor.id} instead of navigating away. */}
+      <div className="flex gap-2">
+        <Link
+          to={`/facturas/nueva?proveedor_id=${proveedor.id}`}
+          className="flex-1 rounded-pill border border-border-violet-soft bg-surface-soft px-0 py-2 text-center font-inter text-xs font-semibold text-violet-900 transition-colors hover:bg-violet-50"
+        >
+          Factura
+        </Link>
+        <Link
+          to={`/pagos/nuevo?proveedor_id=${proveedor.id}`}
+          className="flex-1 rounded-pill border border-border-violet-soft bg-surface-soft px-0 py-2 text-center font-inter text-xs font-semibold text-violet-900 transition-colors hover:bg-violet-50"
+        >
+          Pago
+        </Link>
+      </div>
+    </Card>
   )
 }
 

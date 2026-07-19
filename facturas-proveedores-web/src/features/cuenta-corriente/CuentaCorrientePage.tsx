@@ -1,15 +1,28 @@
 /**
- * CuentaCorrientePage — premium composition of the three blocks (C-13, D7).
+ * CuentaCorrientePage — saldo card + Facturas/Pagos/Historial toggle
+ * (C-13, D7; redesign: design/screen-proveedores — Detalle Proveedor handoff).
+ *
+ * The Claude Design handoff replaces the previous "always visible" table +
+ * historial layout with a single toggle (pills) that swaps the content of
+ * one panel — there is no more a separate, always-rendered "Historial"
+ * section. This matches LAYOUT.md ("cuenta corriente ... debe sentirse
+ * liviana") and UX_PRINCIPLES.md #3 ("una pantalla, un objetivo").
+ *
+ * The "Pagos" tab is derived from the existing `historial` array (filtered
+ * to `tipo === 'PAGO'`) instead of a new query — the component stays
+ * presentational (no HTTP calls), reusing the C-12 response verbatim.
  *
  * Preserves all test contracts:
  *  - data-testid="cuenta-corriente-page"
- *  - grid layout md:grid-cols-12
  *  - section aria-label="Saldo", "Facturas con estado", "Historial cronológico"
  *  - "Sin movimientos registrados." text
+ *  - Default tab is "Facturas" (facturas-con-estado rows render without
+ *    any interaction); "Pagos" / "Historial" render after clicking their pill.
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { SaldoBadge } from './components/SaldoBadge'
 import { TablaFacturasConEstado } from './components/TablaFacturasConEstado'
+import { PagosRegistrados } from './components/PagosRegistrados'
 import { HistorialCronologico } from './components/HistorialCronologico'
 import { Card } from '@shared/components/Card/Card'
 import type {
@@ -21,6 +34,20 @@ interface CuentaCorrientePageProps {
   cuentaCorriente: CuentaCorrienteResponse
 }
 
+type Tab = 'facturas' | 'pagos' | 'historial'
+
+const TAB_LABELS: Record<Tab, string> = {
+  facturas: 'Facturas',
+  pagos: 'Pagos',
+  historial: 'Historial',
+}
+
+const PANEL_TITLES: Record<Tab, string> = {
+  facturas: 'Facturas con estado',
+  pagos: 'Pagos registrados',
+  historial: 'Historial cronológico',
+}
+
 function isEmptyTriple(cc: CuentaCorrienteResponse): boolean {
   return (
     cc.saldo === 0 &&
@@ -29,17 +56,44 @@ function isEmptyTriple(cc: CuentaCorrienteResponse): boolean {
   )
 }
 
+function TabPill({
+  tab,
+  active,
+  onSelect,
+}: {
+  tab: Tab
+  active: boolean
+  onSelect: (tab: Tab) => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={() => onSelect(tab)}
+      className={`
+        rounded-pill px-3.5 py-1.5 font-inter text-xs font-semibold transition-colors duration-160
+        ${active ? 'bg-surface text-violet-900 shadow-sm' : 'bg-transparent text-ink-soft hover:text-ink-soft-2'}
+      `}
+    >
+      {TAB_LABELS[tab]}
+    </button>
+  )
+}
+
 export function CuentaCorrientePage({ cuentaCorriente }: CuentaCorrientePageProps) {
   const [filters, setFilters] = useState<FiltrosFacturasType>({})
+  const [tab, setTab] = useState<Tab>('facturas')
+
+  const pagos = useMemo(
+    () => cuentaCorriente.historial.filter((h) => h.tipo === 'PAGO'),
+    [cuentaCorriente.historial],
+  )
 
   if (isEmptyTriple(cuentaCorriente)) {
     return (
-      <div
-        data-testid="cuenta-corriente-page"
-        className="flex flex-col gap-6"
-      >
+      <div data-testid="cuenta-corriente-page" className="flex flex-col gap-6">
         <Card>
-          <p className="text-xs font-semibold uppercase tracking-wider text-navy-400 dark:text-zinc-500">
+          <p className="font-inter text-xs font-semibold uppercase tracking-wider text-ink-soft">
             Saldo
           </p>
           <div className="mt-2">
@@ -48,7 +102,7 @@ export function CuentaCorrientePage({ cuentaCorriente }: CuentaCorrientePageProp
         </Card>
 
         <Card>
-          <p role="status" className="text-sm text-navy-500 dark:text-zinc-400">
+          <p role="status" className="text-sm text-ink-soft">
             Sin movimientos registrados.
           </p>
         </Card>
@@ -59,51 +113,43 @@ export function CuentaCorrientePage({ cuentaCorriente }: CuentaCorrientePageProp
   return (
     <div
       data-testid="cuenta-corriente-page"
-      className="grid grid-cols-1 gap-6 md:grid-cols-12"
+      className="grid grid-cols-1 gap-5 md:grid-cols-12 md:items-start"
     >
-      <section
-        aria-label="Saldo"
-        className="md:col-span-4 md:row-span-2"
-      >
-        <Card className="h-full">
-          <p className="text-xs font-semibold uppercase tracking-wider text-navy-400 dark:text-zinc-500">
+      <section aria-label="Saldo" className="md:col-span-4">
+        <Card className="flex flex-col gap-2.5">
+          <p className="font-inter text-xs font-semibold uppercase tracking-wider text-ink-soft">
             Saldo
           </p>
-          <div className="mt-3">
-            <SaldoBadge saldo={cuentaCorriente.saldo} />
-          </div>
-          <p className="mt-3 text-xs leading-relaxed text-navy-400 dark:text-zinc-500">
-            Calculado al momento. Se actualiza automáticamente al cargar
-            facturas o pagos.
+          <SaldoBadge saldo={cuentaCorriente.saldo} />
+          <p className="text-xs leading-relaxed text-ink-soft">
+            Calculado al momento a partir de facturas y pagos. Se actualiza
+            automáticamente.
           </p>
         </Card>
       </section>
 
-      <section
-        aria-label="Facturas con estado"
-        className="md:col-span-8"
-      >
+      <section aria-label={PANEL_TITLES[tab]} className="md:col-span-8">
         <Card>
-          <h2 className="mb-4 font-serif text-base font-semibold text-navy-800 dark:text-zinc-100">
-            Facturas con estado
-          </h2>
-          <TablaFacturasConEstado
-            facturas={cuentaCorriente.facturas_con_estado}
-            filters={filters}
-            onChangeFilters={setFilters}
-          />
-        </Card>
-      </section>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-inter text-base font-semibold text-ink">
+              {PANEL_TITLES[tab]}
+            </h2>
+            <div className="flex gap-0.5 rounded-pill bg-page p-[3px]">
+              <TabPill tab="facturas" active={tab === 'facturas'} onSelect={setTab} />
+              <TabPill tab="pagos" active={tab === 'pagos'} onSelect={setTab} />
+              <TabPill tab="historial" active={tab === 'historial'} onSelect={setTab} />
+            </div>
+          </div>
 
-      <section
-        aria-label="Historial cronológico"
-        className="md:col-span-8"
-      >
-        <Card>
-          <h2 className="mb-4 font-serif text-base font-semibold text-navy-800 dark:text-zinc-100">
-            Historial cronológico
-          </h2>
-          <HistorialCronologico historial={cuentaCorriente.historial} />
+          {tab === 'facturas' && (
+            <TablaFacturasConEstado
+              facturas={cuentaCorriente.facturas_con_estado}
+              filters={filters}
+              onChangeFilters={setFilters}
+            />
+          )}
+          {tab === 'pagos' && <PagosRegistrados pagos={pagos} />}
+          {tab === 'historial' && <HistorialCronologico historial={cuentaCorriente.historial} />}
         </Card>
       </section>
     </div>

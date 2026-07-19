@@ -19,7 +19,7 @@
  * TDD: Task 10.1 (RED) → 10.2 (GREEN) → 10.3 (TRIANGULATE).
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
@@ -175,11 +175,15 @@ describe('ProveedorDetailPage', () => {
     expect(link).toHaveAttribute('href', `/pagos/nuevo?proveedor_id=${PROVEEDOR_ID}`)
   })
 
-  it('renders the TablaFacturasConEstado and HistorialCronologico below the action row', async () => {
+  it('renders the TablaFacturasConEstado (default tab) and HistorialCronologico (Historial tab) below the action row', async () => {
+    // C-13 redesign (Detalle Proveedor toggle): Facturas is the default
+    // tab; Historial renders after selecting its pill (they no longer
+    // render simultaneously — LAYOUT.md "cuenta corriente ... liviana").
     render(<ProveedorDetailPage />, { wrapper: createWrapper() })
     await waitFor(() =>
       expect(screen.getByTestId('tabla-facturas-row-factura-1')).toBeInTheDocument(),
     )
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }))
     expect(screen.getByTestId('historial-row-factura-1')).toBeInTheDocument()
   })
 

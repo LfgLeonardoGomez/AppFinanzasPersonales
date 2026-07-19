@@ -46,14 +46,14 @@ export function TablaFacturasConEstado({
     return (
       <div>
         <FiltrosFacturas filters={filters} onChange={onChangeFilters} />
-        <div className="mt-4 rounded-xl bg-cream-dark/40 p-4 text-center ring-1 ring-black/[0.04] dark:bg-white/[0.02] dark:ring-white/5">
-          <p role="status" className="text-sm text-navy-500 dark:text-zinc-400">
+        <div className="mt-4 rounded-card-sm bg-page/40 p-4 text-center ring-1 ring-border-subtle">
+          <p role="status" className="text-sm text-ink-soft">
             No hay facturas con esos filtros.
           </p>
           <button
             type="button"
             onClick={() => onChangeFilters({})}
-            className="mt-2 text-sm font-semibold text-accent-500 transition-colors hover:text-accent-600 dark:text-accent-400"
+            className="mt-2 text-sm font-semibold text-violet-500 transition-colors hover:text-violet-600"
           >
             Limpiar filtros
           </button>
@@ -66,41 +66,41 @@ export function TablaFacturasConEstado({
     <div>
       <FiltrosFacturas filters={filters} onChange={onChangeFilters} />
 
-      <div className="mt-4 overflow-hidden rounded-xl border border-black/[0.04] dark:border-white/5">
+      <div className="mt-4 overflow-hidden rounded-card-sm border border-border-subtle">
         <table className="w-full text-left text-sm" aria-label="Facturas con estado">
           <thead>
-            <tr className="border-b border-black/[0.04] bg-cream-dark/40 dark:border-white/5 dark:bg-white/[0.02]">
-              <th className="px-4 py-3 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
+            <tr className="border-b border-border-subtle bg-page/40">
+              <th className="px-4 py-3 font-inter text-xs font-semibold uppercase tracking-wider text-ink-soft">
                 Número
               </th>
-              <th className="px-4 py-3 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
+              <th className="px-4 py-3 font-inter text-xs font-semibold uppercase tracking-wider text-ink-soft">
                 Fecha emisión
               </th>
-              <th className="px-4 py-3 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
+              <th className="px-4 py-3 font-inter text-xs font-semibold uppercase tracking-wider text-ink-soft">
                 Monto
               </th>
-              <th className="px-4 py-3 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
+              <th className="px-4 py-3 font-inter text-xs font-semibold uppercase tracking-wider text-ink-soft">
                 Estado
               </th>
-              <th className="px-4 py-3 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
+              <th className="px-4 py-3 font-inter text-xs font-semibold uppercase tracking-wider text-ink-soft">
                 Archivo
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-black/[0.04] dark:divide-white/5">
+          <tbody className="divide-y divide-border-subtle-2">
             {filtered.map((f) => (
               <tr
                 key={f.id}
                 data-testid={`tabla-facturas-row-${f.id}`}
-                className="transition-colors hover:bg-cream-dark/30 dark:hover:bg-white/[0.02]"
+                className="transition-colors hover:bg-page/30"
               >
-                <td className="px-4 py-3 font-medium text-navy-800 dark:text-zinc-100">
+                <td className="px-4 py-3 font-medium text-ink">
                   {f.numero ?? '—'}
                 </td>
-                <td className="px-4 py-3 tabular-nums text-navy-600 dark:text-zinc-400">
+                <td className="px-4 py-3 tabular-nums text-ink-soft-2">
                   {f.fecha_emision}
                 </td>
-                <td className="px-4 py-3 tabular-nums font-medium text-navy-700 dark:text-zinc-300">
+                <td className="px-4 py-3 tabular-nums font-medium text-ink-soft-2">
                   {formatMonto(f.monto_total)}
                 </td>
                 <td className="px-4 py-3">
@@ -112,13 +112,13 @@ export function TablaFacturasConEstado({
                       href={f.archivo_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs font-medium text-accent-500 transition-colors hover:text-accent-600 dark:text-accent-400"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-violet-500 transition-colors hover:text-violet-600"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                       Ver archivo
                     </a>
                   ) : (
-                    <span className="text-navy-300 dark:text-zinc-600">—</span>
+                    <span className="text-ink-soft">—</span>
                   )}
                 </td>
               </tr>

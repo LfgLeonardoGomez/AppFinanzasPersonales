@@ -1,13 +1,27 @@
 /**
- * ProveedorForm — create/edit supplier form.
+ * ProveedorForm — create/edit supplier form (redesign: design/screen-proveedores
+ * — "Proveedor Form" handoff: Nombre, CUIT, Teléfono, Notas, Guardar/Cancelar,
+ * Eliminar only in edit mode).
  *
- * Premium card layout with InputField wrappers. All original semantics
- * preserved for test compatibility (label names, button names, error texts).
+ * DEVIATION from the Claude Design handoff: the mock shows an "Email de
+ * contacto" field. The real Proveedor model (knowledge-base/04_modelo_de_datos.md,
+ * backend app/models/proveedor.py, `@shared/api/api` `Proveedor` type) has NO
+ * `email` field — only `nombre`, `cuit`, `telefono`, `categoria`, `notas`.
+ * Inventing a persisted field the backend does not support would violate
+ * "never invent a field" — so this form keeps `categoria` (the real field)
+ * instead of an `email` input. See the redesign report for detail.
+ *
+ * All original test contracts preserved (label names, button names, error
+ * texts). New: an optional `onDeleteClick` prop renders "Eliminar proveedor"
+ * in edit mode only (Proveedor Form handoff) — the caller (ProveedorDialog)
+ * owns the actual delete confirmation + mutation, reusing the existing
+ * DeleteProveedorDialog + useDeleteProveedor (no new API).
  */
 import { useState, type FormEvent, type ChangeEvent } from 'react'
 import { useCreateProveedor, useUpdateProveedor } from '../api/proveedoresHooks'
 import { InputField } from '@shared/components/InputField/InputField'
 import { Card } from '@shared/components/Card/Card'
+import { Button } from '@shared/components/Button/Button'
 import type { Proveedor, ProveedorCreate, ProveedorUpdate, Categoria } from '@shared/api/api'
 
 const CUIT_REGEX = /^\d{2}-\d{8}-\d{1}$/
@@ -22,6 +36,8 @@ interface ProveedorFormProps {
   proveedor?: Proveedor
   onSuccess: (saved: Proveedor) => void
   onCancel: () => void
+  /** Renders "Eliminar proveedor" (edit mode only) when provided. */
+  onDeleteClick?: () => void
 }
 
 interface FormState {
@@ -48,7 +64,7 @@ function initialState(proveedor?: Proveedor): FormState {
   }
 }
 
-export function ProveedorForm({ proveedor, onSuccess, onCancel }: ProveedorFormProps) {
+export function ProveedorForm({ proveedor, onSuccess, onCancel, onDeleteClick }: ProveedorFormProps) {
   const [form, setForm] = useState<FormState>(() => initialState(proveedor))
   const [errors, setErrors] = useState<FormErrors>({})
   const [cuitTouched, setCuitTouched] = useState(false)
@@ -126,7 +142,7 @@ export function ProveedorForm({ proveedor, onSuccess, onCancel }: ProveedorFormP
 
   return (
     <Card>
-      <h2 className="mb-6 font-serif text-xl font-semibold text-navy-800 dark:text-zinc-100">
+      <h2 className="mb-6 font-inter text-xl font-bold tracking-tight text-ink dark:text-zinc-100">
         {isEditMode ? 'Editar proveedor' : 'Nuevo proveedor'}
       </h2>
 
@@ -168,7 +184,7 @@ export function ProveedorForm({ proveedor, onSuccess, onCancel }: ProveedorFormP
         />
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="categoria" className="text-sm font-medium text-navy-700 dark:text-zinc-300">
+          <label htmlFor="categoria" className="text-sm font-medium text-ink">
             Categoría
           </label>
           <select
@@ -176,7 +192,7 @@ export function ProveedorForm({ proveedor, onSuccess, onCancel }: ProveedorFormP
             name="categoria"
             value={form.categoria}
             onChange={handleChange}
-            className="w-full rounded-xl border border-black/[0.06] bg-white px-3 py-2.5 text-sm text-navy-800 transition-all duration-200 focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-100 dark:border-white/10 dark:bg-espresso dark:text-zinc-100 dark:focus:ring-accent-500/20"
+            className="w-full rounded-card-sm border border-border-subtle bg-surface px-3 py-2.5 text-sm text-ink transition-all duration-200 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
           >
             {CATEGORIAS.map((c) => (
               <option key={c.value} value={c.value}>
@@ -187,7 +203,7 @@ export function ProveedorForm({ proveedor, onSuccess, onCancel }: ProveedorFormP
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="notas" className="text-sm font-medium text-navy-700 dark:text-zinc-300">
+          <label htmlFor="notas" className="text-sm font-medium text-ink">
             Notas
           </label>
           <textarea
@@ -196,7 +212,8 @@ export function ProveedorForm({ proveedor, onSuccess, onCancel }: ProveedorFormP
             value={form.notas}
             onChange={handleChange}
             rows={3}
-            className="w-full rounded-xl border border-black/[0.06] bg-white px-3 py-2.5 text-sm text-navy-800 transition-all duration-200 focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-100 dark:border-white/10 dark:bg-espresso dark:text-zinc-100 dark:focus:ring-accent-500/20"
+            placeholder="Condiciones de pago, referencias, etc."
+            className="w-full rounded-card-sm border border-border-subtle bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft transition-all duration-200 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
           />
         </div>
 
@@ -207,22 +224,25 @@ export function ProveedorForm({ proveedor, onSuccess, onCancel }: ProveedorFormP
         )}
 
         <div className="mt-2 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isPending}
-            className="rounded-full px-5 py-2.5 text-sm font-semibold text-navy-600 transition-colors hover:bg-cream-dark disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-white/[0.04]"
-          >
+          <Button type="button" variant="secondary" onClick={onCancel} disabled={isPending}>
             Cancelar
-          </button>
-          <button
-            type="submit"
-            disabled={isPending}
-            className="rounded-full bg-navy-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(10,37,64,0.20)] transition-all duration-200 ease-[var(--ease-out)] hover:bg-navy-600 hover:shadow-[0_6px_20px_rgba(10,37,64,0.28)] active:scale-[0.98] disabled:opacity-50 dark:bg-accent-500 dark:hover:bg-accent-600"
-          >
-            {isPending ? 'Guardando…' : 'Guardar'}
-          </button>
+          </Button>
+          <Button type="submit" variant="primary" loading={isPending}>
+            Guardar
+          </Button>
         </div>
+
+        {isEditMode && onDeleteClick && (
+          <Button
+            type="button"
+            variant="danger"
+            fullWidth
+            onClick={onDeleteClick}
+            disabled={isPending}
+          >
+            Eliminar proveedor
+          </Button>
+        )}
       </form>
     </Card>
   )

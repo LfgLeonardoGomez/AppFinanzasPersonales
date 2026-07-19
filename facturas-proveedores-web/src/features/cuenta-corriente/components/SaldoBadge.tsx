@@ -1,5 +1,6 @@
 /**
- * SaldoBadge — sign-dispatch badge for the cuenta-corriente `saldo` (C-13, D2).
+ * SaldoBadge — large sign-dispatch display for the cuenta-corriente `saldo`
+ * (C-13, D2; retheme: design/screen-proveedores).
  *
  * INVARIANTS (RN-SALDO, hard rule #4):
  *   - This component NEVER recomputes the saldo. It receives it as a prop
@@ -11,11 +12,11 @@
  *     (D11) — class names are not asserted in tests (implementation
  *     details, per strict-tdd.md).
  *
- * Visual (D11):
- *   - Deuda  (>0):  red family
- *   - Al día (=0):  green family
- *   - A favor (<0): blue family, with the literal " a favor" suffix
- *   - NaN:          unknown fallback (gray, "—")
+ * Visual (Detalle Proveedor handoff — "$36px bold, red if debt"):
+ *   - Deuda  (>0):  large bold red (--color-danger)
+ *   - Al día (=0):  large bold ink
+ *   - A favor (<0): large bold success green, with the literal " a favor" suffix
+ *   - NaN:          unknown fallback (muted, "—")
  */
 import { formatSaldo } from '@shared/utils/currency'
 
@@ -25,11 +26,13 @@ interface SaldoBadgeProps {
   saldo: number
 }
 
+const BASE_CLASSES = 'font-inter text-3xl font-extrabold tracking-tight lg:text-4xl'
+
 const VARIANT_CLASSES: Record<SaldoVariant, string> = {
-  deuda: 'inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-red-50 text-red-700 ring-1 ring-red-200',
-  'al-dia': 'inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-50 text-green-700 ring-1 ring-green-200',
-  'a-favor': 'inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-50 text-blue-700 ring-1 ring-blue-200',
-  unknown: 'inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-gray-100 text-gray-700 ring-1 ring-gray-200',
+  deuda: `${BASE_CLASSES} text-danger`,
+  'al-dia': `${BASE_CLASSES} text-ink dark:text-zinc-100`,
+  'a-favor': `${BASE_CLASSES} text-success`,
+  unknown: `${BASE_CLASSES} text-ink-soft`,
 }
 
 function variantFor(saldo: number): SaldoVariant {

@@ -68,13 +68,13 @@ export function DeleteProveedorDialog({
           }}
           onPointerDownOutside={(event) => event.preventDefault()}
           onInteractOutside={(event) => event.preventDefault()}
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-6 shadow-[0_8px_32px_rgba(10,37,64,0.12)] ring-1 ring-black/[0.04] focus:outline-none dark:bg-espresso dark:shadow-[0_8px_32px_rgba(0,0,0,0.4)] dark:ring-white/10"
+          className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-card bg-surface p-6 shadow-card ring-1 ring-border-subtle focus:outline-none dark:bg-card-dark dark:ring-white/10"
         >
-          <Dialog.Title className="mb-2 font-serif text-lg font-semibold text-navy-800 dark:text-zinc-100">
+          <Dialog.Title className="mb-2 font-inter text-lg font-semibold text-ink dark:text-zinc-100">
             Eliminar proveedor
           </Dialog.Title>
 
-          <Dialog.Description className="text-sm text-navy-600 dark:text-zinc-300">
+          <Dialog.Description className="text-sm text-ink-soft-2 dark:text-zinc-300">
             ¿Querés eliminar a <strong>{proveedor.nombre}</strong>?
           </Dialog.Description>
 
@@ -90,7 +90,7 @@ export function DeleteProveedorDialog({
               type="button"
               data-testid="delete-dialog-cancel"
               onClick={onCancel}
-              className="rounded-full px-5 py-2.5 text-sm font-semibold text-navy-600 transition-colors hover:bg-cream-dark dark:text-zinc-300 dark:hover:bg-white/[0.04]"
+              className="rounded-pill px-5 py-2.5 font-inter text-sm font-semibold text-ink-soft-2 transition-colors hover:bg-page dark:text-zinc-300 dark:hover:bg-white/[0.04]"
             >
               Cancelar
             </button>
@@ -98,7 +98,7 @@ export function DeleteProveedorDialog({
               type="button"
               data-testid="delete-dialog-confirm"
               onClick={onConfirm}
-              className="rounded-full bg-danger px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(220,38,38,0.20)] transition-all duration-200 ease-[var(--ease-out)] hover:bg-danger/90 hover:shadow-[0_6px_20px_rgba(220,38,38,0.28)] active:scale-[0.98]"
+              className="rounded-pill bg-danger px-5 py-2.5 font-inter text-sm font-semibold text-white shadow-[0_4px_12px_rgba(220,38,38,0.20)] transition-all duration-200 ease-[var(--ease-out)] hover:bg-danger/90 hover:shadow-[0_6px_20px_rgba(220,38,38,0.28)] active:scale-[0.98]"
             >
               Confirmar
             </button>

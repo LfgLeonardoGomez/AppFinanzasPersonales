@@ -7,9 +7,20 @@
  * Migration of the previous custom modal pattern (C-07) to a Radix
  * Dialog. The destructive confirmation flow (DeleteProveedorDialog)
  * is migrated separately (C-20, Phase 6) to a Radix AlertDialog.
+ *
+ * Redesign (design/screen-proveedores — "Proveedor Form" handoff): in edit
+ * mode, ProveedorForm renders an "Eliminar proveedor" button. Clicking it
+ * opens the existing DeleteProveedorDialog on top (Radix layers dialogs
+ * correctly — Esc/outside-click only dismiss the topmost one). Confirming
+ * reuses the existing `useDeleteProveedor` mutation — no new API — and
+ * calls `onCancel()` on success to close the whole flow.
  */
+import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { ProveedorForm } from './ProveedorForm'
+import { DeleteProveedorDialog } from './DeleteProveedorDialog'
+import { useDeleteProveedor } from '../api/proveedoresHooks'
+import { toast } from '@shared/components/Toaster/toast'
 import type { Proveedor } from '@shared/api/api'
 
 interface ProveedorDialogProps {
@@ -27,32 +38,61 @@ export function ProveedorDialog({
   onSuccess,
   onCancel,
 }: ProveedorDialogProps) {
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const deleteMutation = useDeleteProveedor()
+
+  function handleConfirmDelete() {
+    if (!proveedor) return
+    deleteMutation.mutate(proveedor.id, {
+      onSuccess: () => {
+        setConfirmDeleteOpen(false)
+        toast.success(`Proveedor "${proveedor.nombre}" eliminado.`)
+        onCancel()
+      },
+    })
+  }
+
   return (
-    <Dialog.Root
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) onCancel()
-      }}
-    >
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm dark:bg-black/40" />
-        <Dialog.Content
-          aria-label="Formulario de proveedor"
-          aria-modal="true"
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 p-4 focus:outline-none"
-        >
-          <Dialog.Title className="sr-only">Formulario de proveedor</Dialog.Title>
-          <Dialog.Description className="sr-only">
-            {mode === 'create' ? 'Crear un nuevo proveedor' : 'Editar proveedor existente'}
-          </Dialog.Description>
-          {mode === 'edit' && proveedor ? (
-            <ProveedorForm proveedor={proveedor} onSuccess={onSuccess} onCancel={onCancel} />
-          ) : (
-            <ProveedorForm onSuccess={onSuccess} onCancel={onCancel} />
-          )}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <>
+      <Dialog.Root
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) onCancel()
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm dark:bg-black/40" />
+          <Dialog.Content
+            aria-label="Formulario de proveedor"
+            aria-modal="true"
+            className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 p-4 focus:outline-none"
+          >
+            <Dialog.Title className="sr-only">Formulario de proveedor</Dialog.Title>
+            <Dialog.Description className="sr-only">
+              {mode === 'create' ? 'Crear un nuevo proveedor' : 'Editar proveedor existente'}
+            </Dialog.Description>
+            {mode === 'edit' && proveedor ? (
+              <ProveedorForm
+                proveedor={proveedor}
+                onSuccess={onSuccess}
+                onCancel={onCancel}
+                onDeleteClick={() => setConfirmDeleteOpen(true)}
+              />
+            ) : (
+              <ProveedorForm onSuccess={onSuccess} onCancel={onCancel} />
+            )}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <DeleteProveedorDialog
+        open={confirmDeleteOpen}
+        proveedor={proveedor ?? null}
+        hasDependencies={false}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
+    </>
   )
 }
 
