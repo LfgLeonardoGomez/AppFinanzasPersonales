@@ -34,6 +34,7 @@ const server = setupServer(
     } as PagoListResponse),
   ),
   http.get('/api/proveedores/buscar', () => HttpResponse.json([])),
+  http.get('/api/proveedores', () => HttpResponse.json([])),
 )
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))

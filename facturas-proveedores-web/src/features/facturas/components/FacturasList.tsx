@@ -1,20 +1,29 @@
 /**
  * FacturasList — paginated list of invoices with estado badges and delete confirmation.
  *
- * Premium table redesign. Test contracts preserved:
+ * Redesigned to the new design system (violet/beige/Inter tokens): a
+ * low-density row list inside a single Card, never a table (LAYOUT.md —
+ * "nunca convertir el resto de la app en tablas"). Test contracts preserved:
  *  - estado text visible (PENDIENTE / PAGADA)
  *  - ARS formatting
  *  - empty state text matches /sin facturas|no hay|empty/i
- *  - delete buttons with name /eliminar/i
+ *  - delete buttons with accessible name matching /eliminar/i
+ *  - edit button with accessible name exactly "Editar"
  *  - dialog role
  *  - confirm button with name /confirmar|sí|yes/i
+ *
+ * The supplier name shown per row is a display-only lookup (existing
+ * `useProveedores` hook — no new backend endpoint): `FacturaListItem` only
+ * carries `proveedor_id`, so the row falls back to a generic label while the
+ * lookup is loading or the supplier isn't in the (first-page) result.
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useFacturas, useDeleteFactura } from '../api/facturasHooks'
+import { useProveedores } from '@features/proveedores/api/proveedoresHooks'
 import { EstadoBadge } from './EstadoBadge'
 import { formatMonto } from '@shared/utils/currency'
-import { PageHeader } from '@shared/components/PageHeader/PageHeader'
 import { Card } from '@shared/components/Card/Card'
+import { Button } from '@shared/components/Button/Button'
 import { EmptyState } from '@shared/components/EmptyState/EmptyState'
 import { LoadingState } from '@shared/components/LoadingState/LoadingState'
 import { Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -41,38 +50,53 @@ function DeleteFacturaDialog({ open, factura, onConfirm, onCancel, isPending }: 
       role="dialog"
       aria-modal="true"
       aria-label="Confirmar eliminación"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 backdrop-blur-sm dark:bg-black/40"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 backdrop-blur-sm"
     >
-      <div className="w-full max-w-sm rounded-[1.5rem] bg-white p-6 shadow-[0_8px_32px_rgba(10,37,64,0.12)] ring-1 ring-black/[0.04] animate-fade-in-up dark:bg-card-dark dark:ring-white/10">
-        <h3 className="mb-2 font-serif text-lg font-semibold text-navy-800 dark:text-zinc-100">
-          ¿Eliminar factura?
-        </h3>
-        <p className="mb-5 text-sm text-navy-500 dark:text-zinc-400">
+      <div className="w-full max-w-sm rounded-card bg-surface p-6 shadow-card ring-1 ring-border-subtle animate-fade-in-up font-inter">
+        <h3 className="mb-2 text-lg font-bold text-ink">¿Eliminar factura?</h3>
+        <p className="mb-5 text-sm text-ink-soft">
           ¿Estás seguro de que querés eliminar la factura{' '}
-          <strong className="text-navy-700 dark:text-zinc-200">
-            {factura.numero ?? factura.id}
-          </strong>
-          ? Esta acción no se puede deshacer.
+          <strong className="text-ink">{factura.numero ?? factura.id}</strong>? Esta acción no se
+          puede deshacer.
         </p>
         <div className="flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isPending}
-            className="rounded-full px-4 py-2 text-sm font-semibold text-navy-600 transition-colors hover:bg-cream-dark disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-white/[0.04]"
-          >
+          <Button variant="secondary" size="sm" onClick={onCancel} disabled={isPending}>
             Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isPending}
-            className="rounded-full bg-danger px-4 py-2 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(220,38,38,0.25)] transition-all duration-200 hover:bg-red-700 active:scale-[0.98] disabled:opacity-50"
-          >
-            {isPending ? 'Eliminando…' : 'Confirmar'}
-          </button>
+          </Button>
+          <Button variant="danger" size="sm" onClick={onConfirm} loading={isPending}>
+            Confirmar
+          </Button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Proveedor chip (display-only) ──────────────────────────────────────────
+
+function getInitials(nombre: string): string {
+  const parts = nombre.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase()
+  return (parts[0]!.charAt(0) + parts[1]!.charAt(0)).toUpperCase()
+}
+
+function pickChipPalette(seed: string): { bg: string; text: string } {
+  let hash = 0
+  for (let i = 0; i < seed.length; i++) hash = (hash + seed.charCodeAt(i)) % 2
+  return hash === 0
+    ? { bg: 'bg-violet-50', text: 'text-violet-500' }
+    : { bg: 'bg-magenta-50', text: 'text-magenta-500' }
+}
+
+function ProveedorChip({ proveedorId, nombre }: { proveedorId: string; nombre?: string | undefined }) {
+  const palette = pickChipPalette(proveedorId)
+  return (
+    <div
+      aria-hidden="true"
+      className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-chip text-xs font-bold ${palette.bg} ${palette.text}`}
+    >
+      {nombre ? getInitials(nombre) : '?'}
     </div>
   )
 }
@@ -84,6 +108,13 @@ export function FacturasList({ filters, onEditFactura }: FacturasListProps) {
 
   const { data, isLoading, isError } = useFacturas({ ...filters, page })
   const deleteMutation = useDeleteFactura()
+  const { data: proveedoresData } = useProveedores()
+
+  const proveedorNombreById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const p of proveedoresData ?? []) map.set(p.id, p.nombre)
+    return map
+  }, [proveedoresData])
 
   function handleDeleteClick(factura: FacturaListItem) {
     setPendingDelete(factura)
@@ -124,81 +155,55 @@ export function FacturasList({ filters, onEditFactura }: FacturasListProps) {
   const hasMore = items.length === 20 // backend page_size heuristic
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader eyebrow="Listado" title="Facturas" />
-
+    <div className="flex flex-col gap-6 font-inter">
       {items.length === 0 ? (
-        <EmptyState
-          title="Listado vacío"
-          description="No hay facturas para mostrar."
-        />
+        <EmptyState title="Listado vacío" description="No hay facturas para mostrar." />
       ) : (
-        <Card noPadding className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-black/[0.04] bg-cream-dark/40 dark:border-white/5 dark:bg-white/[0.02]">
-                  <th className="px-6 py-3.5 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
-                    Número
-                  </th>
-                  <th className="px-6 py-3.5 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
-                    Fecha emisión
-                  </th>
-                  <th className="px-6 py-3.5 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
-                    Monto total
-                  </th>
-                  <th className="px-6 py-3.5 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
-                    Estado
-                  </th>
-                  <th className="px-6 py-3.5 font-sans text-xs font-semibold uppercase tracking-wider text-navy-500 dark:text-zinc-400">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-black/[0.04] dark:divide-white/5">
-                {items.map((factura) => (
-                  <tr
-                    key={factura.id}
-                    className="transition-colors hover:bg-cream-dark/30 dark:hover:bg-white/[0.02]"
+        <Card noPadding hover={false} className="overflow-hidden px-5">
+          <div className="flex flex-col divide-y divide-border-subtle-2">
+            {items.map((factura) => (
+              <div key={factura.id} className="flex items-center gap-3.5 py-3.5">
+                <ProveedorChip
+                  proveedorId={factura.proveedor_id}
+                  nombre={proveedorNombreById.get(factura.proveedor_id)}
+                />
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-ink">
+                    {proveedorNombreById.get(factura.proveedor_id) ?? 'Proveedor'}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-ink-soft">
+                    N.° {factura.numero ?? '—'} · {factura.fecha_emision}
+                  </p>
+                </div>
+
+                <EstadoBadge estado={factura.estado} />
+
+                <p className="w-24 shrink-0 text-right text-sm font-bold tabular-nums text-ink">
+                  {formatMonto(factura.monto_total)}
+                </p>
+
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onEditFactura(factura)}
+                    aria-label="Editar"
+                    className="rounded-lg p-1.5 text-ink-soft transition-colors hover:bg-violet-50 hover:text-violet-500"
                   >
-                    <td className="px-6 py-4 font-medium text-navy-800 dark:text-zinc-100">
-                      {factura.numero ?? '—'}
-                    </td>
-                    <td className="px-6 py-4 text-navy-600 dark:text-zinc-400">
-                      {factura.fecha_emision}
-                    </td>
-                    <td className="px-6 py-4 font-sans tabular-nums font-medium text-navy-700 dark:text-zinc-300">
-                      {formatMonto(factura.monto_total)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <EstadoBadge estado={factura.estado} />
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => onEditFactura(factura)}
-                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-navy-600 transition-colors hover:bg-navy-50 dark:text-zinc-300 dark:hover:bg-white/[0.04]"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteClick(factura)}
-                          disabled={deleteMutation.isPending}
-                          aria-label={`Eliminar factura ${factura.numero ?? factura.id}`}
-                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger-bg dark:hover:bg-danger/10"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteClick(factura)}
+                    disabled={deleteMutation.isPending}
+                    aria-label={`Eliminar factura ${factura.numero ?? factura.id}`}
+                    className="rounded-lg p-1.5 text-ink-soft transition-colors hover:bg-danger-bg hover:text-danger"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </Card>
       )}
@@ -209,19 +214,17 @@ export function FacturasList({ filters, onEditFactura }: FacturasListProps) {
             type="button"
             disabled={page <= 1}
             onClick={() => setPage((p) => p - 1)}
-            className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-navy-600 transition-colors hover:bg-cream-dark disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-white/[0.04]"
+            className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-ink-soft-2 transition-colors hover:bg-surface-alt disabled:opacity-40"
           >
             <ChevronLeft className="h-4 w-4" />
             Anterior
           </button>
-          <span className="text-sm text-navy-400 dark:text-zinc-500">
-            Página {page}
-          </span>
+          <span className="text-sm text-ink-soft">Página {page}</span>
           <button
             type="button"
             disabled={!hasMore}
             onClick={() => setPage((p) => p + 1)}
-            className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-navy-600 transition-colors hover:bg-cream-dark disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-white/[0.04]"
+            className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-ink-soft-2 transition-colors hover:bg-surface-alt disabled:opacity-40"
           >
             Siguiente
             <ChevronRight className="h-4 w-4" />

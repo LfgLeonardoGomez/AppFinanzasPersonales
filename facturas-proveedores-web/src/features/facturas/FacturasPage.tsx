@@ -10,6 +10,7 @@ import { useEffect } from 'react'
 import { useSearchParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { FacturasFilters } from './components/FacturasFilters'
 import { FacturasList } from './components/FacturasList'
+import { PageHeader } from '@shared/components/PageHeader/PageHeader'
 import { toast } from '@shared/components/Toaster/toast'
 import type { FacturasFilters as FacturasFiltersType, FacturaListItem, EstadoFactura } from '@shared/api/api'
 
@@ -62,10 +63,17 @@ export function FacturasPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-4 mb-4">
-        <h1 className="text-xl font-semibold">Facturas</h1>
-        <Link to="/facturas/nueva">Cargar factura</Link>
+    <div className="flex flex-col gap-6 font-inter">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <PageHeader eyebrow="Listado" title="Facturas" />
+        {/* TODO(C-14/C-15 IA carga unificada): once the unified IA modal owns
+            invoice creation, point this at that flow instead of /facturas/nueva. */}
+        <Link
+          to="/facturas/nueva"
+          className="inline-flex items-center gap-1.5 rounded-pill bg-violet-500 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-violet-600"
+        >
+          + Cargar factura
+        </Link>
       </div>
 
       <FacturasFilters filters={filters} onChange={handleFiltersChange} />

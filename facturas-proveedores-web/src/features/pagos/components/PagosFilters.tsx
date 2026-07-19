@@ -36,8 +36,8 @@ export function PagosFilters({ filters, onChange }: PagosFiltersProps) {
   }
 
   return (
-    <div role="search" aria-label="Filtros de pagos">
-      <div>
+    <div role="search" aria-label="Filtros de pagos" className="flex flex-wrap items-center gap-3 font-inter">
+      <div className="min-w-[220px] flex-1 sm:flex-none">
         <SupplierSearch
           value={selectedProveedor}
           onChange={handleProveedorChange}
@@ -45,7 +45,11 @@ export function PagosFilters({ filters, onChange }: PagosFiltersProps) {
         />
       </div>
 
-      <button type="button" onClick={handleClear}>
+      <button
+        type="button"
+        onClick={handleClear}
+        className="rounded-pill px-4 py-2 text-xs font-semibold text-ink-soft-2 transition-colors hover:bg-surface-alt"
+      >
         Limpiar filtros
       </button>
     </div>

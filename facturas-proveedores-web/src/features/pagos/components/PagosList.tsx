@@ -1,7 +1,9 @@
 /**
- * PagosList — paginated list of payments with PagoCard and delete confirmation.
+ * PagosList — paginated list of payments with PagoCard rows and delete confirmation.
  *
- * Premium card list redesign. Test contracts preserved:
+ * Redesigned to the new design system: a low-density row list inside a
+ * single Card (mirrors FacturasList), never a grid of tiles.
+ * Test contracts preserved:
  *  - MetodoBadge text visible (EFECTIVO / TRANSFERENCIA)
  *  - ARS formatting
  *  - empty state text matches /sin pagos|no hay|empty/i
@@ -9,10 +11,12 @@
  *  - dialog role
  *  - confirm button with name /confirmar|sí|yes/i
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { usePagos, useDeletePago } from '../api/pagosHooks'
+import { useProveedores } from '@features/proveedores/api/proveedoresHooks'
 import { PagoCard } from './PagoCard'
-import { PageHeader } from '@shared/components/PageHeader/PageHeader'
+import { Card } from '@shared/components/Card/Card'
+import { Button } from '@shared/components/Button/Button'
 import { EmptyState } from '@shared/components/EmptyState/EmptyState'
 import { LoadingState } from '@shared/components/LoadingState/LoadingState'
 
@@ -39,34 +43,21 @@ function DeletePagoDialog({ open, pago, onConfirm, onCancel, isPending }: Delete
       role="dialog"
       aria-modal="true"
       aria-label="Confirmar eliminación"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 backdrop-blur-sm dark:bg-black/40"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 backdrop-blur-sm"
     >
-      <div className="w-full max-w-sm rounded-[1.5rem] bg-white p-6 shadow-[0_8px_32px_rgba(10,37,64,0.12)] ring-1 ring-black/[0.04] animate-fade-in-up dark:bg-card-dark dark:ring-white/10">
-        <h3 className="mb-2 font-serif text-lg font-semibold text-navy-800 dark:text-zinc-100">
-          ¿Eliminar pago?
-        </h3>
-        <p className="mb-5 text-sm text-navy-500 dark:text-zinc-400">
+      <div className="w-full max-w-sm rounded-card bg-surface p-6 shadow-card ring-1 ring-border-subtle animate-fade-in-up font-inter">
+        <h3 className="mb-2 text-lg font-bold text-ink">¿Eliminar pago?</h3>
+        <p className="mb-5 text-sm text-ink-soft">
           ¿Estás seguro de que querés eliminar este pago de{' '}
-          <strong className="text-navy-700 dark:text-zinc-200">{pago.fecha}</strong>?
-          Esta acción no se puede deshacer.
+          <strong className="text-ink">{pago.fecha}</strong>? Esta acción no se puede deshacer.
         </p>
         <div className="flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isPending}
-            className="rounded-full px-4 py-2 text-sm font-semibold text-navy-600 transition-colors hover:bg-cream-dark disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-white/[0.04]"
-          >
+          <Button variant="secondary" size="sm" onClick={onCancel} disabled={isPending}>
             Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isPending}
-            className="rounded-full bg-danger px-4 py-2 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(220,38,38,0.25)] transition-all duration-200 hover:bg-red-700 active:scale-[0.98] disabled:opacity-50"
-          >
-            {isPending ? 'Eliminando…' : 'Confirmar'}
-          </button>
+          </Button>
+          <Button variant="danger" size="sm" onClick={onConfirm} loading={isPending}>
+            Confirmar
+          </Button>
         </div>
       </div>
     </div>
@@ -79,6 +70,13 @@ export function PagosList({ filters, onEditPago }: PagosListProps) {
 
   const { data, isLoading, isError } = usePagos(filters)
   const deleteMutation = useDeletePago()
+  const { data: proveedoresData } = useProveedores()
+
+  const proveedorNombreById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const p of proveedoresData ?? []) map.set(p.id, p.nombre)
+    return map
+  }, [proveedoresData])
 
   function handleDeleteClick(pago: PagoListItem) {
     setPendingDelete(pago)
@@ -118,26 +116,24 @@ export function PagosList({ filters, onEditPago }: PagosListProps) {
   const items = data?.items ?? []
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader eyebrow="Listado" title="Pagos" />
-
+    <div className="flex flex-col gap-6 font-inter">
       {items.length === 0 ? (
-        <EmptyState
-          title="Listado vacío"
-          description="No hay pagos para mostrar."
-        />
+        <EmptyState title="Listado vacío" description="No hay pagos para mostrar." />
       ) : (
-        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {items.map((pago) => (
-            <li key={pago.id}>
-              <PagoCard
-                pago={pago}
-                onEdit={onEditPago}
-                onDelete={handleDeleteClick}
-              />
-            </li>
-          ))}
-        </ul>
+        <Card noPadding hover={false} className="overflow-hidden px-5">
+          <ul className="flex flex-col divide-y divide-border-subtle-2">
+            {items.map((pago) => (
+              <li key={pago.id}>
+                <PagoCard
+                  pago={pago}
+                  proveedorNombre={proveedorNombreById.get(pago.proveedor_id)}
+                  onEdit={onEditPago}
+                  onDelete={handleDeleteClick}
+                />
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
 
       <DeletePagoDialog

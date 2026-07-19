@@ -59,19 +59,30 @@ function renderFilters(
 }
 
 describe('FacturasFilters', () => {
-  it('renders estado select, date-range inputs, and a clear button', () => {
+  it('renders the estado pill group, date-range inputs, and a clear button', () => {
     renderFilters()
-    expect(screen.getByRole('combobox', { name: /estado/i })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: /estado/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pendiente' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Parcial' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pagada' })).toBeInTheDocument()
     expect(screen.getByLabelText(/desde/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/hasta/i)).toBeInTheDocument()
   })
 
-  it('calls onChange with estado when the estado select changes', () => {
+  it('calls onChange with estado when an estado pill is clicked', () => {
     const onChange = vi.fn<[FacturasFiltersType], void>()
     renderFilters({}, onChange)
-    const estadoSelect = screen.getByRole('combobox', { name: /estado/i })
-    fireEvent.change(estadoSelect, { target: { value: 'PAGADA' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Pagada' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ estado: 'PAGADA' }))
+  })
+
+  it('marks the active estado pill with aria-pressed and clears it via "Todas"', () => {
+    const onChange = vi.fn<[FacturasFiltersType], void>()
+    renderFilters({ estado: 'PENDIENTE' }, onChange)
+    expect(screen.getByRole('button', { name: 'Pendiente' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Todas' }))
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(onChange.mock.calls[0]![0]).not.toHaveProperty('estado')
   })
 
   it('calls onChange with fecha_desde when the date input changes', () => {

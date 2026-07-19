@@ -10,26 +10,26 @@ import { render, screen } from '@testing-library/react'
 import { EstadoBadge } from './EstadoBadge'
 
 describe('EstadoBadge', () => {
-  it('renders PENDIENTE with orange color class', () => {
+  it('renders PENDIENTE with the pendiente badge token', () => {
     const { container } = render(<EstadoBadge estado="PENDIENTE" />)
     expect(screen.getByText('PENDIENTE')).toBeInTheDocument()
-    // Should have an orange color indicator
+    // Should use the new design-system badge tokens (src/app/index.css)
     const badge = container.firstChild as HTMLElement
-    expect(badge.className).toMatch(/orange/)
+    expect(badge.className).toMatch(/badge-pendiente/)
   })
 
-  it('renders PARCIAL with yellow color class', () => {
+  it('renders PARCIAL with the parcial badge token', () => {
     const { container } = render(<EstadoBadge estado="PARCIAL" />)
     expect(screen.getByText('PARCIAL')).toBeInTheDocument()
     const badge = container.firstChild as HTMLElement
-    expect(badge.className).toMatch(/yellow/)
+    expect(badge.className).toMatch(/badge-parcial/)
   })
 
-  it('renders PAGADA with green color class', () => {
+  it('renders PAGADA with the pagada badge token', () => {
     const { container } = render(<EstadoBadge estado="PAGADA" />)
     expect(screen.getByText('PAGADA')).toBeInTheDocument()
     const badge = container.firstChild as HTMLElement
-    expect(badge.className).toMatch(/green/)
+    expect(badge.className).toMatch(/badge-pagada/)
   })
 
   it('renders a defensive default for unknown estado values', () => {

@@ -1,7 +1,8 @@
 /**
  * FacturasFilters — filter controls for the invoice list.
  *
- * Supports: supplier (via SupplierSearch), estado (PENDIENTE/PARCIAL/PAGADA), date range.
+ * Supports: supplier (via SupplierSearch), estado (PENDIENTE/PARCIAL/PAGADA
+ * — as a pill group, per the redesign), date range.
  * D-C09-4: filters are kept in URL search params by the parent page.
  * D-C09-5: reuses the shared SupplierSearch component.
  *
@@ -13,7 +14,8 @@ import { SupplierSearch } from '@shared/components/SupplierSearch/SupplierSearch
 import type { FacturasFilters as FacturasFiltersType, EstadoFactura, ProveedorListItem } from '@shared/api/api'
 import { useState } from 'react'
 
-const ESTADO_OPTIONS: { value: EstadoFactura; label: string }[] = [
+const ESTADO_PILLS: { value: EstadoFactura | null; label: string }[] = [
+  { value: null, label: 'Todas' },
   { value: 'PENDIENTE', label: 'Pendiente' },
   { value: 'PARCIAL', label: 'Parcial' },
   { value: 'PAGADA', label: 'Pagada' },
@@ -38,11 +40,10 @@ export function FacturasFilters({ filters, onChange }: FacturasFiltersProps) {
     onChange(next)
   }
 
-  function handleEstadoChange(e: ChangeEvent<HTMLSelectElement>) {
-    const val = e.target.value as EstadoFactura | ''
+  function handleEstadoPillClick(value: EstadoFactura | null) {
     const next: FacturasFiltersType = { ...filters, page: 1 }
-    if (val) {
-      next.estado = val as EstadoFactura
+    if (value) {
+      next.estado = value
     } else {
       delete next.estado
     }
@@ -77,61 +78,79 @@ export function FacturasFilters({ filters, onChange }: FacturasFiltersProps) {
   }
 
   return (
-    <div role="search" aria-label="Filtros de facturas">
-      {/* Supplier filter — reuses the shared SupplierSearch (D-C09-5) */}
-      <div>
-        <SupplierSearch
-          value={selectedProveedor}
-          onChange={handleProveedorChange}
-          placeholder="Filtrar por proveedor…"
-        />
-      </div>
+    <div role="search" aria-label="Filtros de facturas" className="flex flex-col gap-3 font-inter">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Estado filter — pill group (DESIGN_SYSTEM.md: baja densidad, sin selects) */}
+        <div role="group" aria-label="Estado" className="flex flex-wrap gap-2">
+          {ESTADO_PILLS.map((opt) => {
+            const isActive = opt.value === null ? !filters.estado : filters.estado === opt.value
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => handleEstadoPillClick(opt.value)}
+                className={`rounded-pill px-4 py-2 text-xs font-semibold transition-colors duration-160 ${
+                  isActive
+                    ? 'bg-violet-500 text-white'
+                    : 'bg-surface text-ink-soft-2 ring-1 ring-border-violet-soft hover:bg-surface-alt'
+                }`}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
 
-      {/* Estado filter */}
-      <div>
-        <label htmlFor="filter-estado">Estado</label>
-        <select
-          id="filter-estado"
-          aria-label="Estado"
-          value={filters.estado ?? ''}
-          onChange={handleEstadoChange}
-        >
-          <option value="">Todos los estados</option>
-          {ESTADO_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+        {/* Supplier filter — reuses the shared SupplierSearch (D-C09-5) */}
+        <div className="min-w-[220px] flex-1 sm:flex-none">
+          <SupplierSearch
+            value={selectedProveedor}
+            onChange={handleProveedorChange}
+            placeholder="Filtrar por proveedor…"
+          />
+        </div>
       </div>
 
       {/* Date range filters */}
-      <div>
-        <label htmlFor="filter-fecha-desde">Desde</label>
-        <input
-          id="filter-fecha-desde"
-          type="date"
-          value={filters.fecha_desde ?? ''}
-          onChange={handleFechaDesdeChange}
-          aria-label="Desde"
-        />
-      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label htmlFor="filter-fecha-desde" className="mb-1 block text-xs font-medium text-ink-soft">
+            Desde
+          </label>
+          <input
+            id="filter-fecha-desde"
+            type="date"
+            value={filters.fecha_desde ?? ''}
+            onChange={handleFechaDesdeChange}
+            aria-label="Desde"
+            className="rounded-xl border border-border-subtle bg-surface px-3 py-2 text-sm text-ink focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
+          />
+        </div>
 
-      <div>
-        <label htmlFor="filter-fecha-hasta">Hasta</label>
-        <input
-          id="filter-fecha-hasta"
-          type="date"
-          value={filters.fecha_hasta ?? ''}
-          onChange={handleFechaHastaChange}
-          aria-label="Hasta"
-        />
-      </div>
+        <div>
+          <label htmlFor="filter-fecha-hasta" className="mb-1 block text-xs font-medium text-ink-soft">
+            Hasta
+          </label>
+          <input
+            id="filter-fecha-hasta"
+            type="date"
+            value={filters.fecha_hasta ?? ''}
+            onChange={handleFechaHastaChange}
+            aria-label="Hasta"
+            className="rounded-xl border border-border-subtle bg-surface px-3 py-2 text-sm text-ink focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
+          />
+        </div>
 
-      {/* Clear filters */}
-      <button type="button" onClick={handleClear}>
-        Limpiar filtros
-      </button>
+        {/* Clear filters */}
+        <button
+          type="button"
+          onClick={handleClear}
+          className="rounded-pill px-4 py-2 text-xs font-semibold text-ink-soft-2 transition-colors hover:bg-surface-alt"
+        >
+          Limpiar filtros
+        </button>
+      </div>
     </div>
   )
 }

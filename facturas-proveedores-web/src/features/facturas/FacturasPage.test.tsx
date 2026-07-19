@@ -32,6 +32,7 @@ const mockFactura: FacturaListItem = {
 const server = setupServer(
   http.get('/api/facturas', () => HttpResponse.json([mockFactura])),
   http.get('/api/proveedores/buscar', () => HttpResponse.json([])),
+  http.get('/api/proveedores', () => HttpResponse.json([])),
 )
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))
@@ -73,7 +74,7 @@ describe('FacturasPage', () => {
   it('renders the invoice list integrated with filters', async () => {
     render(<FacturasPage />, { wrapper: createWrapper() })
     await waitFor(() => {
-      expect(screen.getByText('FAC-001')).toBeInTheDocument()
+      expect(screen.getByText(/FAC-001/)).toBeInTheDocument()
       expect(screen.getByText('PENDIENTE')).toBeInTheDocument()
     })
   })
@@ -81,8 +82,8 @@ describe('FacturasPage', () => {
   it('renders filter controls alongside the list', async () => {
     render(<FacturasPage />, { wrapper: createWrapper() })
     await waitFor(() => {
-      // Estado select from FacturasFilters
-      expect(screen.getByRole('combobox', { name: /estado/i })).toBeInTheDocument()
+      // Estado pill group from FacturasFilters
+      expect(screen.getByRole('group', { name: /estado/i })).toBeInTheDocument()
     })
   })
 
@@ -99,7 +100,7 @@ describe('FacturasPage', () => {
 describe('FacturasPage — FE-001 SPA navigation', () => {
   it('navigates to /facturas/:id/editar via SPA navigation when Edit is clicked', async () => {
     render(<FacturasPage />, { wrapper: createWrapperWithRoutes() })
-    await waitFor(() => expect(screen.getByText('FAC-001')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/FAC-001/)).toBeInTheDocument())
     // Click the Edit button on the only row
     const editButton = screen.getByRole('button', { name: /^editar$/i })
     fireEvent.click(editButton)
@@ -136,7 +137,7 @@ describe('FacturasPage — FE-001 SPA navigation', () => {
 
     try {
       render(<FacturasPage />, { wrapper: createWrapperWithRoutes() })
-      await waitFor(() => expect(screen.getByText('FAC-001')).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByText(/FAC-001/)).toBeInTheDocument())
       const editButton = screen.getByRole('button', { name: /^editar$/i })
       fireEvent.click(editButton)
       // The Edit click must NOT assign to window.location.href.

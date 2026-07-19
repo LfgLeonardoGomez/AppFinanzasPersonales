@@ -49,6 +49,23 @@ const mockPagoListResponse: PagoListResponse = {
 const server = setupServer(
   http.get('/api/pagos', () => HttpResponse.json(mockPagoListResponse)),
   http.delete('/api/pagos/:id', () => new HttpResponse(null, { status: 204 })),
+  // Supplier name lookup for the proveedor chip (display-only, existing hook).
+  http.get('/api/proveedores', () =>
+    HttpResponse.json([
+      {
+        id: 'prov-1',
+        usuario_id: 'user-1',
+        nombre: 'Proveedor Uno',
+        cuit: null,
+        telefono: null,
+        categoria: 'OTRO',
+        notas: null,
+        saldo: 0,
+        created_at: '2026-06-01T00:00:00',
+        updated_at: '2026-06-01T00:00:00',
+      },
+    ]),
+  ),
 )
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))

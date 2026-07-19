@@ -10,6 +10,7 @@ import { useEffect } from 'react'
 import { useSearchParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { PagosFilters } from './components/PagosFilters'
 import { PagosList } from './components/PagosList'
+import { PageHeader } from '@shared/components/PageHeader/PageHeader'
 import { toast } from '@shared/components/Toaster/toast'
 import type {
   PagosFilters as PagosFiltersType,
@@ -56,10 +57,17 @@ export function PagosPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-4 mb-4">
-        <h1 className="text-xl font-semibold">Pagos</h1>
-        <Link to="/pagos/nuevo">Cargar pago</Link>
+    <div className="flex flex-col gap-6 font-inter">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <PageHeader eyebrow="Listado" title="Pagos" />
+        {/* TODO(C-14/C-15 IA carga unificada): once the unified IA modal owns
+            payment creation, point this at that flow instead of /pagos/nuevo. */}
+        <Link
+          to="/pagos/nuevo"
+          className="inline-flex items-center gap-1.5 rounded-pill bg-violet-500 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-violet-600"
+        >
+          + Cargar pago
+        </Link>
       </div>
 
       <PagosFilters filters={filters} onChange={handleFiltersChange} />
