@@ -1,29 +1,37 @@
 /**
- * PerfilPage — editable profile screen (C-05).
+ * PerfilPage — account + preferences screen (C-05), rebuilt to the new
+ * design system (specs/design + Perfil.dc.html handoff): identity card,
+ * "Cuenta" card (editable fields), "Preferencias" card (theme toggle),
+ * "Cerrar sesión" danger button.
  *
- * Premium card layout with InputField wrappers.
  * Preserves all test contracts:
  *  - getByLabelText(/teléfono/i) → label "Teléfono"
  *  - getByLabelText(/nombre del negocio/i) → label "Nombre del negocio"
  *  - getByRole('button', { name: /guardar/i }) → "Guardar"
  *  - getByRole('switch', { name: /tema|oscuro|claro/i }) → theme toggle
  *  - user.nombre, user.email visible
+ *
+ * The design also shows CUIT + "cambiar contraseña" rows in the "Cuenta"
+ * card — there is no backend field/endpoint for either yet, so only the
+ * fields the API actually supports (teléfono, nombre del negocio) are
+ * rendered. See integration TODOs in the task report.
  */
 import { type FormEvent, useEffect, useState } from 'react'
-import { useMe } from '@features/auth/api/authHooks'
+import { useMe, useLogout } from '@features/auth/api/authHooks'
 import { useUpdatePerfil } from './api/perfilHooks'
 import { useUpdateTema } from '../../app/theme/useUpdateTema'
 import { useThemeStore } from '../../app/theme/themeStore'
 import { InputField } from '@shared/components/InputField/InputField'
 import { Card } from '@shared/components/Card/Card'
+import { Button } from '@shared/components/Button/Button'
 import { PageHeader } from '@shared/components/PageHeader/PageHeader'
 import { AvatarUploader } from './components/AvatarUploader'
-import { Sun, Moon } from 'lucide-react'
 
 export default function PerfilPage() {
   const { data: user, isLoading } = useMe()
   const updatePerfil = useUpdatePerfil()
   const updateTema = useUpdateTema()
+  const logoutMutation = useLogout()
   const runtimeTema = useThemeStore((s) => s.tema)
 
   const [telefono, setTelefono] = useState('')
@@ -56,38 +64,31 @@ export default function PerfilPage() {
 
   if (isLoading || !user) {
     return (
-      <div className="flex min-h-[12rem] items-center justify-center">
-        <p className="text-sm text-navy-400 dark:text-zinc-500">Cargando…</p>
+      <div className="flex min-h-[12rem] items-center justify-center font-inter">
+        <p className="text-sm text-ink-soft">Cargando…</p>
       </div>
     )
   }
 
+  const isOscuro = runtimeTema === 'OSCURO'
+
   return (
-    <div className="mx-auto max-w-xl animate-fade-in-up">
+    <div className="mx-auto max-w-2xl animate-fade-in-up font-inter">
       <PageHeader eyebrow="Cuenta" title="Mi perfil" />
 
-      <Card>
-        {/* Avatar + user info */}
-        <div className="mb-6 flex items-center gap-4">
-          <AvatarUploader currentUrl={user.avatar_url ?? null} userId={user.id} />
-          <div>
-            <p className="font-serif text-lg font-semibold text-navy-800 dark:text-zinc-100">
-              {user.nombre}
-            </p>
-            <p className="text-sm text-navy-400 dark:text-zinc-500">{user.email}</p>
-          </div>
+      {/* Identity card */}
+      <Card className="mb-5 flex items-center gap-5">
+        <AvatarUploader currentUrl={user.avatar_url ?? null} userId={user.id} nombre={user.nombre} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-lg font-bold text-ink">{user.nombre}</p>
+          <p className="truncate text-sm text-ink-soft">{user.email}</p>
         </div>
+      </Card>
 
+      {/* Cuenta card */}
+      <Card className="mb-5">
+        <p className="mb-4 text-sm font-bold text-ink">Cuenta</p>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <InputField
-            label="Teléfono"
-            id="telefono"
-            type="tel"
-            value={telefono}
-            onChange={(e) => setTelefono(e.target.value)}
-            maxLength={30}
-          />
-
           <InputField
             label="Nombre del negocio"
             id="nombre_negocio"
@@ -97,33 +98,14 @@ export default function PerfilPage() {
             maxLength={120}
           />
 
-          {/* Theme toggle */}
-          <div className="flex items-center justify-between rounded-xl border border-black/[0.06] bg-cream-dark/30 p-3 dark:border-white/10 dark:bg-white/[0.02]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-navy-50 text-navy-500 ring-1 ring-black/[0.04] dark:bg-navy-800/30 dark:text-navy-300 dark:ring-white/10">
-                {runtimeTema === 'OSCURO' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-navy-700 dark:text-zinc-300">Tema</p>
-                <p className="text-xs text-navy-400 dark:text-zinc-500">
-                  {runtimeTema === 'OSCURO' ? 'Oscuro' : 'Claro'}
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={runtimeTema === 'OSCURO'}
-              aria-label="Cambiar tema"
-              onClick={onToggleTema}
-              className="relative h-7 w-12 rounded-full bg-navy-200 transition-colors duration-300 dark:bg-accent-700"
-            >
-              <span
-                className="absolute top-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm transition-all duration-300"
-                style={{ left: runtimeTema === 'OSCURO' ? 'calc(100% - 1.625rem)' : '2px' }}
-              />
-            </button>
-          </div>
+          <InputField
+            label="Teléfono"
+            id="telefono"
+            type="tel"
+            value={telefono}
+            onChange={(e) => setTelefono(e.target.value)}
+            maxLength={30}
+          />
 
           {updatePerfil.isError && (
             <p role="alert" className="text-sm text-danger">
@@ -131,22 +113,51 @@ export default function PerfilPage() {
             </p>
           )}
 
-          <div className="flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={updatePerfil.isPending}
-              className="rounded-full bg-navy-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(10,37,64,0.20)] transition-all duration-200 ease-[var(--ease-out)] hover:bg-navy-600 hover:shadow-[0_6px_20px_rgba(10,37,64,0.28)] active:scale-[0.98] disabled:opacity-50 dark:bg-accent-500 dark:hover:bg-accent-600"
-            >
-              {updatePerfil.isPending ? 'Guardando…' : 'Guardar'}
-            </button>
+          <div className="flex items-center gap-3 pt-1">
+            <Button type="submit" loading={updatePerfil.isPending}>
+              Guardar
+            </Button>
             {savedAt && !updatePerfil.isPending && (
-              <span className="text-xs text-navy-400 dark:text-zinc-500">
-                Guardado a las {savedAt}
-              </span>
+              <span className="text-xs text-ink-soft">Guardado a las {savedAt}</span>
             )}
           </div>
         </form>
       </Card>
+
+      {/* Preferencias card */}
+      <Card className="mb-5">
+        <p className="mb-1 text-sm font-bold text-ink">Preferencias</p>
+        <div className="flex items-center justify-between border-t border-border-subtle-2 py-3.5">
+          <div>
+            <p className="text-[13.5px] font-semibold text-ink">Tema</p>
+            <p className="text-xs text-ink-soft">{isOscuro ? 'Oscuro' : 'Claro'}</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isOscuro}
+            aria-label="Cambiar tema"
+            onClick={onToggleTema}
+            className={`relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors duration-300 ${
+              isOscuro ? 'bg-violet-500' : 'bg-border-subtle-2'
+            }`}
+          >
+            <span
+              className="absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-all duration-300"
+              style={{ left: isOscuro ? '19px' : '3px' }}
+            />
+          </button>
+        </div>
+      </Card>
+
+      <Button
+        variant="danger"
+        fullWidth
+        onClick={() => logoutMutation.mutate()}
+        loading={logoutMutation.isPending}
+      >
+        Cerrar sesión
+      </Button>
     </div>
   )
 }

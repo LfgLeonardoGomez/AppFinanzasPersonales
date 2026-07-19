@@ -22,9 +22,12 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 interface AvatarUploaderProps {
   currentUrl: string | null
   userId: string
+  /** Used to derive the initial shown in the gradient fallback avatar. */
+  nombre?: string
 }
 
-export function AvatarUploader({ currentUrl }: AvatarUploaderProps) {
+export function AvatarUploader({ currentUrl, nombre }: AvatarUploaderProps) {
+  const initial = nombre?.trim().charAt(0).toUpperCase() || '?'
   const updateAvatar = useUpdateAvatar()
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -83,7 +86,7 @@ export function AvatarUploader({ currentUrl }: AvatarUploaderProps) {
   }
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="flex shrink-0 flex-col items-center gap-2">
       {currentUrl ? (
         <img
           src={currentUrl}
@@ -93,17 +96,18 @@ export function AvatarUploader({ currentUrl }: AvatarUploaderProps) {
       ) : (
         <div
           aria-label="Sin avatar"
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-200 text-sm text-gray-500 dark:bg-gray-700 dark:text-gray-300"
+          className="flex h-16 w-16 items-center justify-center rounded-full text-[22px] font-bold text-white"
+          style={{ background: 'linear-gradient(135deg,#7c3aed,#e0459b)' }}
         >
-          —
+          {initial}
         </div>
       )}
 
       <label
         htmlFor="avatar-input"
-        className="cursor-pointer text-sm text-blue-600 hover:underline"
+        className="cursor-pointer text-xs font-semibold text-violet-500 hover:text-violet-600"
       >
-        {uploading ? 'Subiendo…' : 'Subir avatar'}
+        {uploading ? 'Subiendo…' : currentUrl ? 'Cambiar foto' : 'Subir avatar'}
       </label>
       <input
         id="avatar-input"
@@ -116,7 +120,7 @@ export function AvatarUploader({ currentUrl }: AvatarUploaderProps) {
       />
 
       {error && (
-        <p role="alert" className="max-w-[12rem] text-center text-xs text-red-600">
+        <p role="alert" className="max-w-[12rem] text-center text-xs text-danger">
           {error}
         </p>
       )}
