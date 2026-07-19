@@ -1,159 +1,97 @@
 /**
- * Tests for the home page quick-access actions (F-HOME-01).
- * TDD: Task 8.4 (RED → GREEN) — adds the "Cargar pago" entry to the
- * existing quick-access nav.
+ * Tests for the redesigned HomePage (specs/design/HOME.md).
  *
- * The "Cargar factura" and "Cargar pago" quick-access actions must be
- * visible on the home screen and navigate to the respective create forms.
- *
- * C-18 (FE-004): the quick-access nav uses plain <a href> tags. Clicking
- * them triggers a full-page reload, which destroys the SPA (same root
- * cause as FE-001). The fix swaps them for <Link to> from react-router-dom.
- * The test below asserts that the SPA-style routing is used (the
- * placeholder route is matched on click, which only works if React Router
- * handled the click — a plain <a href> would full-reload and lose the
- * test's router state).
+ * Home is now: greeting + IA-carga hero (protagonist) + proveedores frecuentes
+ * + actividad reciente. Data comes from GET /api/proveedores?order_by=saldo and
+ * GET /api/actividad-reciente. MSW intercepts both — no real backend.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
+import { setupServer } from 'msw/node'
+import type { ReactNode } from 'react'
 import { HomePage } from './HomePage'
 
-describe('HomePage — quick access (F-HOME-01)', () => {
-  it('shows a "Cargar pago" action that links to /pagos/nuevo', () => {
-    render(
-      <MemoryRouter>
-        <HomePage />
-      </MemoryRouter>,
-    )
-    const link = screen.getByRole('link', { name: /cargar pago/i })
-    expect(link).toBeInTheDocument()
-    expect(link).toHaveAttribute('href', '/pagos/nuevo')
-  })
+const proveedores = [
+  {
+    id: 'p1',
+    usuario_id: 'u1',
+    nombre: 'Distribuidora Norte',
+    categoria: 'OTRO',
+    saldo: 148097,
+    ultima_factura_fecha: '2026-07-17',
+  },
+]
 
-  it('shows a "Cargar factura" action that links to /facturas/nueva', () => {
-    render(
-      <MemoryRouter>
-        <HomePage />
-      </MemoryRouter>,
-    )
-    const link = screen.getByRole('link', { name: /cargar factura/i })
-    expect(link).toBeInTheDocument()
-    expect(link).toHaveAttribute('href', '/facturas/nueva')
-  })
+const actividad = [
+  {
+    tipo: 'factura',
+    id: 'f1',
+    proveedor_id: 'p1',
+    proveedor_nombre: 'Distribuidora Norte',
+    monto: '148097.00',
+    fecha: '2026-07-17',
+    created_at: '2026-07-17T10:00:00',
+  },
+  {
+    tipo: 'pago',
+    id: 'pg1',
+    proveedor_id: 'p1',
+    proveedor_nombre: 'Distribuidora Norte',
+    monto: '5000.00',
+    fecha: '2026-07-16',
+    created_at: '2026-07-16T10:00:00',
+  },
+]
 
-  it('shows a "Ver pagos" action that links to /pagos', () => {
-    render(
-      <MemoryRouter>
-        <HomePage />
-      </MemoryRouter>,
-    )
-    const link = screen.getByRole('link', { name: /ver pagos/i })
-    expect(link).toBeInTheDocument()
-    expect(link).toHaveAttribute('href', '/pagos')
-  })
+const server = setupServer(
+  http.get('/api/proveedores', () => HttpResponse.json(proveedores)),
+  http.get('/api/actividad-reciente', () => HttpResponse.json(actividad)),
+)
 
-  it('shows a "Ver facturas" action', () => {
-    render(
-      <MemoryRouter>
-        <HomePage />
-      </MemoryRouter>,
-    )
-    const link = screen.getByRole('link', { name: /ver facturas/i })
-    expect(link).toBeInTheDocument()
-    expect(link).toHaveAttribute('href', '/facturas')
-  })
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+afterEach(() => server.resetHandlers())
+afterAll(() => server.close())
 
-  it('shows a "Ver proveedores" action', () => {
-    render(
-      <MemoryRouter>
-        <HomePage />
-      </MemoryRouter>,
-    )
-    const link = screen.getByRole('link', { name: /ver proveedores/i })
-    expect(link).toBeInTheDocument()
-  })
-})
-
-// ── C-18 (FE-004): the home quick-access actions must navigate via
-// react-router-dom (no full-page reload). The test renders HomePage inside
-// a MemoryRouter with the destination routes declared; clicking a link
-// matches the placeholder route, which only works if React Router handled
-// the click (a plain <a href> would full-reload and the test wrapper would
-// lose its location, breaking the match).
-
-describe('HomePage — FE-004 SPA navigation (Link to)', () => {
-  it('"Cargar pago" navigates to /pagos/nuevo via the SPA router', () => {
-    render(
+function renderHome() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const wrapper = (children: ReactNode) => (
+    <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/']}>
         <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/pagos/nuevo" element={<div>PAGOS_NUEVO</div>} />
-        </Routes>
-      </MemoryRouter>,
-    )
-    fireEvent.click(screen.getByRole('link', { name: /cargar pago/i }))
-    expect(screen.getByText('PAGOS_NUEVO')).toBeInTheDocument()
-  })
-
-  it('"Cargar factura" navigates to /facturas/nueva via the SPA router', () => {
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={children} />
           <Route path="/facturas/nueva" element={<div>FACTURAS_NUEVA</div>} />
         </Routes>
-      </MemoryRouter>,
-    )
-    fireEvent.click(screen.getByRole('link', { name: /cargar factura/i }))
-    expect(screen.getByText('FACTURAS_NUEVA')).toBeInTheDocument()
+      </MemoryRouter>
+    </QueryClientProvider>
+  )
+  return render(wrapper(<HomePage />))
+}
+
+describe('HomePage — redesign', () => {
+  it('shows the greeting and the IA-carga hero as the protagonist', () => {
+    renderHome()
+    expect(screen.getByText(/hola/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /cargar con ia/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /subir imagen/i })).toBeInTheDocument()
   })
 
-  it('"Ver pagos" navigates to /pagos via the SPA router', () => {
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/pagos" element={<div>PAGOS_LIST</div>} />
-        </Routes>
-      </MemoryRouter>,
-    )
-    fireEvent.click(screen.getByRole('link', { name: /ver pagos/i }))
-    expect(screen.getByText('PAGOS_LIST')).toBeInTheDocument()
-  })
-})
-
-// ── C-18 (FE-004): the home quick-access actions must navigate via
-// react-router-dom (no full-page reload). The test renders HomePage inside
-// a MemoryRouter with the destination routes declared; clicking a link
-// matches the placeholder route, which only works if React Router handled
-// the click (a plain <a href> would full-reload and the test wrapper
-// would lose its location, breaking the match).
-
-describe('HomePage — FE-004 SPA navigation (Link to)', () => {
-  it('"Cargar pago" navigates to /pagos/nuevo via the SPA router', () => {
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/pagos/nuevo" element={<div>PAGOS_NUEVO</div>} />
-        </Routes>
-      </MemoryRouter>,
-    )
-    fireEvent.click(screen.getByRole('link', { name: /cargar pago/i }))
-    expect(screen.getByText('PAGOS_NUEVO')).toBeInTheDocument()
+  it('renders a proveedor frecuente card once loaded', async () => {
+    renderHome()
+    expect(await screen.findByText('Distribuidora Norte')).toBeInTheDocument()
   })
 
-  it('"Cargar factura" navigates to /facturas/nueva via the SPA router', () => {
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/facturas/nueva" element={<div>FACTURAS_NUEVA</div>} />
-        </Routes>
-      </MemoryRouter>,
-    )
-    fireEvent.click(screen.getByRole('link', { name: /cargar factura/i }))
+  it('renders the actividad reciente feed (factura + pago rows) once loaded', async () => {
+    renderHome()
+    expect(await screen.findByText(/Factura · Distribuidora Norte/)).toBeInTheDocument()
+    expect(screen.getByText(/Pago · Distribuidora Norte/)).toBeInTheDocument()
+  })
+
+  it('"Subir imagen" opens the carga flow via SPA navigation', () => {
+    renderHome()
+    fireEvent.click(screen.getByRole('button', { name: /subir imagen/i }))
     expect(screen.getByText('FACTURAS_NUEVA')).toBeInTheDocument()
   })
 })
