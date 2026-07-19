@@ -1,7 +1,8 @@
 /**
- * Tests for PagoFormPage.
- *
- * TDD: covers C-13 (D8 / Q-CC-FE-02) pre-fill.
+ * Tests for PagoFormPage's create route (C-13 D8 / Q-CC-FE-02 pre-fill;
+ * REWRITTEN for the carga-modal convergence — the create route now
+ * opens the unified `CargaModal` directly instead of a mode-selector
+ * screen).
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
@@ -31,7 +32,7 @@ const server = setupServer(
   http.get(`/api/proveedores/${PROVEEDOR_ID}`, () => {
     return HttpResponse.json(mockProveedor)
   }),
-  http.get('/api/proveedores/buscar', () => HttpResponse.json([mockProveedor])),
+  http.get('/api/proveedores/buscar', () => HttpResponse.json([])),
 )
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))
@@ -49,6 +50,7 @@ function createWrapper(initialEntries: string[]) {
           <Routes>
             <Route path="/pagos/nuevo" element={children} />
             <Route path="/pagos/:id/editar" element={children} />
+            <Route path="/pagos" element={<div>Pagos list</div>} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>
@@ -56,22 +58,23 @@ function createWrapper(initialEntries: string[]) {
   }
 }
 
-describe('PagoFormPage — mode selector', () => {
-  it('shows the mode selector initially (IA vs Manual)', () => {
+describe('PagoFormPage — create route opens the unified carga modal', () => {
+  it('renders CargaModal already open, on tipo pago, origen step — no mode-selector screen', () => {
     render(<PagoFormPage />, {
       wrapper: createWrapper(['/pagos/nuevo']),
     })
-    expect(screen.getByText(/Cargar con foto/i)).toBeInTheDocument()
-    expect(screen.getByText(/Cargar manual/i)).toBeInTheDocument()
-    // The form is NOT rendered yet
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('Registrar pago')).toBeInTheDocument()
+    expect(screen.getByTestId('imagen-picker-dropzone')).toBeInTheDocument()
     expect(screen.queryByLabelText(/^monto$/i)).not.toBeInTheDocument()
   })
 
-  it('shows the form after clicking "Cargar manual"', () => {
+  it('switching to Manual and clicking Continuar reaches the review step with the monto input', () => {
     render(<PagoFormPage />, {
       wrapper: createWrapper(['/pagos/nuevo']),
     })
-    fireEvent.click(screen.getByText(/Cargar manual/i))
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
     expect(screen.getByLabelText(/^monto$/i)).toBeInTheDocument()
   })
 })
@@ -81,11 +84,8 @@ describe('PagoFormPage — ?proveedor_id= pre-fill', () => {
     render(<PagoFormPage />, {
       wrapper: createWrapper([`/pagos/nuevo?proveedor_id=${PROVEEDOR_ID}`]),
     })
-    // First click "Cargar manual" to show the form
-    fireEvent.click(screen.getByText(/Cargar manual/i))
-    // Wait for the supplier to be loaded into the form
-    await waitFor(() =>
-      expect(screen.getByText('Proveedor Alfa')).toBeInTheDocument(),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
+    await waitFor(() => expect(screen.getByText('Proveedor Alfa')).toBeInTheDocument())
   })
 })

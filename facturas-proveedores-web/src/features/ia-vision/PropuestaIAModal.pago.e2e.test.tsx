@@ -1,25 +1,28 @@
 /**
- * End-to-end integration test for the IA vision PAGO flow (C-21, task 5.3;
- * mirrors `PropuestaIAModal.e2e.test.tsx` for the factura path).
+ * End-to-end integration test for the unified carga-modal flow, pago
+ * path (originally C-21 task 5.3; REWRITTEN for the carga-modal
+ * convergence — `CargaModal` replaces the old `ModeSelector` +
+ * `PropuestaIAModal` split; mirrors `PropuestaIAModal.e2e.test.tsx` for
+ * the factura path).
  *
- * C-21 (D1) SUPERSEDES the C-15 decision that "the modal does not POST;
- * the form creates on its own Confirmar" (D-19 / RN-IA-04-frontend). This
- * pago-path suite is the equivalent inversion of the C-15 "modal does NOT
- * POST" regression test: it now asserts the modal's single "Confirmar"
- * DOES POST exactly once, with `origen: 'IA'`.
- *
- * Covers:
- *   - opening the IA modal from the create-mode `PagoFormPage`
- *   - picking a valid comprobante image (MSW returns a full `PropuestaPago`)
- *   - the detected supplier auto-matches a normalized-exact hit (D4) and
- *     pre-selects it, enabling Confirmar without a manual search
+ * `PagoFormPage`'s create route (`/pagos/nuevo`) now opens `CargaModal`
+ * directly. Covers:
+ *   - visiting the create route renders the modal already open, on the
+ *     'pago' tipo, origen step
+ *   - picking a valid comprobante image (MSW returns a full
+ *     `PropuestaPago`) and clicking Continuar transitions to review
+ *   - the detected supplier auto-matches a normalized-exact hit (D4)
+ *     and pre-selects it, enabling Confirmar without a manual search
  *   - clicking Confirmar uploads the comprobante image to Cloudinary
- *     FIRST (tipo='comprobante'), then fires exactly ONE `POST /api/pagos`
- *     with `origen: 'IA'`, `comprobante_url` = the uploaded `secure_url`,
- *     `proveedor_id` = the matched supplier, and NO `factura_id` key
- *     (RN-PAG-01 — a pago is never linked to a factura)
- *   - the modal closes and the page redirects to `/proveedores/:id`
- *     (no second form is ever shown for the IA path)
+ *     FIRST (tipo='comprobante'), then fires exactly ONE `POST
+ *     /api/pagos` with `origen: 'IA'`, `comprobante_url` = the
+ *     uploaded `secure_url`, `proveedor_id` = the matched supplier,
+ *     and NO `factura_id` key (RN-PAG-01), landing on the success step
+ *   - clicking the success step's CTA fires the page's redirect to
+ *     `/proveedores/:id` (no second form is ever shown for the IA path)
+ *   - the manual origin skips extraction entirely and reaches review
+ *     with empty fields, stamping `origen: 'MANUAL'` with no
+ *     comprobante_url on confirm
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -135,24 +138,21 @@ function makeWrapper() {
 
 async function openModalAndPickImage() {
   render(<PagoFormPage />, { wrapper: makeWrapper() })
-  fireEvent.click(screen.getByText(/Cargar con foto/i))
   expect(screen.getByRole('dialog')).toBeInTheDocument()
+  expect(screen.getByText('Registrar pago')).toBeInTheDocument()
   const fileInput = screen.getByLabelText(/Elegir imagen para extraer datos con IA/i) as HTMLInputElement
   const file = new File([new Uint8Array(100)], 'comprobante.jpg', { type: 'image/jpeg' })
   fireEvent.change(fileInput, { target: { files: [file] } })
+  fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
   await waitFor(() => {
-    expect(screen.getByText(/Revisá la propuesta/)).toBeInTheDocument()
+    expect((screen.getByLabelText(/^Monto$/i) as HTMLInputElement).value).toBe('5000')
   })
 }
 
-describe('IA vision end-to-end (pago) — terminal confirm (C-21, task 5.3)', () => {
+describe('carga modal end-to-end (pago) — terminal confirm', () => {
   it('auto-matches the detected supplier, enables Confirmar, and a single Confirmar creates the pago directly (no second form, no factura_id)', async () => {
     await openModalAndPickImage()
 
-    // The auto-match (D4) resolves against the "Ferretería Sur" supplier
-    // returned by /api/proveedores/buscar — Confirmar enables without any
-    // manual search interaction. (D4 wired into PropuestaPagoFields —
-    // the pago modal previously had NO supplier control at all.)
     const confirmar = await waitFor(() => {
       const btn = screen.getByRole('button', { name: /^Confirmar$/ })
       expect(btn).not.toBeDisabled()
@@ -161,16 +161,15 @@ describe('IA vision end-to-end (pago) — terminal confirm (C-21, task 5.3)', ()
 
     fireEvent.click(confirmar)
 
-    // The modal closes and the page redirects to the supplier's cuenta
-    // corriente — the manual PagoForm is never rendered for the IA path.
+    const cta = await waitFor(() => screen.getByRole('button', { name: /Ver cuenta corriente/ }))
+    expect(screen.getByText('Pago confirmado')).toBeInTheDocument()
+    fireEvent.click(cta)
+
     await waitFor(() => {
       expect(screen.getByText(/Cuenta corriente del proveedor/)).toBeInTheDocument()
     })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
-    // Exactly one POST /api/pagos fired, with origen 'IA', comprobante_url
-    // set to the uploaded secure_url, the matched proveedor_id, and NO
-    // factura_id key (RN-PAG-01 — a pago never links to a factura).
     expect(postPagosBody).not.toBeNull()
     expect(postPagosBody).toMatchObject({
       proveedor_id: MATCHED_PROVEEDOR_ID,
@@ -182,11 +181,10 @@ describe('IA vision end-to-end (pago) — terminal confirm (C-21, task 5.3)', ()
     })
     expect(postPagosBody).not.toHaveProperty('factura_id')
 
-    // The Cloudinary upload happened before the pago POST.
     expect(callOrder).toEqual(['cloudinary', 'pagos'])
   })
 
-  it('does NOT render the IA selector in edit mode', async () => {
+  it('does NOT render the carga modal in edit mode', async () => {
     const editWrapper = () => {
       const qc = new QueryClient({
         defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -207,12 +205,12 @@ describe('IA vision end-to-end (pago) — terminal confirm (C-21, task 5.3)', ()
     await waitFor(() => {
       expect(screen.getByText(/Cargando pago|No se encontró el pago/)).toBeInTheDocument()
     })
-    expect(screen.queryByText(/Cargar con foto/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })
 
-describe('IA vision end-to-end (pago) — upload failure (C-21, task 5.4/5.5)', () => {
-  it('an upload failure keeps the modal open, shows the error, and fires NO POST /api/pagos', async () => {
+describe('carga modal end-to-end (pago) — upload failure', () => {
+  it('an upload failure keeps the modal on review, shows the error, and fires NO POST /api/pagos', async () => {
     server.use(
       http.post('https://api.cloudinary.com/v1_1/:cloud/auto/upload', () =>
         HttpResponse.json({ error: { message: 'Firma inválida' } }, { status: 401 }),
@@ -236,8 +234,8 @@ describe('IA vision end-to-end (pago) — upload failure (C-21, task 5.4/5.5)', 
   })
 })
 
-describe('IA vision end-to-end (pago) — 422 backend validation error (C-21, task 5.3)', () => {
-  it('a 422 on POST /api/pagos keeps the modal open, shows an error, and does not close or redirect', async () => {
+describe('carga modal end-to-end (pago) — 422 backend validation error', () => {
+  it('a 422 on POST /api/pagos keeps the modal on review, shows an error, and does not close or redirect', async () => {
     server.use(
       http.post('/api/pagos', () =>
         HttpResponse.json({ detail: 'monto debe ser mayor a cero' }, { status: 422 }),
@@ -257,7 +255,55 @@ describe('IA vision end-to-end (pago) — 422 backend validation error (C-21, ta
       expect(screen.getByRole('alert')).toBeInTheDocument()
     })
     expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByText(/Revisá la propuesta/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Monto$/i)).toBeInTheDocument()
     expect(screen.queryByText(/Cuenta corriente del proveedor/)).not.toBeInTheDocument()
+  })
+})
+
+describe('carga modal end-to-end (pago) — manual origin', () => {
+  it('switching to Manual skips extraction, reaches review with empty fields, and stamps origen MANUAL with no comprobante_url', async () => {
+    server.use(http.get('/api/proveedores/buscar', () => HttpResponse.json([matchedProveedor])))
+    render(<PagoFormPage />, { wrapper: makeWrapper() })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
+
+    await waitFor(() => {
+      expect((screen.getByLabelText(/^Monto$/i) as HTMLInputElement).value).toBe('')
+    })
+    // No "revisá y corregí" banner for the manual origin (no image involved).
+    expect(screen.queryByText(/revisá y corregí/i)).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/^Monto$/i), { target: { value: '2500' } })
+    fireEvent.change(screen.getByLabelText(/^Fecha$/i), { target: { value: '2026-07-01' } })
+    fireEvent.change(screen.getByLabelText(/^Método$/i), { target: { value: 'EFECTIVO' } })
+
+    // Manual origin: proveedor_nombre is null, so there is no auto-match —
+    // the user must search and pick the supplier explicitly.
+    fireEvent.change(screen.getByPlaceholderText(/Buscar proveedor/i), {
+      target: { value: 'Ferretería Sur' },
+    })
+    const option = await waitFor(() => screen.getByText('Ferretería Sur'))
+    fireEvent.click(option)
+
+    const confirmar = await waitFor(() => {
+      const btn = screen.getByRole('button', { name: /^Confirmar$/ })
+      expect(btn).not.toBeDisabled()
+      return btn
+    })
+    fireEvent.click(confirmar)
+
+    await waitFor(() => {
+      expect(screen.getByText('Pago confirmado')).toBeInTheDocument()
+    })
+    expect(postPagosBody).toMatchObject({
+      proveedor_id: MATCHED_PROVEEDOR_ID,
+      monto: 2500,
+      fecha: '2026-07-01',
+      metodo: 'EFECTIVO',
+      origen: 'MANUAL',
+    })
+    expect(postPagosBody).not.toHaveProperty('comprobante_url')
+    expect(postPagosBody).not.toHaveProperty('factura_id')
   })
 })

@@ -72,3 +72,30 @@ describe('buildCreatePayload — pago', () => {
     expect(payload).not.toHaveProperty('factura_id')
   })
 })
+
+describe('buildCreatePayload — manual origin (carga-modal convergence)', () => {
+  it('stamps origen MANUAL and omits archivo_url when the url is empty (factura)', () => {
+    const payload = buildCreatePayload('factura', propuestaFactura, 'prov-1', '', 'MANUAL')
+    expect(payload).toEqual({
+      proveedor_id: 'prov-1',
+      fecha_emision: '2026-06-15',
+      monto_total: 1234.56,
+      numero: '0001-1234',
+      origen: 'MANUAL',
+    })
+    expect(payload).not.toHaveProperty('archivo_url')
+  })
+
+  it('stamps origen MANUAL and omits comprobante_url when the url is empty (pago)', () => {
+    const payload = buildCreatePayload('pago', propuestaPago, 'prov-1', '', 'MANUAL')
+    expect(payload).toEqual({
+      proveedor_id: 'prov-1',
+      monto: 5000,
+      fecha: '2026-06-20',
+      metodo: 'TRANSFERENCIA',
+      origen: 'MANUAL',
+    })
+    expect(payload).not.toHaveProperty('comprobante_url')
+    expect(payload).not.toHaveProperty('factura_id')
+  })
+})

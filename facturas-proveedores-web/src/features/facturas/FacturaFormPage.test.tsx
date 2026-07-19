@@ -1,7 +1,10 @@
 /**
- * Tests for the ?proveedor_id= pre-fill on FacturaFormPage (C-13, task 11.2).
+ * Tests for FacturaFormPage's create route (C-13, task 11.2 pre-fill;
+ * REWRITTEN for the carga-modal convergence — the create route now
+ * opens the unified `CargaModal` directly instead of a mode-selector
+ * screen).
  *
- * TDD: Task 11.2 (RED → GREEN).
+ * TDD: Task 11.2 (RED → GREEN), re-based onto `CargaModal`.
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
@@ -31,6 +34,7 @@ const server = setupServer(
   http.get(`/api/proveedores/${PROVEEDOR_ID}`, () => {
     return HttpResponse.json(mockProveedor)
   }),
+  http.get('/api/proveedores/buscar', () => HttpResponse.json([])),
 )
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -48,6 +52,7 @@ function createWrapper(initialEntries: string[]) {
           <Routes>
             <Route path="/facturas/nueva" element={children} />
             <Route path="/facturas/:id/editar" element={children} />
+            <Route path="/facturas" element={<div>Facturas list</div>} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>
@@ -55,22 +60,24 @@ function createWrapper(initialEntries: string[]) {
   }
 }
 
-describe('FacturaFormPage — mode selector', () => {
-  it('shows the mode selector initially (IA vs Manual)', () => {
+describe('FacturaFormPage — create route opens the unified carga modal', () => {
+  it('renders CargaModal already open, on tipo factura, origen step — no mode-selector screen', () => {
     render(<FacturaFormPage />, {
       wrapper: createWrapper(['/facturas/nueva']),
     })
-    expect(screen.getByText(/Cargar con foto/i)).toBeInTheDocument()
-    expect(screen.getByText(/Cargar manual/i)).toBeInTheDocument()
-    // The form is NOT rendered yet
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('Cargar factura')).toBeInTheDocument()
+    expect(screen.getByTestId('imagen-picker-dropzone')).toBeInTheDocument()
+    // The review fields are NOT rendered yet — still on the origen step.
     expect(screen.queryByLabelText(/monto total/i)).not.toBeInTheDocument()
   })
 
-  it('shows the form after clicking "Cargar manual"', () => {
+  it('switching to Manual and clicking Continuar reaches the review step with the monto total input', () => {
     render(<FacturaFormPage />, {
       wrapper: createWrapper(['/facturas/nueva']),
     })
-    fireEvent.click(screen.getByText(/Cargar manual/i))
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
     expect(screen.getByLabelText(/monto total/i)).toBeInTheDocument()
   })
 })
@@ -80,9 +87,10 @@ describe('FacturaFormPage — ?proveedor_id= pre-fill', () => {
     render(<FacturaFormPage />, {
       wrapper: createWrapper([`/facturas/nueva?proveedor_id=${PROVEEDOR_ID}`]),
     })
-    // First click "Cargar manual" to show the form
-    fireEvent.click(screen.getByText(/Cargar manual/i))
-    // The supplier chip shows the pre-filled name.
+    // Manual → Continuar reaches the review step where the supplier
+    // control lives.
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
     await waitFor(() => {
       expect(screen.getByText('Proveedor Alfa')).toBeInTheDocument()
     })
@@ -92,28 +100,8 @@ describe('FacturaFormPage — ?proveedor_id= pre-fill', () => {
     render(<FacturaFormPage />, {
       wrapper: createWrapper(['/facturas/nueva']),
     })
-    // First click "Cargar manual" to show the form
-    fireEvent.click(screen.getByText(/Cargar manual/i))
-    // The supplier search control is rendered but no supplier is selected.
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
     expect(screen.queryByText('Proveedor Alfa')).not.toBeInTheDocument()
-  })
-})
-
-// ── C-18 (FE-003): IA flow from selector
-
-describe('FacturaFormPage — FE-003 IA flow from selector', () => {
-  it('opens the IA modal from the selector and returns to form after confirm', async () => {
-    render(<FacturaFormPage />, {
-      wrapper: createWrapper(['/facturas/nueva']),
-    })
-
-    // The selector shows both options
-    expect(screen.getByText(/Cargar con foto/i)).toBeInTheDocument()
-
-    // Click IA option → modal should open (but we test the interaction contract)
-    fireEvent.click(screen.getByText(/Cargar con foto/i))
-
-    // The modal is rendered
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 })

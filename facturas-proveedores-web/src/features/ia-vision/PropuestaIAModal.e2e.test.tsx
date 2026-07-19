@@ -1,29 +1,31 @@
 /**
- * End-to-end integration test for the IA vision flow (C-15, section 9;
- * REWRITTEN for C-21 — the modal is now TERMINAL, task 3.2).
+ * End-to-end integration test for the unified carga-modal flow, factura
+ * path (originally C-15 section 9 / C-21 task 3.2; REWRITTEN for the
+ * carga-modal convergence — `CargaModal` replaces the old
+ * `ModeSelector` + `PropuestaIAModal` split).
  *
- * C-21 (D1) SUPERSEDES the C-15 decision that "the modal does not POST;
- * the form creates on its own Confirmar" (D-19 / RN-IA-04-frontend).
- * RN-IA-04 itself is UNCHANGED: it governs the `/extraer-ia` EXTRACTION
- * endpoint, which still never persists. What changed is that the human
- * confirm — inside the modal — now creates the resource directly.
- *
- * This suite covers the contract that:
- *   - opening the IA modal from the create-mode `FacturaFormPage`
- *   - picking a valid image (MSW returns a full `PropuestaFactura`)
- *   - the modal transitions to `proposal`
+ * `FacturaFormPage`'s create route (`/facturas/nueva`) now opens
+ * `CargaModal` directly — there is no more mode-selector screen. This
+ * suite covers the contract that:
+ *   - visiting the create route renders the modal already open, on the
+ *     'factura' tipo, origen step
+ *   - picking a valid image (MSW returns a full `PropuestaFactura`) and
+ *     clicking Continuar transitions through processing to review
  *   - the detected supplier auto-matches a normalized-exact hit (D4)
  *     and pre-selects it, enabling Confirmar without a manual search
  *   - clicking Confirmar uploads the image to Cloudinary FIRST, then
  *     fires exactly ONE `POST /api/facturas` with `origen: 'IA'` and
- *     `archivo_url` set to the uploaded `secure_url`
- *   - the modal closes and the page redirects to `/proveedores/:id`
- *     (no second form is ever shown for the IA path)
- *   - an upload failure keeps the modal open and fires NO create
- *   - a 422 from the create keeps the modal open, shows the error, and
- *     does not close or redirect
- *
- * The cancel and 429 flows (no persistence occurs) are also covered.
+ *     `archivo_url` set to the uploaded `secure_url`, landing on the
+ *     success step
+ *   - clicking the success step's CTA fires the page's redirect to
+ *     `/proveedores/:id` (no second form is ever shown for the IA path)
+ *   - an upload failure keeps the modal on review, shows the error, and
+ *     fires NO create
+ *   - a 422 from the create keeps the modal on review, shows the
+ *     error, and does not close or redirect
+ *   - closing the modal (Escape) navigates back to the list, firing no
+ *     request
+ *   - a 429 shows the countdown in the origen step's error banner
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
@@ -138,17 +140,20 @@ function makeWrapper() {
 
 async function openModalAndPickImage() {
   render(<FacturaFormPage />, { wrapper: makeWrapper() })
-  fireEvent.click(screen.getByText(/Cargar con foto/i))
+  // The create route opens the unified carga modal directly — no
+  // mode-selector screen.
   expect(screen.getByRole('dialog')).toBeInTheDocument()
+  expect(screen.getByText('Cargar factura')).toBeInTheDocument()
   const fileInput = screen.getByLabelText(/Elegir imagen para extraer datos con IA/i) as HTMLInputElement
   const file = new File([new Uint8Array(100)], 'factura.jpg', { type: 'image/jpeg' })
   fireEvent.change(fileInput, { target: { files: [file] } })
+  fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
   await waitFor(() => {
-    expect(screen.getByText(/Revisá la propuesta/)).toBeInTheDocument()
+    expect((screen.getByLabelText(/Monto total/i) as HTMLInputElement).value).toBe('1234.56')
   })
 }
 
-describe('IA vision end-to-end — terminal confirm (C-21, task 3.2)', () => {
+describe('carga modal end-to-end (factura) — terminal confirm', () => {
   it('auto-matches the detected supplier, enables Confirmar, and a single Confirmar creates the factura directly (no second form)', async () => {
     await openModalAndPickImage()
 
@@ -163,8 +168,14 @@ describe('IA vision end-to-end — terminal confirm (C-21, task 3.2)', () => {
 
     fireEvent.click(confirmar)
 
-    // The modal closes and the page redirects to the supplier's
-    // cuenta corriente — the manual FacturaForm is never rendered.
+    // Confirmar lands on the success step first (the modal's explicit
+    // "success" state) — the user then clicks the CTA to continue.
+    const cta = await waitFor(() => screen.getByRole('button', { name: /Ver cuenta corriente/ }))
+    expect(screen.getByText('Factura confirmada')).toBeInTheDocument()
+    fireEvent.click(cta)
+
+    // The page redirects to the supplier's cuenta corriente — the
+    // manual FacturaForm is never rendered for the create path.
     await waitFor(() => {
       expect(screen.getByText(/Cuenta corriente del proveedor/)).toBeInTheDocument()
     })
@@ -187,7 +198,7 @@ describe('IA vision end-to-end — terminal confirm (C-21, task 3.2)', () => {
     expect(callOrder).toEqual(['cloudinary', 'facturas'])
   })
 
-  it('does NOT render the IA selector in edit mode', async () => {
+  it('does NOT render the carga modal in edit mode', async () => {
     const editWrapper = () => {
       const qc = new QueryClient({
         defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -208,12 +219,12 @@ describe('IA vision end-to-end — terminal confirm (C-21, task 3.2)', () => {
     await waitFor(() => {
       expect(screen.getByText(/Cargando factura|No se encontró la factura/)).toBeInTheDocument()
     })
-    expect(screen.queryByText(/Cargar con foto/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })
 
-describe('IA vision end-to-end — upload failure (C-21, task 3.3)', () => {
-  it('an upload failure keeps the modal open, shows the error, and fires NO POST /api/facturas', async () => {
+describe('carga modal end-to-end (factura) — upload failure', () => {
+  it('an upload failure keeps the modal on review, shows the error, and fires NO POST /api/facturas', async () => {
     server.use(
       http.post('https://api.cloudinary.com/v1_1/:cloud/auto/upload', () =>
         HttpResponse.json({ error: { message: 'Firma inválida' } }, { status: 401 }),
@@ -237,8 +248,8 @@ describe('IA vision end-to-end — upload failure (C-21, task 3.3)', () => {
   })
 })
 
-describe('IA vision end-to-end — 422 backend validation error (C-21, task 3.5)', () => {
-  it('a 422 on POST /api/facturas keeps the modal open, shows an error, and does not close or redirect', async () => {
+describe('carga modal end-to-end (factura) — 422 backend validation error', () => {
+  it('a 422 on POST /api/facturas keeps the modal on review, shows an error, and does not close or redirect', async () => {
     server.use(
       http.post('/api/facturas', () =>
         HttpResponse.json({ detail: 'monto_total debe ser mayor a cero' }, { status: 422 }),
@@ -257,38 +268,30 @@ describe('IA vision end-to-end — 422 backend validation error (C-21, task 3.5)
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument()
     })
-    // Still on the proposal — the dialog remains open, no redirect happened.
+    // Still on review — the dialog remains open, no redirect happened.
     expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByText(/Revisá la propuesta/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Monto total/i)).toBeInTheDocument()
     expect(screen.queryByText(/Cuenta corriente del proveedor/)).not.toBeInTheDocument()
   })
 })
 
-describe('IA vision end-to-end — cancel flow (C-15, section 9.4)', () => {
-  it('opening the modal, picking an image, then canceling leaves the form empty and no request fires', async () => {
+describe('carga modal end-to-end (factura) — cancel flow', () => {
+  it('picking an image, then closing the modal (Escape) navigates back to the list and fires no request', async () => {
     server.use(http.get('/api/proveedores/buscar', () => HttpResponse.json([])))
     await openModalAndPickImage()
 
-    // Click the modal's "Cancelar" — the modal closes, returns to selector, no POST fires
-    const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: /^Cancelar$/ }))
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
-
-    // Back at the selector (not the form)
-    expect(screen.getByText(/Cargar con foto/i)).toBeInTheDocument()
-    expect(screen.getByText(/Cargar manual/i)).toBeInTheDocument()
-
-    // No POST has fired (the cancel aborted the flow before any
-    // submission).
+    expect(screen.getByText('Facturas list')).toBeInTheDocument()
     expect(postFacturasBody).toBeNull()
   })
 })
 
-describe('IA vision end-to-end — 429 rate limit (C-15, section 9.5)', () => {
-  it('a 429 response shows the countdown and Cancelar closes the modal without firing a POST', async () => {
-    // Override the extraer-ia handler for this test only
+describe('carga modal end-to-end (factura) — 429 rate limit', () => {
+  it('a 429 response shows the countdown in the origen-step error banner and Escape closes with no POST', async () => {
     server.use(
       http.post('/api/facturas/extraer-ia', () =>
         HttpResponse.json(
@@ -300,14 +303,12 @@ describe('IA vision end-to-end — 429 rate limit (C-15, section 9.5)', () => {
 
     render(<FacturaFormPage />, { wrapper: makeWrapper() })
 
-    fireEvent.click(screen.getByText(/Cargar con foto/i))
     const fileInput = screen.getByLabelText(/Elegir imagen para extraer datos con IA/i) as HTMLInputElement
     fireEvent.change(fileInput, {
       target: { files: [new File([new Uint8Array(100)], 'f.jpg', { type: 'image/jpeg' })] },
     })
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
 
-    // The 429 state shows the rate-limit message (the body, scoped
-    // to the dialog — the title also says "Demasiadas solicitudes")
     const dialog = screen.getByRole('dialog')
     await waitFor(() => {
       expect(within(dialog).getByText(/Has alcanzado el límite de extracciones con IA/)).toBeInTheDocument()
@@ -320,8 +321,8 @@ describe('IA vision end-to-end — 429 rate limit (C-15, section 9.5)', () => {
     // to retry)
     expect(postFacturasBody).toBeNull()
 
-    // Cancelar closes the modal
-    fireEvent.click(within(dialog).getByRole('button', { name: /^Cancelar$/ }))
+    // Escape closes the modal (back to the list).
+    fireEvent.keyDown(dialog, { key: 'Escape' })
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
