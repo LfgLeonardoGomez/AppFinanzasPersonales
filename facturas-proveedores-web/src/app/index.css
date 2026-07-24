@@ -1,6 +1,12 @@
 /* Tailwind CSS v4 — importar con @import en lugar de @tailwind directives */
 @import "tailwindcss";
 
+/* Tailwind v4 defaults the `dark:` variant to `@media (prefers-color-scheme: dark)`,
+ * which ignores the app's own theme state. The durable source of truth is the
+ * backend profile (TemaPreferido), reflected onto documentElement by themeStore.
+ * Key the variant off that class instead of the OS preference. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ── Theme ──────────────────────────────────────────────────────────────── */
 @theme {
   /* Navy palette (primary) */
