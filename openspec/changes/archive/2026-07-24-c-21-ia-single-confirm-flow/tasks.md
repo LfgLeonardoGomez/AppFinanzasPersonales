@@ -8,7 +8,7 @@
 - [x] 1.2 GREEN: add the two `Field`s to `app/core/config.py` `Settings` with the defaults and `gt=0` validation.
 - [x] 1.3 RED: rewrite/extend the rate-limit tests (`tests/` covering `rate_limit_ia`) to drive the limit via env — set `IA_RATE_MAX_REQUESTS` low (e.g. 2) and assert the (max+1)th request returns 429; assert defaults allow 60 in an hour; keep the keyed-by-`usuario_id`, sliding-window, and 401-does-not-consume scenarios green.
 - [x] 1.4 GREEN: change `app/core/rate_limit_ia.py` to read `settings.IA_RATE_MAX_REQUESTS` / `settings.IA_RATE_WINDOW_SECONDS` at evaluation time (via the C-16 read-through proxy) instead of module constants; keep exports/test helpers working (source from settings). TRIANGULATE with a second env value.
-- [ ] 1.5 Document `IA_RATE_MAX_REQUESTS` and `IA_RATE_WINDOW_SECONDS` in `.env.example`. ⚠️ PENDIENTE MANUAL: `.env*` bloqueado por permisos de tools; el usuario debe agregar las 2 líneas a mano.
+- [x] 1.5 Document `IA_RATE_MAX_REQUESTS` and `IA_RATE_WINDOW_SECONDS` in `.env.example`. DONE: entraron con defaults 60/3600 en `facturas-proveedores-api/.env.example` (commit 8904551) y se documentaron también en el `.env.example` raíz de docker-compose.
 - [x] 1.6 Run the backend suite; confirm no pre-existing rate-limit/config test broke unexpectedly (only the intentionally-updated ones changed).
 
 ## 2. Frontend — shared upload + confirm-create factoring (ia-vision-frontend)

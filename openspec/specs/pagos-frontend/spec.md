@@ -206,37 +206,29 @@ Each `PagoCard` in the list SHALL display a visible label "Pago al proveedor" (o
 
 ### Requirement: The create-mode payment form offers a "Cargar con imagen (IA)" shortcut
 
-The `PagoFormPage` SHALL render a "Cargar con imagen (IA)" button in create mode, alongside the existing "Carga manual" entry. Clicking the button SHALL open the `PropuestaIAModal` (defined in the `ia-vision-frontend` capability) with `tipo='pago'`. The button SHALL be HIDDEN in edit mode (the IA flow applies to new documents only). The form SHALL accept a `prefillFromProposal` prop (or controlled state equivalent) so the modal can populate the form's fields on confirm. The pre-fill SHALL be subject to the same backend validations as the manual flow (RN-PAG-01..05 enforced by the C-10 Pydantic schema, including `extra="forbid"` that prevents any non-schema field from being sent). The button SHALL be disabled while the form's own `useCreatePago` mutation is `isPending`. The form SHALL structurally remain unable to render, accept, or send a `factura_id` (RN-PAG-01); the IA flow inherits this structural guarantee because the form's own mutation payload is unchanged.
+The `PagoFormPage` SHALL render a "Cargar con imagen (IA)" entry in create mode, alongside the existing "Carga manual" entry. Choosing it SHALL open the `PropuestaIAModal` (defined in the `ia-vision-frontend` capability) with `tipo='pago'`. The button SHALL be HIDDEN in edit mode (the IA flow applies to new documents only).
 
-#### Scenario: create-mode form shows the IA button
+For the IA path, the modal is **terminal**: on the modal's single "Confirmar", the resource is created directly from the modal (via `useCreatePago`) and the large manual form is NOT shown. The page SHALL pass `useCreatePago` (and the supplier-search/create wiring) into the modal, and SHALL NOT route the IA path into the manual `PagoForm`. The manual path (mode selector → `PagoForm`) is unchanged. The IA-created payload SHALL structurally remain unable to carry a `factura_id` (RN-PAG-01) — the create payload is `{ proveedor_id, monto, fecha, metodo, comprobante_url, origen: 'IA' }` with `extra="forbid"` enforced by the C-10 schema.
+
+#### Scenario: create-mode form shows the IA entry
 
 - **WHEN** the user opens `/pagos/nuevo` (the create-mode `PagoFormPage`)
-- **THEN** the form renders a "Cargar con imagen (IA)" button next to the existing manual entry, and clicking it opens the `PropuestaIAModal` with `tipo='pago'`
+- **THEN** the page renders a "Cargar con imagen (IA)" entry next to the manual entry, and choosing it opens the `PropuestaIAModal` with `tipo='pago'`
 
-#### Scenario: edit-mode form hides the IA button
+#### Scenario: edit-mode hides the IA entry
 
 - **WHEN** the user opens `/pagos/{id}/editar` (the edit-mode `PagoFormPage`)
-- **THEN** the "Cargar con imagen (IA)" button is NOT rendered in the DOM
+- **THEN** the "Cargar con imagen (IA)" entry is NOT rendered in the DOM
 
-#### Scenario: the IA confirm pre-fills the form fields
+#### Scenario: the IA confirm creates the pago directly (no second form)
 
-- **WHEN** the user clicks the modal's "Confirmar" with `propuesta = { proveedor_nombre: "Acme SA", monto: 5000, fecha: "2026-06-20", metodo: "TRANSFERENCIA" }` and `selectedProveedor = { id: "uuid", nombre: "Acme SA" }`
-- **THEN** the form's `selectedProveedor` becomes the picked `Proveedor`, the `monto` input shows `5000`, the `fecha` input shows "2026-06-20", the `metodo` select shows "TRANSFERENCIA" as the selected value, and the modal is no longer in the DOM
+- **WHEN** the user confirms the modal with `propuesta = { proveedor_nombre: "Acme SA", monto: 5000, fecha: "2026-06-20", metodo: "TRANSFERENCIA" }` and a selected supplier
+- **THEN** exactly one `POST /api/pagos` fires from the modal with `{ proveedor_id, monto: 5000, fecha: "2026-06-20", metodo: "TRANSFERENCIA", comprobante_url, origen: 'IA' }`, the modal closes, and the manual `PagoForm` is never rendered for this path
 
-#### Scenario: the IA confirm does not fire the manual POST
+#### Scenario: the IA-created pago still cannot send a factura_id
 
-- **WHEN** the user clicks the modal's "Confirmar"
-- **THEN** no `POST /api/pagos` request is made (the modal is read-and-confirm only; the manual POST fires when the user clicks the form's own "Confirmar")
-
-#### Scenario: the IA-confirmed form still cannot send a factura_id
-
-- **WHEN** the user clicks the modal's "Confirmar" and then clicks the form's "Confirmar"
-- **THEN** the `POST /api/pagos` request body has no `factura_id` key (RN-PAG-01, structural absence inherited from the C-11 form)
-
-#### Scenario: the IA button is disabled while the form mutation is in flight
-
-- **WHEN** the user has clicked the form's "Confirmar" and `useCreatePago` is `isPending`
-- **THEN** the "Cargar con imagen (IA)" button is `disabled`
+- **WHEN** the IA confirm fires `POST /api/pagos`
+- **THEN** the request body has no `factura_id` key (RN-PAG-01, structural absence)
 
 ### Requirement: Edit-mode PagoFormPage displays the supplier name from PagoResponse.proveedor_nombre
 
@@ -256,4 +248,18 @@ The system SHALL display the supplier's `nombre` in the readonly supplier field 
 
 - **WHEN** the user opens `/pagos/:id/editar`
 - **THEN** the readonly supplier field has no `<input>`, `<select>`, or other form control; the user cannot change the supplier (the backend PATCH cannot change `proveedor_id` per the `pagos-backend` D7 invariant; the frontend mirrors this)
+
+### Requirement: Creating a payment redirects to the supplier's cuenta corriente
+
+After a successful payment creation (both the manual `PagoForm` path and the IA modal path), the app SHALL navigate to the supplier's detail / cuenta-corriente route `/proveedores/:id`, using the `proveedor_id` of the created pago, so the user sees the payment reflected in the ledger. This aligns payment creation with the existing invoice behavior (`FacturaFormPage` already redirects to `/proveedores/:id`). A success message SHALL be surfaced on arrival.
+
+#### Scenario: manual pago creation lands on the supplier's cuenta corriente
+
+- **WHEN** the user creates a pago via the manual form and the `POST /api/pagos` succeeds with `proveedor_id = "uuid-123"`
+- **THEN** the app navigates to `/proveedores/uuid-123` (not `/pagos`) with a success message
+
+#### Scenario: IA pago creation lands on the supplier's cuenta corriente
+
+- **WHEN** the user creates a pago via the IA modal and the create succeeds with `proveedor_id = "uuid-123"`
+- **THEN** the app navigates to `/proveedores/uuid-123` with a success message
 
