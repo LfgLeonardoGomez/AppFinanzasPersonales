@@ -6,9 +6,16 @@ This is a **delta** to the canonical `proveedores-frontend` spec archived in C-0
 
 No other requirement in the canonical `proveedores-frontend` spec is modified. The list view, the autocomplete, the auth gating, the TanStack Query usage, the CUIT validation, the dependency-aware delete flow, and the route structure all remain as documented in C-07.
 
+## RENAMED Requirements
+
+- FROM: `### Requirement: Create and edit supplier via modal form`
+- TO: `### Requirement: Create and edit supplier via accessible dialog form`
+- FROM: `### Requirement: Two-step delete with dependency confirmation (RN-PROV-04)`
+- TO: `### Requirement: Delete confirmation uses an alertdialog (RN-PROV-04)`
+
 ## MODIFIED Requirements
 
-### Requirement: Create and edit supplier via accessible dialog form (was: modal form)
+### Requirement: Create and edit supplier via accessible dialog form
 
 The `ProveedorForm` SHALL be rendered inside an accessible dialog (the `frontend-ui-polish` `role="dialog"` pattern) instead of the previous custom modal. In create mode the dialog calls `POST /api/proveedores`; in edit mode it calls `PATCH /api/proveedores/{id}`. The form SHALL include the same fields as before: `nombre` (required), `cuit` (optional), `telefono` (optional), `categoria` (select: SERVICIO / OTRO, defaults to OTRO), `notas` (optional). The frontend SHALL enforce `nombre` non-emptiness client-side before submitting; the backend (Pydantic) is the final authority for CUIT format validation. A 422 response from the backend SHALL be displayed in the form. The form SHALL reset after a successful save and SHALL pre-fill existing values when opened in edit mode. The dialog SHALL close on `Esc`, SHALL trap focus while open, and SHALL return focus to the trigger (the "Nuevo proveedor" or "Editar" button) when closed. The dialog MAY close on backdrop click (this is a non-destructive form, so backdrop close is acceptable; the destructive `DeleteProveedorDialog` is the only `alertdialog` and does not close on backdrop).
 
@@ -79,7 +86,7 @@ The following scenarios from the C-07 canonical spec are **preserved unchanged**
 - **WHEN** the form is rendered in create or edit mode
 - **THEN** the `categoria` select contains exactly the options SERVICIO and OTRO
 
-### Requirement: Delete confirmation uses an alertdialog (was: confirmation modal)
+### Requirement: Delete confirmation uses an alertdialog (RN-PROV-04)
 
 The `DeleteProveedorDialog` (the destructive confirmation that appears when `tiene_dependencias: true`) SHALL be rendered as an `alertdialog` (the `frontend-ui-polish` destructive dialog pattern). It SHALL satisfy the `frontend-ui-polish` contract for `alertdialog`: it has `role="alertdialog"`, `aria-modal="true"`, an `aria-label` of "Confirmar eliminación", focuses the "Cancelar" button by default (safer than focusing the destructive action), traps focus, closes on `Esc`, returns focus to the trigger on close, and **does NOT close on backdrop click** (the user must explicitly choose). The internal behavior (call DELETE on Confirmar, do nothing on Cancelar) is preserved from the C-07 spec.
 
