@@ -155,7 +155,6 @@ export function CargaModal({
       setCountdown(0)
       setCreatedResult(null)
       previouslyFocusedRef.current = document.activeElement as HTMLElement | null
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     } else {
       previouslyFocusedRef.current?.focus()
     }

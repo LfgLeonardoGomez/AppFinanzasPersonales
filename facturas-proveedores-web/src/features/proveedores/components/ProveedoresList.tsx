@@ -45,6 +45,11 @@ function saldoColorClass(saldo: number): string {
   return 'text-ink'
 }
 
+// Stable fallback for when the query has not resolved to an array yet —
+// a module-level constant keeps `items` referentially stable across
+// renders so the useMemo below does not invalidate every render.
+const EMPTY_ITEMS: ProveedorListItem[] = []
+
 export function ProveedoresList({ onNewProveedor, onEditProveedor }: ProveedoresListProps) {
   const [orderBy, setOrderBy] = useState<OrderBy>('nombre')
   const [page, setPage] = useState(1)
@@ -76,7 +81,7 @@ export function ProveedoresList({ onNewProveedor, onEditProveedor }: Proveedores
     setShowConfirmDialog(false)
   }
 
-  const items = Array.isArray(data) ? data : []
+  const items = Array.isArray(data) ? data : EMPTY_ITEMS
   const filteredItems = useMemo(
     () => items.filter((p) => matchesSearch(p, search)),
     [items, search],

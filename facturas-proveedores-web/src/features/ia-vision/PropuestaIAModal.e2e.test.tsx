@@ -109,7 +109,7 @@ function buildServer() {
   )
 }
 
-let server = buildServer()
+const server = buildServer()
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))
 afterAll(() => server.close())
