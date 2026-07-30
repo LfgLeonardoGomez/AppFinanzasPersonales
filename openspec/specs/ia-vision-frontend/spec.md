@@ -3,7 +3,6 @@
 ## Purpose
 
 New capability: the web interface of the PWA (`facturas-proveedores-web`) that consumes the C-14 `POST /api/facturas/extraer-ia` and `POST /api/pagos/extraer-ia` vision-extraction endpoints and presents the resulting header-only proposal to the user as a pre-filled preview inside the existing `FacturaFormPage` and `PagoFormPage`. Shipped by C-15, this capability adds a "Cargar con imagen (IA)" button inside the create-mode invoice and payment forms that opens a blocking `PropuestaIAModal` accepting an image-only upload, surfaces the vision response (or its failure envelope, 422, 429, or generic error) without ever persisting (the modal is read-and-confirm; the persist call is the existing C-09 / C-11 `useCreateFactura` / `useCreatePago`), and applies RN-VINC supplier matching through the existing `SupplierSearch` from C-07 — never pre-selecting a supplier (the IA returns `proveedor_nombre` as a string, the user picks). The capability enforces RN-IA-04 (no `POST /api/facturas` or `POST /api/pagos` is fired from inside the modal — only from the form's own submit, after the user reviews the pre-filled fields), RN-IA-05 (graceful UI on extractor failure with a manual fallback), and RN-IA-06 (no `proveedor_id` in the response, no pre-selection in the UI). Rate limiting (10 req/hour per `usuario_id`, 429 + `Retry-After`) is surfaced as a recoverable error state with a countdown; the 11th request does not retry silently. All HTTP calls go through the shared Axios client (C-04). After an IA-modal confirm, the client SENDS `origen: 'IA'` in the `POST /api/facturas` or `POST /api/pagos` body (OQ-1 RESOLVED via c-15a, Path B — the backend schemas `app/schemas/factura.py:77` and `app/schemas/pago.py:61` declare `origen: Optional[OrigenDocumento] = None`; the services persist the provided value, defaulting to `MANUAL` only when a fully-manual entry omits the field).
-
 ## Requirements
 ### Requirement: "Cargar con imagen (IA)" button is offered on the create-mode invoice and payment forms
 
@@ -263,4 +262,28 @@ The `File` the IA read SHALL be carried through the confirm and, on "Confirmar",
 
 - **WHEN** the Cloudinary upload fails during confirm
 - **THEN** the modal shows an upload error, no `POST /api/facturas` or `POST /api/pagos` is made, and the user can retry the confirm
+
+### Requirement: The human can reject the AI's supplier match
+
+The AI-proposed supplier SHALL be dismissible. When the extraction auto-matches a supplier and pre-selects it, the user MUST be able to clear that selection and choose or create a different supplier. A confirmation step in which only "accept" is reachable is not a confirmation (RN-IA-06: the AI proposes, the human confirms).
+
+#### Scenario: Clearing an auto-matched supplier keeps it cleared
+
+- **WHEN** the AI auto-matches a supplier, pre-selects it, and the user activates the clear control
+- **THEN** the selection is emptied and STAYS empty across subsequent renders, so the user can search for or create a different supplier
+
+#### Scenario: Auto-match still pre-selects on a fresh proposal
+
+- **WHEN** an extraction returns a supplier name that uniquely matches one of the user's suppliers
+- **THEN** that supplier is pre-selected automatically, exactly as before
+
+#### Scenario: A new AI reading may auto-match again after a previous dismissal
+
+- **WHEN** the user cleared the auto-matched supplier and then a new extraction produces a different detected supplier name
+- **THEN** the auto-match applies again for the new name — the dismissal applies to the proposal the user rejected, not to the control forever
+
+#### Scenario: The dismissal applies to both invoices and payments
+
+- **WHEN** the clear control is used in either the invoice or the payment AI flow
+- **THEN** the behaviour is identical, because both flows share one supplier-match control
 

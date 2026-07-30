@@ -3,9 +3,7 @@
 ## Purpose
 
 New capability: read-only HTTP endpoint that returns, per supplier, the on-demand `{ saldo, facturas_con_estado, historial }` triple composing the cuenta corriente. Builds on top of the `FacturaService._compute_estado_fifo` algorithm (C-08), the `PagoRepository.list_by_proveedor` active pago list (C-10 / C-06), and the `ProveedorRepository.get_saldo_por_proveedor` aggregate (C-06). The capability enforces RN-SALDO (sign convention: positive=deuda, zero=al día, negative=a favor), RN-FIFO (PENDIENTE / PARCIAL / PAGADA, deterministic ordering), and RN-HIST (chronological merge of facturas as debe and pagos as haber, with row-by-row `saldo_acumulado`). All computation is on-demand in the service layer; nothing derived is persisted.
-
 ## Requirements
-
 ### Requirement: Cuenta-corriente endpoint returns the triple per supplier
 
 The system SHALL expose `GET /api/proveedores/{proveedor_id}/cuenta-corriente` returning a JSON document with three blocks: `saldo` (Decimal, signed: `>0` deuda, `=0` al día, `<0` a favor), `facturas_con_estado` (a list of the supplier's active invoices, each annotated with its FIFO-computed `estado` of `PENDIENTE` / `PARCIAL` / `PAGADA`), and `historial` (a chronologically-merged list of the supplier's active invoices as `FACTURA` rows and active payments as `PAGO` rows, ordered by `(fecha ASC, created_at ASC, id ASC)`, with a `saldo_acumulado` field on every entry reflecting the running balance at that row). The endpoint SHALL require a valid authenticated session. The endpoint SHALL return 404 if the supplier does not exist, is soft-deleted, or belongs to a different user — never 403. The endpoint SHALL NOT persist any derived value. The endpoint SHALL have no request body and no query parameters.
@@ -110,7 +108,7 @@ Every active invoice in `facturas_con_estado` SHALL carry an `estado` field of `
 
 ### Requirement: Historial merges facturas and pagos chronologically (RN-HIST)
 
-`historial` SHALL be a list whose elements are either `{ tipo: "FACTURA", id, fecha, monto, saldo_acumulado }` or `{ tipo: "PAGO", id, fecha, monto, saldo_acumulado }`. Facturas appear as `FACTURA` rows with `monto = factura.monto_total`; pagos appear as `PAGO` rows with `monto = pago.monto`. The list SHALL be ordered by `(fecha ASC, created_at ASC, id ASC)`. The `saldo_acumulado` field SHALL be the running sum at each row, where facturas add (debe) and pagos subtract (haber). The sign convention SHALL match `saldo` (positive = deuda). The `saldo_acumulado` of the **last** row SHALL equal the `saldo` of the response.
+`historial` SHALL be a list whose elements are either `{ tipo: "FACTURA", id, fecha, monto, saldo_acumulado, archivo_url }` or `{ tipo: "PAGO", id, fecha, monto, saldo_acumulado, archivo_url }`. Facturas appear as `FACTURA` rows with `monto = factura.monto_total` and `archivo_url = factura.archivo_url`; pagos appear as `PAGO` rows with `monto = pago.monto` and `archivo_url = pago.comprobante_url`. `archivo_url` SHALL be `None` when the underlying row has no file attached — no new upload capability is introduced by this field, it only threads through an already-persisted value. The list SHALL be ordered by `(fecha ASC, created_at ASC, id ASC)`. The `saldo_acumulado` field SHALL be the running sum at each row, where facturas add (debe) and pagos subtract (haber). The sign convention SHALL match `saldo` (positive = deuda). The `saldo_acumulado` of the **last** row SHALL equal the `saldo` of the response.
 
 #### Scenario: empty historial for a supplier with no movimientos
 
@@ -147,6 +145,21 @@ Every active invoice in `facturas_con_estado` SHALL carry an `estado` field of `
 - **WHEN** a `historial` entry has `tipo = FACTURA`
 - **THEN** its `id` equals the corresponding `factura.id`; analogously for `PAGO` entries (id == `pago.id`)
 
+#### Scenario: a FACTURA row carries the factura's archivo_url
+
+- **WHEN** a `historial` entry has `tipo = FACTURA` and the underlying factura has `archivo_url = "https://res.cloudinary.com/demo/facturas/x.pdf"`
+- **THEN** the entry's `archivo_url` equals that value
+
+#### Scenario: a PAGO row carries the pago's comprobante_url as archivo_url
+
+- **WHEN** a `historial` entry has `tipo = PAGO` and the underlying pago has `comprobante_url = "https://res.cloudinary.com/demo/comprobantes/y.jpg"`
+- **THEN** the entry's `archivo_url` equals that value
+
+#### Scenario: a row with no attached file has archivo_url = None
+
+- **WHEN** the underlying factura or pago has no file attached (`archivo_url` / `comprobante_url` is `None`)
+- **THEN** the corresponding `historial` entry has `archivo_url = None`
+
 ### Requirement: Service-layer authorization — 404 on foreign supplier
 
 All authorization checks SHALL live exclusively in the service layer (`ProveedorService`). The router SHALL NOT contain ownership logic. When the requested supplier does not belong to the authenticated user, the service SHALL raise HTTP 404 (not 403) — foreign resources are indistinguishable from non-existent ones to prevent enumeration. The same 404 SHALL be returned for missing suppliers and for the caller's own suppliers that have been soft-deleted.
@@ -182,7 +195,7 @@ The `proveedor` table SHALL NOT have a `saldo` column. The `factura` table SHALL
 
 ### Requirement: Pydantic response schema shape
 
-The response SHALL conform to the `CuentaCorrienteResponse` shape with `proveedor_id` (UUID), `saldo` (Decimal, signed), `facturas_con_estado` (list of `FacturaConEstado`), and `historial` (list of `EntradaHistorial`). `FacturaConEstado` SHALL mirror `FacturaResponse` from C-08 with `items` and `items_sum_mismatch` omitted, plus an `estado: EstadoFactura` field (PENDIENTE / PARCIAL / PAGADA). `EntradaHistorial` SHALL have `id` (UUID), `tipo` (`Literal["FACTURA", "PAGO"]`), `fecha` (date), `monto` (Decimal, always positive), and `saldo_acumulado` (Decimal, signed). The schemas are output-only; the endpoint has no request body, so no input schema is required.
+The response SHALL conform to the `CuentaCorrienteResponse` shape with `proveedor_id` (UUID), `saldo` (Decimal, signed), `facturas_con_estado` (list of `FacturaConEstado`), and `historial` (list of `EntradaHistorial`). `FacturaConEstado` SHALL mirror `FacturaResponse` from C-08 with `items` and `items_sum_mismatch` omitted, plus an `estado: EstadoFactura` field (PENDIENTE / PARCIAL / PAGADA). `EntradaHistorial` SHALL have `id` (UUID), `tipo` (`Literal["FACTURA", "PAGO"]`), `fecha` (date), `monto` (Decimal, always positive), `saldo_acumulado` (Decimal, signed), and `archivo_url` (`Optional[str]`, default `None`). The schemas are output-only; the endpoint has no request body, so no input schema is required. No Alembic migration is required for `archivo_url` — it is sourced from the already-persisted `Factura.archivo_url` and `Pago.comprobante_url` columns.
 
 #### Scenario: CuentaCorrienteResponse has the four required fields
 
@@ -194,15 +207,10 @@ The response SHALL conform to the `CuentaCorrienteResponse` shape with `proveedo
 - **WHEN** a `FacturaConEstado` is parsed
 - **THEN** it has `id`, `proveedor_id`, `fecha_emision`, `monto_total`, `origen`, `estado` (one of PENDIENTE / PARCIAL / PAGADA), and the standard timestamps; it does NOT have an `items` field and does NOT have an `items_sum_mismatch` field
 
-#### Scenario: EntradaHistorial has tipo and saldo_acumulado
+#### Scenario: EntradaHistorial has tipo, saldo_acumulado, and an optional archivo_url
 
 - **WHEN** an `EntradaHistorial` is parsed
-- **THEN** it has `id` (UUID), `tipo` (string, exactly "FACTURA" or "PAGO"), `fecha` (date), `monto` (Decimal, positive), and `saldo_acumulado` (Decimal, signed)
-
-#### Scenario: monto is always positive in EntradaHistorial
-
-- **WHEN** an `EntradaHistorial` is constructed with a negative `monto`
-- **THEN** the schema rejects the value (Pydantic Field constraint)
+- **THEN** it has `id` (UUID), `tipo` (string, exactly "FACTURA" or "PAGO"), `fecha` (date), `monto` (Decimal, positive), `saldo_acumulado` (Decimal, signed), and `archivo_url` (string or `None`, defaulting to `None` when omitted)
 
 ### Requirement: Endpoint requires authentication and uses a thin router
 
@@ -219,3 +227,4 @@ The endpoint SHALL be wired with `Depends(get_current_user)` and `Depends(get_db
 - **THEN** no `session.commit()` is invoked (read-only operation)
 
 </content>
+
