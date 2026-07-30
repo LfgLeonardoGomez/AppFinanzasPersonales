@@ -6,12 +6,19 @@
  *  - FiltrosFacturas id="filtro-estado" + label "Estado"
  *  - "No hay facturas con esos filtros." text
  *  - "Limpiar filtros" button
+ *
+ * C-24: "Ver archivo" opens the shared ArchivoPreviewDialog in-app instead
+ * of navigating to a new tab via <a target="_blank"> — cloudinary_signer.py
+ * allows both images and PDFs for the factura preset, so the file may be
+ * either. One dialog instance is reused for the whole table; clicking a
+ * different row's button swaps the previewed URL.
  */
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { EstadoBadge } from '@features/facturas/components/EstadoBadge'
 import { FiltrosFacturas } from './FiltrosFacturas'
 import { formatMonto } from '@shared/utils/currency'
 import { ExternalLink } from 'lucide-react'
+import { ArchivoPreviewDialog } from '@shared/components/ArchivoPreviewDialog/ArchivoPreviewDialog'
 import type {
   FacturaConEstado,
   FiltrosFacturas as FiltrosFacturasType,
@@ -41,6 +48,7 @@ export function TablaFacturasConEstado({
   onChangeFilters,
 }: TablaFacturasConEstadoProps) {
   const filtered = useMemo(() => applyFilters(facturas, filters), [facturas, filters])
+  const [preview, setPreview] = useState<{ url: string; title: string } | null>(null)
 
   if (filtered.length === 0) {
     return (
@@ -108,15 +116,19 @@ export function TablaFacturasConEstado({
                 </td>
                 <td className="px-4 py-3">
                   {f.archivo_url ? (
-                    <a
-                      href={f.archivo_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPreview({
+                          url: f.archivo_url!,
+                          title: `Factura ${f.numero ?? f.id}`,
+                        })
+                      }
                       className="inline-flex items-center gap-1 text-xs font-medium text-violet-500 transition-colors hover:text-violet-600"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                       Ver archivo
-                    </a>
+                    </button>
                   ) : (
                     <span className="text-ink-soft">—</span>
                   )}
@@ -126,6 +138,15 @@ export function TablaFacturasConEstado({
           </tbody>
         </table>
       </div>
+
+      <ArchivoPreviewDialog
+        url={preview?.url ?? null}
+        open={preview !== null}
+        onOpenChange={(next) => {
+          if (!next) setPreview(null)
+        }}
+        title={preview?.title}
+      />
     </div>
   )
 }

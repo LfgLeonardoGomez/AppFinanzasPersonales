@@ -61,6 +61,12 @@ class EntradaHistorial(BaseModel):
     - `tipo`: discriminator — FACTURA adds, PAGO subtracts.
     - `monto`: always positive. The sign is implicit in `tipo`.
     - `saldo_acumulado`: signed running balance at this row. Positive = deuda.
+    - `archivo_url` (C-24): the attached file for this row, threaded from the
+      already-persisted source column — `Factura.archivo_url` for FACTURA rows,
+      `Pago.comprobante_url` for PAGO rows. One flat field name regardless of
+      `tipo` (design D4) so the historial response is self-sufficient and the
+      frontend can read `h.archivo_url` without branching on `tipo`. `None`
+      when the underlying row has no file attached. No migration required.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -70,6 +76,7 @@ class EntradaHistorial(BaseModel):
     fecha: date
     monto: Decimal = Field(gt=0, description="Amount (always positive; sign implicit in tipo)")
     saldo_acumulado: Decimal
+    archivo_url: Optional[str] = None
 
 
 class CuentaCorrienteResponse(BaseModel):

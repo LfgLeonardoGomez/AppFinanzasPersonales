@@ -77,6 +77,38 @@ const emptyTriple: CuentaCorrienteResponse = {
   historial: [],
 }
 
+// ── C-24: historial order toggle fixtures ────────────────────────────────────
+// Three chronologically-ordered entries with distinct saldo_acumulado values,
+// exactly as the backend's _build_historial would return them (ASC by fecha).
+// Used to verify the display-only reversal never touches these values.
+const hAsc1: EntradaHistorial = {
+  id: 'h-1',
+  tipo: 'FACTURA',
+  fecha: '2026-06-01',
+  monto: 1000,
+  saldo_acumulado: 1000,
+}
+const hAsc2: EntradaHistorial = {
+  id: 'h-2',
+  tipo: 'PAGO',
+  fecha: '2026-06-10',
+  monto: 200,
+  saldo_acumulado: 800,
+}
+const hAsc3: EntradaHistorial = {
+  id: 'h-3',
+  tipo: 'FACTURA',
+  fecha: '2026-06-20',
+  monto: 700,
+  saldo_acumulado: 1500,
+}
+const tripleForOrderToggle: CuentaCorrienteResponse = {
+  proveedor_id: 'p-order',
+  saldo: 1500,
+  facturas_con_estado: [f1, f2],
+  historial: [hAsc1, hAsc2, hAsc3],
+}
+
 describe('CuentaCorrientePage', () => {
   it('renders the SaldoBadge with the response saldo', () => {
     render(<CuentaCorrientePage cuentaCorriente={triple} />)
@@ -158,5 +190,80 @@ describe('CuentaCorrientePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pagos' }))
     expect(screen.getByTestId('pagos-row-pago-1')).toBeInTheDocument()
     expect(screen.queryByTestId('tabla-facturas-row-f-1')).not.toBeInTheDocument()
+  })
+
+  // ── C-24: historial order toggle (highest-risk area) ────────────────────
+  //
+  // The backend orders historial ASC by (fecha, created_at, id) and computes
+  // saldo_acumulado in that same pass (RN-HIST). The frontend NEVER re-derives
+  // that value — it only reverses a COPY of the array for display. These
+  // tests exist specifically to catch a future ".sort()"-based "cleanup"
+  // that would decouple row order from the saldo_acumulado the backend
+  // computed, corrupting the invariant.
+
+  function historialRows() {
+    return screen.getAllByTestId(/^historial-row-/)
+  }
+
+  it('defaults to newest-first: the response\'s LAST entry renders as the FIRST row', () => {
+    render(<CuentaCorrientePage cuentaCorriente={tripleForOrderToggle} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }))
+    const rows = historialRows()
+    expect(rows[0]).toHaveAttribute('data-testid', 'historial-row-h-3')
+    expect(rows[1]).toHaveAttribute('data-testid', 'historial-row-h-2')
+    expect(rows[2]).toHaveAttribute('data-testid', 'historial-row-h-1')
+  })
+
+  it('the newest-first row (response\'s last entry) shows the SaldoBadge value', () => {
+    render(<CuentaCorrientePage cuentaCorriente={tripleForOrderToggle} />)
+    const badge = screen.getByTestId('saldo-badge')
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }))
+    const firstRow = historialRows()[0]!
+    const cell = within(firstRow).getByTestId('historial-saldo-acumulado')
+    expect(badge.textContent).toContain('1.500,00')
+    expect(cell.textContent).toContain('1.500,00')
+  })
+
+  it('toggling to oldest-first restores the exact response order', () => {
+    render(<CuentaCorrientePage cuentaCorriente={tripleForOrderToggle} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }))
+    fireEvent.click(screen.getByRole('button', { name: /más antiguo primero|ascendente|asc/i }))
+    const rows = historialRows()
+    expect(rows[0]).toHaveAttribute('data-testid', 'historial-row-h-1')
+    expect(rows[1]).toHaveAttribute('data-testid', 'historial-row-h-2')
+    expect(rows[2]).toHaveAttribute('data-testid', 'historial-row-h-3')
+  })
+
+  it('REGRESSION GUARD: every row\'s saldo_acumulado is byte-identical between desc and asc modes — only position changes, never the value', () => {
+    // This is the test that would catch a future ".sort()"-based regression:
+    // a value-based re-sort would decouple row order from the
+    // backend-computed saldo_acumulado, and this assertion would fail
+    // because a row's rendered value would differ between the two modes
+    // (or worse, silently match the WRONG row's value).
+    const { unmount } = render(<CuentaCorrientePage cuentaCorriente={tripleForOrderToggle} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }))
+    const descValues: Record<string, string | null> = {}
+    for (const row of historialRows()) {
+      const testId = row.getAttribute('data-testid')!
+      descValues[testId] = within(row).getByTestId('historial-saldo-acumulado').textContent
+    }
+    unmount()
+
+    render(<CuentaCorrientePage cuentaCorriente={tripleForOrderToggle} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }))
+    fireEvent.click(screen.getByRole('button', { name: /más antiguo primero|ascendente|asc/i }))
+    for (const row of historialRows()) {
+      const testId = row.getAttribute('data-testid')!
+      const ascValue = within(row).getByTestId('historial-saldo-acumulado').textContent
+      expect(ascValue).toBe(descValues[testId])
+    }
+    // Sanity: the three values are genuinely distinct (a bug that always
+    // rendered the same value would trivially "pass" the loop above).
+    expect(new Set(Object.values(descValues)).size).toBe(3)
+  })
+
+  it('empty historial shows the empty state regardless of toggle interaction', () => {
+    render(<CuentaCorrientePage cuentaCorriente={emptyTriple} />)
+    expect(screen.getByText(/sin movimientos registrados/i)).toBeInTheDocument()
   })
 })

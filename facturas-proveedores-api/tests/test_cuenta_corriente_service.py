@@ -94,6 +94,7 @@ def _make_factura_db(
     proveedor_id: uuid.UUID,
     monto_total: Decimal,
     fecha_emision: date,
+    archivo_url: str | None = None,
 ) -> "Factura":
     from app.models.factura import Factura
     from app.core.uuid_utils import new_uuid
@@ -105,6 +106,7 @@ def _make_factura_db(
         proveedor_id=proveedor_id,
         fecha_emision=fecha_emision,
         monto_total=monto_total,
+        archivo_url=archivo_url,
         origen=OrigenDocumento.MANUAL,
     )
     session.add(f)
@@ -118,6 +120,7 @@ def _make_pago_db(
     proveedor_id: uuid.UUID,
     monto: Decimal,
     fecha: date,
+    comprobante_url: str | None = None,
 ) -> "Pago":
     from app.models.pago import Pago
     from app.core.uuid_utils import new_uuid
@@ -130,6 +133,7 @@ def _make_pago_db(
         monto=monto,
         fecha=fecha,
         metodo=MetodoPago.EFECTIVO,
+        comprobante_url=comprobante_url,
         origen=OrigenDocumento.MANUAL,
     )
     session.add(p)
@@ -155,6 +159,45 @@ class TestEmpty:
         assert result.saldo == Decimal("0.00")
         assert result.facturas_con_estado == []
         assert result.historial == []
+
+
+class TestArchivoUrlThreading:
+    """C-24: EntradaHistorial.archivo_url is threaded end-to-end through the real service."""
+
+    def test_factura_and_pago_archivo_urls_reach_the_historial(self, session: Session):
+        from app.services.proveedor_service import ProveedorService
+
+        u = _make_usuario(session)
+        p = _make_proveedor(session, u.id)
+        f = _make_factura_db(
+            session, u.id, p.id, Decimal("1000.00"), date.today(),
+            archivo_url="https://res.cloudinary.com/demo/facturas/f.pdf",
+        )
+        pago = _make_pago_db(
+            session, u.id, p.id, Decimal("200.00"), date.today(),
+            comprobante_url="https://res.cloudinary.com/demo/comprobantes/p.jpg",
+        )
+        session.commit()
+
+        svc = ProveedorService(session)
+        result = svc.get_cuenta_corriente(u.id, p.id)
+
+        by_id = {h["id"]: h for h in result.historial}
+        assert by_id[f.id]["archivo_url"] == "https://res.cloudinary.com/demo/facturas/f.pdf"
+        assert by_id[pago.id]["archivo_url"] == "https://res.cloudinary.com/demo/comprobantes/p.jpg"
+
+    def test_rows_without_files_have_archivo_url_none(self, session: Session):
+        from app.services.proveedor_service import ProveedorService
+
+        u = _make_usuario(session)
+        p = _make_proveedor(session, u.id)
+        _make_factura_db(session, u.id, p.id, Decimal("100.00"), date.today())
+        session.commit()
+
+        svc = ProveedorService(session)
+        result = svc.get_cuenta_corriente(u.id, p.id)
+
+        assert result.historial[0]["archivo_url"] is None
 
 
 class TestSingleFactura:

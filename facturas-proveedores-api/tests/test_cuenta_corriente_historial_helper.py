@@ -18,6 +18,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Optional
 
 import pytest
 
@@ -30,6 +31,7 @@ class FakeFactura:
     fecha_emision: date
     monto_total: Decimal
     created_at: datetime
+    archivo_url: Optional[str] = None
 
 
 @dataclass
@@ -40,6 +42,7 @@ class FakePago:
     fecha: date
     monto: Decimal
     created_at: datetime
+    comprobante_url: Optional[str] = None
 
 
 # ── Empty & single-row cases ─────────────────────────────────────────────────
@@ -244,3 +247,49 @@ class TestScaleAndEdgeCases:
         assert isinstance(result, list)
         assert isinstance(result[0], dict)
         assert set(result[0].keys()) >= {"id", "tipo", "fecha", "monto", "saldo_acumulado"}
+
+
+# ── C-24: archivo_url threading ──────────────────────────────────────────────
+
+
+class TestArchivoUrlThreading:
+    def test_factura_row_carries_factura_archivo_url(self):
+        """A FACTURA row's archivo_url equals the underlying factura's archivo_url."""
+        from app.services.proveedor_service import _build_historial
+
+        f1 = FakeFactura(
+            uuid.uuid4(),
+            date(2026, 6, 1),
+            Decimal("1000.00"),
+            datetime(2026, 6, 1, 10, 0),
+            archivo_url="https://res.cloudinary.com/demo/facturas/x.pdf",
+        )
+        result = _build_historial([f1], [])
+        assert result[0]["archivo_url"] == "https://res.cloudinary.com/demo/facturas/x.pdf"
+
+    def test_pago_row_carries_pago_comprobante_url_as_archivo_url(self):
+        """A PAGO row's archivo_url equals the underlying pago's comprobante_url."""
+        from app.services.proveedor_service import _build_historial
+
+        p1 = FakePago(
+            uuid.uuid4(),
+            date(2026, 6, 1),
+            Decimal("500.00"),
+            datetime(2026, 6, 1, 10, 0),
+            comprobante_url="https://res.cloudinary.com/demo/comprobantes/y.jpg",
+        )
+        result = _build_historial([], [p1])
+        assert result[0]["archivo_url"] == "https://res.cloudinary.com/demo/comprobantes/y.jpg"
+
+    def test_row_with_no_attached_file_has_archivo_url_none(self):
+        """Triangulate: when neither archivo_url nor comprobante_url is set, the
+        result dict's archivo_url is None (not a missing key, not an empty string)."""
+        from app.services.proveedor_service import _build_historial
+
+        f1 = FakeFactura(uuid.uuid4(), date(2026, 6, 1), Decimal("100.00"), datetime(2026, 6, 1, 10, 0))
+        p1 = FakePago(uuid.uuid4(), date(2026, 6, 2), Decimal("50.00"), datetime(2026, 6, 2, 10, 0))
+
+        result = _build_historial([f1], [p1])
+
+        assert result[0]["archivo_url"] is None
+        assert result[1]["archivo_url"] is None

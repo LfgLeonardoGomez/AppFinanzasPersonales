@@ -18,6 +18,22 @@
  *  - "Sin movimientos registrados." text
  *  - Default tab is "Facturas" (facturas-con-estado rows render without
  *    any interaction); "Pagos" / "Historial" render after clicking their pill.
+ *
+ * C-24: historial display-order toggle (newest-first by default).
+ *
+ * ⚠️ CRITICAL — READ BEFORE TOUCHING `displayedHistorial` BELOW ⚠️
+ * The backend (`_build_historial`, RN-HIST) sorts ASC by (fecha, created_at,
+ * id) and computes `saldo_acumulado` as a running sum IN THAT SAME PASS. The
+ * response order and each row's `saldo_acumulado` are therefore coupled —
+ * the value at index i depends on having walked indices 0..i-1 in that exact
+ * order. `displayedHistorial` below is ONLY EVER `[...historial]` optionally
+ * followed by `.reverse()` — a pure structural flip that cannot touch any
+ * row's own fields. It MUST NEVER become a `.sort()` with a comparator (e.g.
+ * "sort by fecha descending"): that would silently decouple row order from
+ * the saldo_acumulado the backend computed for the ASC walk, corrupting the
+ * exact invariant this on-demand ledger exists to guarantee. See
+ * `CuentaCorrientePage.test.tsx`'s "REGRESSION GUARD" test, which asserts
+ * every row's rendered saldo_acumulado is identical between asc/desc modes.
  */
 import { useMemo, useState } from 'react'
 import { SaldoBadge } from './components/SaldoBadge'
@@ -35,6 +51,7 @@ interface CuentaCorrientePageProps {
 }
 
 type Tab = 'facturas' | 'pagos' | 'historial'
+type HistorialOrder = 'asc' | 'desc'
 
 const TAB_LABELS: Record<Tab, string> = {
   facturas: 'Facturas',
@@ -80,13 +97,62 @@ function TabPill({
   )
 }
 
+function OrderToggle({
+  order,
+  onChange,
+}: {
+  order: HistorialOrder
+  onChange: (order: HistorialOrder) => void
+}) {
+  return (
+    <div className="flex gap-0.5 rounded-pill bg-page p-[3px]">
+      <button
+        type="button"
+        aria-pressed={order === 'desc'}
+        onClick={() => onChange('desc')}
+        className={`
+          rounded-pill px-3 py-1 font-inter text-xs font-medium transition-colors duration-160
+          ${order === 'desc' ? 'bg-surface text-violet-900 shadow-sm' : 'bg-transparent text-ink-soft hover:text-ink-soft-2'}
+        `}
+      >
+        Más reciente primero
+      </button>
+      <button
+        type="button"
+        aria-pressed={order === 'asc'}
+        onClick={() => onChange('asc')}
+        className={`
+          rounded-pill px-3 py-1 font-inter text-xs font-medium transition-colors duration-160
+          ${order === 'asc' ? 'bg-surface text-violet-900 shadow-sm' : 'bg-transparent text-ink-soft hover:text-ink-soft-2'}
+        `}
+      >
+        Más antiguo primero
+      </button>
+    </div>
+  )
+}
+
 export function CuentaCorrientePage({ cuentaCorriente }: CuentaCorrientePageProps) {
   const [filters, setFilters] = useState<FiltrosFacturasType>({})
   const [tab, setTab] = useState<Tab>('facturas')
+  // Default 'desc' (newest first) per the user's explicit request. The
+  // backend's own order (RN-HIST) is 'asc' — see the block comment above
+  // this component for why the reversal MUST stay a pure `.reverse()`.
+  const [historialOrder, setHistorialOrder] = useState<HistorialOrder>('desc')
 
   const pagos = useMemo(
     () => cuentaCorriente.historial.filter((h) => h.tipo === 'PAGO'),
     [cuentaCorriente.historial],
+  )
+
+  // Display-only reversal of a COPY. Never a value-based re-sort — see the
+  // block comment above this component (C-24 critical invariant).
+  const displayedHistorial = useMemo(
+    () =>
+      historialOrder === 'desc'
+        ? [...cuentaCorriente.historial].reverse()
+        : cuentaCorriente.historial,
+    [cuentaCorriente.historial, historialOrder],
   )
 
   if (isEmptyTriple(cuentaCorriente)) {
@@ -141,6 +207,12 @@ export function CuentaCorrientePage({ cuentaCorriente }: CuentaCorrientePageProp
             </div>
           </div>
 
+          {tab === 'historial' && (
+            <div className="mb-3 flex justify-end">
+              <OrderToggle order={historialOrder} onChange={setHistorialOrder} />
+            </div>
+          )}
+
           {tab === 'facturas' && (
             <TablaFacturasConEstado
               facturas={cuentaCorriente.facturas_con_estado}
@@ -149,7 +221,7 @@ export function CuentaCorrientePage({ cuentaCorriente }: CuentaCorrientePageProp
             />
           )}
           {tab === 'pagos' && <PagosRegistrados pagos={pagos} />}
-          {tab === 'historial' && <HistorialCronologico historial={cuentaCorriente.historial} />}
+          {tab === 'historial' && <HistorialCronologico historial={displayedHistorial} />}
         </Card>
       </section>
     </div>

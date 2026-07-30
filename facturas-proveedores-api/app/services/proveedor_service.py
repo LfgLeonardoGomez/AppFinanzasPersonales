@@ -286,22 +286,28 @@ def _build_historial(
     robust to any caller ordering — the cost is O((n+m) log (n+m)) which
     is fine for MVP volumes.
 
+    C-24: each row also carries `archivo_url` — the already-persisted
+    `f.archivo_url` for FACTURA rows, `p.comprobante_url` for PAGO rows
+    (design D4: one flat field name regardless of `tipo`). `None` when the
+    underlying row has no file attached. Threading this through does NOT
+    change the ordering or the saldo_acumulado running-balance logic below.
+
     NO DB access. NO side effects. Tested in isolation.
     """
     tagged: list[tuple] = []
     for f in facturas:
         tagged.append(
-            (f.fecha_emision, f.created_at, f.id, f.id, "FACTURA", f.monto_total)
+            (f.fecha_emision, f.created_at, f.id, f.id, "FACTURA", f.monto_total, f.archivo_url)
         )
     for p in pagos:
-        tagged.append((p.fecha, p.created_at, p.id, p.id, "PAGO", p.monto))
+        tagged.append((p.fecha, p.created_at, p.id, p.id, "PAGO", p.monto, p.comprobante_url))
 
     # Stable sort by (fecha ASC, created_at ASC, id ASC) — see D4.
     tagged.sort(key=lambda row: (row[0], row[1], row[2]))
 
     historial: list[dict] = []
     running = Decimal("0.00")
-    for _fecha, _created, _id, row_id, tipo, monto in tagged:
+    for _fecha, _created, _id, row_id, tipo, monto, archivo_url in tagged:
         if tipo == "FACTURA":
             running += monto
         else:  # PAGO
@@ -313,6 +319,7 @@ def _build_historial(
                 "fecha": _fecha,
                 "monto": monto,
                 "saldo_acumulado": running,
+                "archivo_url": archivo_url,
             }
         )
     return historial

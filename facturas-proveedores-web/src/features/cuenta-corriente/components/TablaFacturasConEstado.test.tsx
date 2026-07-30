@@ -21,6 +21,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, within, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { TablaFacturasConEstado } from './TablaFacturasConEstado'
 import type { FacturaConEstado, FiltrosFacturas } from '@shared/api/api'
 
@@ -89,7 +90,7 @@ describe('TablaFacturasConEstado', () => {
     expect(within(row3).getByText('PAGADA')).toBeInTheDocument()
   })
 
-  it('renders archivo_url as an external link when present', () => {
+  it('renders a "Ver archivo" button (not a link) when archivo_url is present (C-24: in-app preview)', () => {
     render(
       <TablaFacturasConEstado
         facturas={allFacturas}
@@ -97,13 +98,14 @@ describe('TablaFacturasConEstado', () => {
         onChangeFilters={vi.fn()}
       />,
     )
-    const link = screen.getByRole('link', { name: /ver archivo/i })
-    expect(link).toHaveAttribute('href', 'https://example.com/f2.pdf')
-    expect(link).toHaveAttribute('target', '_blank')
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    // C-24: the file opens in an in-app dialog, not a new browser tab —
+    // the affordance is a button, not an <a target="_blank">.
+    const button = screen.getByRole('button', { name: /ver archivo/i })
+    expect(button).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /ver archivo/i })).not.toBeInTheDocument()
   })
 
-  it('does NOT render a link when archivo_url is null', () => {
+  it('does NOT render a "Ver archivo" control when archivo_url is null', () => {
     render(
       <TablaFacturasConEstado
         facturas={[f1, f3]}
@@ -111,7 +113,25 @@ describe('TablaFacturasConEstado', () => {
         onChangeFilters={vi.fn()}
       />,
     )
-    expect(screen.queryByRole('link', { name: /ver archivo/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /ver archivo/i })).not.toBeInTheDocument()
+  })
+
+  it('clicking "Ver archivo" opens the ArchivoPreviewDialog with that row\'s archivo_url', async () => {
+    const user = userEvent.setup()
+    render(
+      <TablaFacturasConEstado
+        facturas={allFacturas}
+        filters={{}}
+        onChangeFilters={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: /ver archivo/i }))
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+    expect(within(dialog).getByRole('link', { name: /abrir en pestaña nueva/i })).toHaveAttribute(
+      'href',
+      'https://example.com/f2.pdf',
+    )
   })
 
   it('formats monto_total via the shared formatMonto (ARS currency)', () => {
@@ -216,5 +236,40 @@ describe('TablaFacturasConEstado', () => {
     expect(clearButtons.length).toBeGreaterThanOrEqual(1)
     fireEvent.click(clearButtons[0]!)
     expect(onChangeFilters).toHaveBeenCalledWith({})
+  })
+
+  it('switching rows swaps the previewed file (C-24 triangulate)', async () => {
+    const f4 = baseFactura(
+      'f-4',
+      'PAGADA',
+      '2026-07-01',
+      1000,
+      'FAC-004',
+      'https://example.com/f4.png',
+    )
+    const user = userEvent.setup()
+    render(
+      <TablaFacturasConEstado
+        facturas={[...allFacturas, f4]}
+        filters={{}}
+        onChangeFilters={vi.fn()}
+      />,
+    )
+    const buttons = screen.getAllByRole('button', { name: /ver archivo/i })
+    expect(buttons).toHaveLength(2)
+
+    await user.click(buttons[0]!)
+    expect(
+      within(screen.getByRole('dialog')).getByRole('link', { name: /abrir en pestaña nueva/i }),
+    ).toHaveAttribute('href', 'https://example.com/f2.pdf')
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    const buttonsAfterClose = screen.getAllByRole('button', { name: /ver archivo/i })
+    await user.click(buttonsAfterClose[1]!)
+    expect(
+      within(screen.getByRole('dialog')).getByRole('link', { name: /abrir en pestaña nueva/i }),
+    ).toHaveAttribute('href', 'https://example.com/f4.png')
   })
 })

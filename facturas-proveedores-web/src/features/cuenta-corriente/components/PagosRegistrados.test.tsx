@@ -6,7 +6,8 @@
  * and renders one row per entry (fecha, monto with a "-" prefix).
  */
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { PagosRegistrados } from './PagosRegistrados'
 import type { EntradaHistorial } from '@shared/api/api'
 
@@ -16,6 +17,7 @@ const pago1: EntradaHistorial = {
   fecha: '2026-07-05',
   monto: 64200,
   saldo_acumulado: 1000,
+  archivo_url: 'https://res.cloudinary.com/demo/comprobantes/pago-1.jpg',
 }
 
 const pago2: EntradaHistorial = {
@@ -24,6 +26,7 @@ const pago2: EntradaHistorial = {
   fecha: '2026-06-20',
   monto: 41000,
   saldo_acumulado: 41000,
+  archivo_url: null,
 }
 
 describe('PagosRegistrados', () => {
@@ -45,5 +48,24 @@ describe('PagosRegistrados', () => {
     const rows = screen.getAllByRole('row').slice(1) // drop header row
     expect(rows[0]).toHaveAttribute('data-testid', 'pagos-row-pago-2')
     expect(rows[1]).toHaveAttribute('data-testid', 'pagos-row-pago-1')
+  })
+
+  it('a pago with a comprobante shows a "Ver archivo" button that opens the preview dialog (C-24)', async () => {
+    const user = userEvent.setup()
+    render(<PagosRegistrados pagos={[pago1]} />)
+    const row = screen.getByTestId('pagos-row-pago-1')
+    const button = within(row).getByRole('button', { name: /ver archivo/i })
+    await user.click(button)
+    const dialog = screen.getByRole('dialog')
+    expect(
+      within(dialog).getByRole('link', { name: /abrir en pestaña nueva/i }),
+    ).toHaveAttribute('href', 'https://res.cloudinary.com/demo/comprobantes/pago-1.jpg')
+  })
+
+  it('a pago without a comprobante shows the "—" placeholder and no button (C-24)', () => {
+    render(<PagosRegistrados pagos={[pago2]} />)
+    const row = screen.getByTestId('pagos-row-pago-2')
+    expect(within(row).queryByRole('button', { name: /ver archivo/i })).not.toBeInTheDocument()
+    expect(within(row).getByText('—')).toBeInTheDocument()
   })
 })

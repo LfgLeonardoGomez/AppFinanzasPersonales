@@ -557,6 +557,18 @@ export type EntradaHistorialTipo = 'FACTURA' | 'PAGO'
  * `monto` is the absolute value; `saldo_acumulado` is signed and the
  * last row's value equals the response's `saldo` (the C-12 cross-check
  * invariant).
+ *
+ * `archivo_url` (C-24): the attached file for this row — `Factura.archivo_url`
+ * for FACTURA rows, `Pago.comprobante_url` for PAGO rows. `null`/absent when
+ * the underlying row has no file attached.
+ *
+ * NOTE: hand-edited (not regenerated via `npm run generate-types`) — the
+ * running dev API reflects concurrent, unrelated in-progress work from other
+ * changes, and a full regeneration produced an unrelated multi-thousand-line
+ * diff. Only this one field was added, matching the backend Pydantic schema
+ * (`EntradaHistorial.archivo_url: Optional[str] = None`) exactly. Safe to
+ * regenerate later once the API is back to a clean/released state — that
+ * regeneration should produce an identical shape for this field.
  */
 export interface EntradaHistorial {
   id: string
@@ -564,6 +576,7 @@ export interface EntradaHistorial {
   fecha: string
   monto: number
   saldo_acumulado: number
+  archivo_url?: string | null
 }
 
 /**

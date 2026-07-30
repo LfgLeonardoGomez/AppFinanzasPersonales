@@ -238,6 +238,53 @@ class TestEntradaHistorial:
 
         assert EntradaHistorial.model_config.get("from_attributes") is True
 
+    def test_archivo_url_defaults_to_none_when_omitted(self):
+        """C-24: EntradaHistorial gains an optional archivo_url, default None."""
+        from app.schemas.cuenta_corriente import EntradaHistorial
+
+        obj = EntradaHistorial.model_validate(
+            {
+                "id": uuid.uuid4(),
+                "tipo": "FACTURA",
+                "fecha": date(2026, 6, 15),
+                "monto": Decimal("1500.00"),
+                "saldo_acumulado": Decimal("1500.00"),
+            }
+        )
+        assert obj.archivo_url is None
+
+    def test_archivo_url_accepts_a_string(self):
+        """C-24: EntradaHistorial.archivo_url accepts a Cloudinary URL string."""
+        from app.schemas.cuenta_corriente import EntradaHistorial
+
+        obj = EntradaHistorial.model_validate(
+            {
+                "id": uuid.uuid4(),
+                "tipo": "PAGO",
+                "fecha": date(2026, 6, 20),
+                "monto": Decimal("300.00"),
+                "saldo_acumulado": Decimal("-300.00"),
+                "archivo_url": "https://res.cloudinary.com/demo/comprobantes/y.jpg",
+            }
+        )
+        assert obj.archivo_url == "https://res.cloudinary.com/demo/comprobantes/y.jpg"
+
+    def test_archivo_url_accepts_explicit_none(self):
+        """C-24 triangulate: archivo_url=None explicitly passed is accepted (not just omitted)."""
+        from app.schemas.cuenta_corriente import EntradaHistorial
+
+        obj = EntradaHistorial.model_validate(
+            {
+                "id": uuid.uuid4(),
+                "tipo": "FACTURA",
+                "fecha": date(2026, 6, 15),
+                "monto": Decimal("100.00"),
+                "saldo_acumulado": Decimal("100.00"),
+                "archivo_url": None,
+            }
+        )
+        assert obj.archivo_url is None
+
 
 # ── CuentaCorrienteResponse ───────────────────────────────────────────────────
 
