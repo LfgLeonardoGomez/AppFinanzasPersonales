@@ -35,7 +35,7 @@ def int_client(engine, env_vars) -> TestClient:
     reset_rate_limit_store()
 
     from app.main import app
-    from app.core.deps import get_db
+    from app.routers.auth import get_db
 
     def override_get_db():
         with Session(engine) as s:

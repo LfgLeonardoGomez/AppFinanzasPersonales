@@ -20,14 +20,16 @@ from sqlalchemy import create_engine, inspect, text
 from testcontainers.postgres import PostgresContainer
 
 
-@pytest.fixture(scope="module")
-def migration_engine_0003():
+def _migration_engine_0003_impl():
     """Separate disposable Postgres for 0003 migration testing.
 
     C-16 (D-4): snapshot os.environ["DATABASE_URL"] on enter, restore on
     teardown (pop if it was unset, set the original otherwise). Mirrors the
-    pattern in tests/conftest.py::env_vars. The test
-    `test_database_url_restored_after_module` locks this contract in.
+    pattern in tests/conftest.py::env_vars.
+
+    C-25: separated from the `@pytest.fixture` decorator so a test can drive
+    setup and teardown directly and actually observe the restore. See
+    `test_database_url_restored_after_teardown` below.
     """
     original_db_url = os.environ.get("DATABASE_URL")
     with PostgresContainer(
@@ -45,6 +47,11 @@ def migration_engine_0003():
         os.environ.pop("DATABASE_URL", None)
     else:
         os.environ["DATABASE_URL"] = original_db_url
+
+
+@pytest.fixture(scope="module")
+def migration_engine_0003():
+    yield from _migration_engine_0003_impl()
 
 
 def _run_alembic(*args: str) -> None:
@@ -143,24 +150,38 @@ def test_re_upgrade_restores_index(migration_engine_0003):
     assert "ix_proveedor_usuario_nombre_lower" in indexes
 
 
-def test_database_url_restored_after_module():
-    """C-16 (D-4) regression: the module-scope `migration_engine_0003` fixture
-    MUST restore `os.environ["DATABASE_URL"]` to its pre-module value once the
-    module's tests have finished.
+def test_database_url_restored_after_teardown(monkeypatch):
+    """C-25 regression: driving `_migration_engine_0003_impl()`'s setup and
+    then its teardown MUST restore `os.environ["DATABASE_URL"]`.
 
-    This test deliberately does NOT depend on `migration_engine_0003` (it
-    stands outside the fixture's scope). It snapshots the env at the start
-    of the run, does not mutate it itself, and asserts the snapshot value
-    matches the value at the end. If a future PR removes the snapshot/restore
-    from the fixture, the env will still carry the module's container DSN
-    and this test will fail.
+    This REPLACES a test that could never fail. The previous version read
+    `DATABASE_URL` twice in a row with nothing in between and asserted the two
+    reads were equal — trivially true whether or not the fixture restored
+    anything. Verified during c-25: with the restore lines deleted, the old
+    test still passed 6/6. Its docstring described a mechanism the body did
+    not implement.
+
+    Driving the generator directly is what makes the assertion real:
+    - after `next(gen)` (setup) DATABASE_URL MUST have changed to the
+      throwaway container's DSN — this is the premise check, so the test
+      cannot pass by the fixture doing nothing at all;
+    - after the generator is exhausted (teardown) it MUST be back to the
+      sentinel set below.
+
+    Mirrors the same test in test_alembic_migration.py / _0004 / _0005.
     """
-    snapshot = os.environ.get("DATABASE_URL")
+    monkeypatch.setenv("DATABASE_URL", "sentinel-original-value")
 
-    # No mutation here — the contract is "the fixture restores, not us".
-    final = os.environ.get("DATABASE_URL")
+    gen = _migration_engine_0003_impl()
+    next(gen)  # setup: enters PostgresContainer, mutates DATABASE_URL
+    assert os.environ["DATABASE_URL"] != "sentinel-original-value", (
+        "fixture setup did not mutate DATABASE_URL — test premise broken"
+    )
 
-    assert final == snapshot, (
-        f"DATABASE_URL was not restored after the module's tests: "
-        f"snapshot={snapshot!r}, final={final!r}"
+    with pytest.raises(StopIteration):
+        next(gen)  # teardown: disposes engine, exits container, restores env
+
+    assert os.environ["DATABASE_URL"] == "sentinel-original-value", (
+        "DATABASE_URL was not restored on teardown — this leaks a dead DSN "
+        "into every test that runs afterwards (the c-17 failure mode)"
     )

@@ -16,13 +16,23 @@ from sqlalchemy import create_engine, inspect, text
 from testcontainers.postgres import PostgresContainer
 
 
-@pytest.fixture(scope="module")
-def migration_engine():
-    """
-    Separate disposable Postgres for migration testing.
+def _migration_engine_impl():
+    """Core generator body for the `migration_engine` fixture.
 
-    Runs alembic upgrade/downgrade against a fresh DB.
+    Separated from the `@pytest.fixture` decorator (C-25) so
+    `test_database_url_restored_after_teardown` can drive setup and
+    teardown directly and deterministically, independent of pytest's own
+    fixture-scheduling — see
+    openspec/changes/c-25-fix-test-dependency-overrides/design.md D-5.
+    `migration_engine` below is a thin pytest-fixture wrapper around this
+    same generator; there is only one implementation of the setup/
+    teardown logic.
+
+    C-25: snapshot os.environ["DATABASE_URL"] on enter, restore on
+    teardown (pop if it was unset, set the original otherwise). Mirrors
+    the pattern in tests/test_alembic_migration_0003.py.
     """
+    original_db_url = os.environ.get("DATABASE_URL")
     with PostgresContainer(
         image="postgres:15-alpine",
         username="mig_user",
@@ -34,6 +44,20 @@ def migration_engine():
         engine = create_engine(url, echo=False)
         yield engine
         engine.dispose()
+    if original_db_url is None:
+        os.environ.pop("DATABASE_URL", None)
+    else:
+        os.environ["DATABASE_URL"] = original_db_url
+
+
+@pytest.fixture(scope="module")
+def migration_engine():
+    """
+    Separate disposable Postgres for migration testing.
+
+    Runs alembic upgrade/downgrade against a fresh DB.
+    """
+    yield from _migration_engine_impl()
 
 
 def run_alembic(*args: str) -> None:
@@ -120,3 +144,35 @@ def test_downgrade_removes_all_domain_tables(migration_engine):
     domain_tables = {"usuario", "proveedor", "factura", "factura_item", "pago"}
     remaining = tables & domain_tables
     assert remaining == set(), f"Tables {remaining} should have been dropped"
+
+
+def test_database_url_restored_after_teardown(monkeypatch):
+    """C-25 regression: driving `_migration_engine_impl()`'s setup then
+    teardown directly MUST restore `os.environ["DATABASE_URL"]` to its
+    pre-fixture value.
+
+    Unlike a sentinel test that merely reads `DATABASE_URL` twice with no
+    fixture activity in between (which is always trivially equal and
+    proves nothing — see design.md D-5), this test explicitly drives the
+    fixture's generator:
+    - after `next(gen)` (setup), DATABASE_URL MUST have changed to the
+      throwaway container's DSN;
+    - after exhausting the generator (teardown), DATABASE_URL MUST be
+      back to the sentinel value set below.
+    If the restore lines are removed from `_migration_engine_impl`, the
+    second assertion fails.
+    """
+    monkeypatch.setenv("DATABASE_URL", "sentinel-original-value")
+
+    gen = _migration_engine_impl()
+    next(gen)  # setup: enters PostgresContainer, mutates DATABASE_URL
+    assert os.environ["DATABASE_URL"] != "sentinel-original-value", (
+        "fixture setup did not mutate DATABASE_URL — test premise broken"
+    )
+
+    with pytest.raises(StopIteration):
+        next(gen)  # teardown: disposes engine, exits container, restores env
+
+    assert os.environ["DATABASE_URL"] == "sentinel-original-value", (
+        "DATABASE_URL was not restored after fixture teardown"
+    )
