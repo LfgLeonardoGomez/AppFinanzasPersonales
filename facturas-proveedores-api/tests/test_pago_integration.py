@@ -22,11 +22,15 @@ Covers:
 - DELETE /api/pagos/{id} → 204
 - DELETE /api/pagos/{id} (foreign) → 404
 - DELETE /api/pagos/{id} (already soft-deleted) → 404
+
+c-22: identity is per-client, never a hand-written Cookie header. Each user
+drives its own logged-in client (`make_user_client`), so "user A" and "user B"
+cannot silently collapse into the same identity — which is exactly what made
+the cross-tenant 404 assertions vacuous before. See tests/test_multiuser_harness.py.
 """
 
 import uuid
 from datetime import date, timedelta
-from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -34,6 +38,7 @@ from sqlalchemy import create_engine
 from sqlmodel import Session, SQLModel
 
 import app.models  # noqa: F401
+from tests.conftest import make_anon_client, make_user_client
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -48,8 +53,8 @@ def engine(db_url: str):
 
 
 @pytest.fixture(scope="module")
-def pago_client(engine, env_vars) -> TestClient:
-    """Integration client with DB override and rate-limit store reset.
+def pago_app(engine, env_vars):
+    """The app wired to the throwaway Postgres, with the rate-limit store reset.
 
     C-16 (D-3): `get_settings.cache_clear()` removed — `get_settings` is
     no longer cached.
@@ -66,49 +71,26 @@ def pago_client(engine, env_vars) -> TestClient:
 
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app, raise_server_exceptions=True) as c:
-        yield c
+    # One context-managed client so the app's lifespan runs once per module.
+    with TestClient(app, raise_server_exceptions=True):
+        yield app
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def user(pago_app) -> TestClient:
+    """A logged-in client; its session lives only in its own cookie jar."""
+    return make_user_client(pago_app, prefix="pago")
 
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
 
-def _unique_email():
-    return f"pago_{uuid.uuid4().hex[:8]}@test.com"
-
-
-def _unique_ip():
-    return f"10.{uuid.uuid4().int % 256}.{uuid.uuid4().int % 256}.7"
-
-
-def _register_and_login(client: TestClient) -> tuple[str, dict]:
-    """Register a new user and return (access_token, headers)."""
-    email = _unique_email()
-    password = "testpass123"
-    ip = _unique_ip()
-
-    client.post(
-        "/api/auth/registro",
-        json={"email": email, "password": password, "nombre": "Test User"},
-        headers={"X-Forwarded-For": ip},
-    )
-    login_resp = client.post(
-        "/api/auth/login",
-        json={"email": email, "password": password},
-        headers={"X-Forwarded-For": ip},
-    )
-    assert login_resp.status_code == 200
-    token = login_resp.cookies.get("access_token")
-    return token, {"Cookie": f"access_token={token}"}
-
-
-def _create_proveedor(client: TestClient, headers: dict) -> dict:
+def _create_proveedor(client: TestClient) -> dict:
     resp = client.post(
         "/api/proveedores/",
         json={"nombre": f"Prov {uuid.uuid4().hex[:6]}", "categoria": "OTRO"},
-        headers=headers,
     )
     assert resp.status_code == 201
     return resp.json()
@@ -116,7 +98,6 @@ def _create_proveedor(client: TestClient, headers: dict) -> dict:
 
 def _create_pago(
     client: TestClient,
-    headers: dict,
     proveedor_id: str,
     monto: str = "100.00",
     fecha: str | None = None,
@@ -129,7 +110,6 @@ def _create_pago(
             "fecha": fecha or date.today().isoformat(),
             "metodo": "EFECTIVO",
         },
-        headers=headers,
     )
     assert resp.status_code == 201
     return resp.json()
@@ -139,24 +119,27 @@ def _create_pago(
 
 
 class TestUnauthenticated:
-    def test_list_requires_auth(self, pago_client: TestClient):
-        resp = pago_client.get("/api/pagos/")
+    """Each test uses a client with a guaranteed-empty jar, so a 401 proves the
+    absence of a session instead of depending on test execution order."""
+
+    def test_list_requires_auth(self, pago_app):
+        resp = make_anon_client(pago_app).get("/api/pagos/")
         assert resp.status_code == 401
 
-    def test_create_requires_auth(self, pago_client: TestClient):
-        resp = pago_client.post("/api/pagos/", json={})
+    def test_create_requires_auth(self, pago_app):
+        resp = make_anon_client(pago_app).post("/api/pagos/", json={})
         assert resp.status_code == 401
 
-    def test_get_requires_auth(self, pago_client: TestClient):
-        resp = pago_client.get(f"/api/pagos/{uuid.uuid4()}")
+    def test_get_requires_auth(self, pago_app):
+        resp = make_anon_client(pago_app).get(f"/api/pagos/{uuid.uuid4()}")
         assert resp.status_code == 401
 
-    def test_patch_requires_auth(self, pago_client: TestClient):
-        resp = pago_client.patch(f"/api/pagos/{uuid.uuid4()}", json={})
+    def test_patch_requires_auth(self, pago_app):
+        resp = make_anon_client(pago_app).patch(f"/api/pagos/{uuid.uuid4()}", json={})
         assert resp.status_code == 401
 
-    def test_delete_requires_auth(self, pago_client: TestClient):
-        resp = pago_client.delete(f"/api/pagos/{uuid.uuid4()}")
+    def test_delete_requires_auth(self, pago_app):
+        resp = make_anon_client(pago_app).delete(f"/api/pagos/{uuid.uuid4()}")
         assert resp.status_code == 401
 
 
@@ -164,11 +147,10 @@ class TestUnauthenticated:
 
 
 class TestCreatePago:
-    def test_create_minimal_pago(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
+    def test_create_minimal_pago(self, user: TestClient):
+        prov = _create_proveedor(user)
 
-        resp = pago_client.post(
+        resp = user.post(
             "/api/pagos/",
             json={
                 "proveedor_id": prov["id"],
@@ -176,7 +158,6 @@ class TestCreatePago:
                 "fecha": date.today().isoformat(),
                 "metodo": "EFECTIVO",
             },
-            headers=headers,
         )
 
         assert resp.status_code == 201
@@ -185,14 +166,13 @@ class TestCreatePago:
         assert data["origen"] == "MANUAL"
         assert data["comprobante_url"] is None
         assert data["metodo"] == "EFECTIVO"
-        assert data["usuario_id"] is not None
+        assert data["usuario_id"] == user.usuario_id
         assert data["proveedor_id"] == prov["id"]
 
-    def test_create_with_comprobante_url(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
+    def test_create_with_comprobante_url(self, user: TestClient):
+        prov = _create_proveedor(user)
 
-        resp = pago_client.post(
+        resp = user.post(
             "/api/pagos/",
             json={
                 "proveedor_id": prov["id"],
@@ -201,18 +181,16 @@ class TestCreatePago:
                 "metodo": "TRANSFERENCIA",
                 "comprobante_url": "https://example.com/x.pdf",
             },
-            headers=headers,
         )
 
         assert resp.status_code == 201
         assert resp.json()["comprobante_url"] == "https://example.com/x.pdf"
 
-    def test_create_with_factura_id_rejected_422(self, pago_client: TestClient):
+    def test_create_with_factura_id_rejected_422(self, user: TestClient):
         """RN-PAG-01: schema's extra=forbid rejects factura_id at the wire."""
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
+        prov = _create_proveedor(user)
 
-        resp = pago_client.post(
+        resp = user.post(
             "/api/pagos/",
             json={
                 "proveedor_id": prov["id"],
@@ -221,17 +199,15 @@ class TestCreatePago:
                 "metodo": "EFECTIVO",
                 "factura_id": str(uuid.uuid4()),
             },
-            headers=headers,
         )
 
         assert resp.status_code == 422
         assert "factura_id" in str(resp.json()).lower()
 
-    def test_create_future_fecha_rejected_422(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
+    def test_create_future_fecha_rejected_422(self, user: TestClient):
+        prov = _create_proveedor(user)
 
-        resp = pago_client.post(
+        resp = user.post(
             "/api/pagos/",
             json={
                 "proveedor_id": prov["id"],
@@ -239,16 +215,14 @@ class TestCreatePago:
                 "fecha": (date.today() + timedelta(days=1)).isoformat(),
                 "metodo": "EFECTIVO",
             },
-            headers=headers,
         )
 
         assert resp.status_code == 422
 
-    def test_create_monto_zero_rejected_422(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
+    def test_create_monto_zero_rejected_422(self, user: TestClient):
+        prov = _create_proveedor(user)
 
-        resp = pago_client.post(
+        resp = user.post(
             "/api/pagos/",
             json={
                 "proveedor_id": prov["id"],
@@ -256,16 +230,14 @@ class TestCreatePago:
                 "fecha": date.today().isoformat(),
                 "metodo": "EFECTIVO",
             },
-            headers=headers,
         )
 
         assert resp.status_code == 422
 
-    def test_create_monto_negative_rejected_422(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
+    def test_create_monto_negative_rejected_422(self, user: TestClient):
+        prov = _create_proveedor(user)
 
-        resp = pago_client.post(
+        resp = user.post(
             "/api/pagos/",
             json={
                 "proveedor_id": prov["id"],
@@ -273,16 +245,14 @@ class TestCreatePago:
                 "fecha": date.today().isoformat(),
                 "metodo": "EFECTIVO",
             },
-            headers=headers,
         )
 
         assert resp.status_code == 422
 
-    def test_create_invalid_metodo_rejected_422(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
+    def test_create_invalid_metodo_rejected_422(self, user: TestClient):
+        prov = _create_proveedor(user)
 
-        resp = pago_client.post(
+        resp = user.post(
             "/api/pagos/",
             json={
                 "proveedor_id": prov["id"],
@@ -290,17 +260,19 @@ class TestCreatePago:
                 "fecha": date.today().isoformat(),
                 "metodo": "CRIPTOMONEDA",
             },
-            headers=headers,
         )
 
         assert resp.status_code == 422
 
-    def test_create_foreign_proveedor_returns_404(self, pago_client: TestClient):
-        _, headers_a = _register_and_login(pago_client)
-        _, headers_b = _register_and_login(pago_client)
-        prov_b = _create_proveedor(pago_client, headers_b)
+    def test_create_foreign_proveedor_returns_404(self, pago_app):
+        client_a = make_user_client(pago_app, prefix="pago_a")
+        client_b = make_user_client(pago_app, prefix="pago_b")
+        prov_b = _create_proveedor(client_b)
+        # ProveedorResponse does not expose usuario_id; ownership is proven by
+        # A being unable to reach B's proveedor at all.
+        assert client_a.get(f"/api/proveedores/{prov_b['id']}").status_code == 404
 
-        resp = pago_client.post(
+        resp = client_a.post(
             "/api/pagos/",
             json={
                 "proveedor_id": prov_b["id"],
@@ -308,7 +280,6 @@ class TestCreatePago:
                 "fecha": date.today().isoformat(),
                 "metodo": "EFECTIVO",
             },
-            headers=headers_a,
         )
 
         assert resp.status_code == 404
@@ -318,13 +289,12 @@ class TestCreatePago:
 
 
 class TestListPagos:
-    def test_list_returns_user_pagos(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
-        _create_pago(pago_client, headers, prov["id"], "100.00")
-        _create_pago(pago_client, headers, prov["id"], "200.00")
+    def test_list_returns_user_pagos(self, user: TestClient):
+        prov = _create_proveedor(user)
+        _create_pago(user, prov["id"], "100.00")
+        _create_pago(user, prov["id"], "200.00")
 
-        resp = pago_client.get("/api/pagos/", headers=headers)
+        resp = user.get("/api/pagos/")
         assert resp.status_code == 200
         data = resp.json()
         # Spec mandates the paginated envelope {items, total, page, page_size}.
@@ -335,17 +305,15 @@ class TestListPagos:
         items = data["items"]
         assert len(items) == 2
 
-    def test_list_filters_by_proveedor(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov1 = _create_proveedor(pago_client, headers)
-        prov2 = _create_proveedor(pago_client, headers)
-        _create_pago(pago_client, headers, prov1["id"], "100.00")
-        _create_pago(pago_client, headers, prov2["id"], "200.00")
+    def test_list_filters_by_proveedor(self, user: TestClient):
+        prov1 = _create_proveedor(user)
+        prov2 = _create_proveedor(user)
+        _create_pago(user, prov1["id"], "100.00")
+        _create_pago(user, prov2["id"], "200.00")
 
-        resp = pago_client.get(
+        resp = user.get(
             "/api/pagos/",
             params={"proveedor_id": prov1["id"]},
-            headers=headers,
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -356,25 +324,25 @@ class TestListPagos:
         for item in items:
             assert item["proveedor_id"] == prov1["id"]
 
-    def test_list_foreign_proveedor_returns_404(self, pago_client: TestClient):
-        _, headers_a = _register_and_login(pago_client)
-        _, headers_b = _register_and_login(pago_client)
-        prov_b = _create_proveedor(pago_client, headers_b)
+    def test_list_foreign_proveedor_returns_404(self, pago_app):
+        client_a = make_user_client(pago_app, prefix="pago_a")
+        client_b = make_user_client(pago_app, prefix="pago_b")
+        prov_b = _create_proveedor(client_b)
 
-        resp = pago_client.get(
+        resp = client_a.get(
             "/api/pagos/",
             params={"proveedor_id": prov_b["id"]},
-            headers=headers_a,
         )
         assert resp.status_code == 404
 
-    def test_list_user_isolation(self, pago_client: TestClient):
-        _, headers_a = _register_and_login(pago_client)
-        _, headers_b = _register_and_login(pago_client)
-        prov_a = _create_proveedor(pago_client, headers_a)
-        pago_a = _create_pago(pago_client, headers_a, prov_a["id"])
+    def test_list_user_isolation(self, pago_app):
+        client_a = make_user_client(pago_app, prefix="pago_a")
+        client_b = make_user_client(pago_app, prefix="pago_b")
+        prov_a = _create_proveedor(client_a)
+        pago_a = _create_pago(client_a, prov_a["id"])
+        assert pago_a["usuario_id"] == client_a.usuario_id
 
-        resp = pago_client.get("/api/pagos/", headers=headers_b)
+        resp = client_b.get("/api/pagos/")
         assert resp.status_code == 200
         data = resp.json()
         if isinstance(data, dict) and "items" in data:
@@ -389,29 +357,28 @@ class TestListPagos:
 
 
 class TestGetPago:
-    def test_get_own_pago(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
-        pago = _create_pago(pago_client, headers, prov["id"], "100.00")
+    def test_get_own_pago(self, user: TestClient):
+        prov = _create_proveedor(user)
+        pago = _create_pago(user, prov["id"], "100.00")
 
-        resp = pago_client.get(f"/api/pagos/{pago['id']}", headers=headers)
+        resp = user.get(f"/api/pagos/{pago['id']}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == pago["id"]
         assert data["monto"] == "100.00"
 
-    def test_get_foreign_pago_returns_404(self, pago_client: TestClient):
-        _, headers_a = _register_and_login(pago_client)
-        _, headers_b = _register_and_login(pago_client)
-        prov_a = _create_proveedor(pago_client, headers_a)
-        pago_a = _create_pago(pago_client, headers_a, prov_a["id"])
+    def test_get_foreign_pago_returns_404(self, pago_app):
+        client_a = make_user_client(pago_app, prefix="pago_a")
+        client_b = make_user_client(pago_app, prefix="pago_b")
+        prov_a = _create_proveedor(client_a)
+        pago_a = _create_pago(client_a, prov_a["id"])
+        assert pago_a["usuario_id"] == client_a.usuario_id
 
-        resp = pago_client.get(f"/api/pagos/{pago_a['id']}", headers=headers_b)
+        resp = client_b.get(f"/api/pagos/{pago_a['id']}")
         assert resp.status_code == 404
 
-    def test_get_nonexistent_pago_returns_404(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        resp = pago_client.get(f"/api/pagos/{uuid.uuid4()}", headers=headers)
+    def test_get_nonexistent_pago_returns_404(self, user: TestClient):
+        resp = user.get(f"/api/pagos/{uuid.uuid4()}")
         assert resp.status_code == 404
 
 
@@ -419,91 +386,79 @@ class TestGetPago:
 
 
 class TestUpdatePago:
-    def test_partial_update_monto(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
-        pago = _create_pago(pago_client, headers, prov["id"], "100.00")
+    def test_partial_update_monto(self, user: TestClient):
+        prov = _create_proveedor(user)
+        pago = _create_pago(user, prov["id"], "100.00")
 
-        resp = pago_client.patch(
+        resp = user.patch(
             f"/api/pagos/{pago['id']}",
             json={"monto": "500.00"},
-            headers=headers,
         )
         assert resp.status_code == 200
         data = resp.json()
         assert data["monto"] == "500.00"
         assert data["id"] == pago["id"]
 
-    def test_update_with_factura_id_rejected_422(self, pago_client: TestClient):
+    def test_update_with_factura_id_rejected_422(self, user: TestClient):
         """RN-PAG-01: PATCH schema also rejects factura_id via extra=forbid."""
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
-        pago = _create_pago(pago_client, headers, prov["id"], "100.00")
+        prov = _create_proveedor(user)
+        pago = _create_pago(user, prov["id"], "100.00")
 
-        resp = pago_client.patch(
+        resp = user.patch(
             f"/api/pagos/{pago['id']}",
             json={"factura_id": str(uuid.uuid4())},
-            headers=headers,
         )
         assert resp.status_code == 422
         assert "factura_id" in str(resp.json()).lower()
 
-    def test_update_with_proveedor_id_rejected_422(self, pago_client: TestClient):
+    def test_update_with_proveedor_id_rejected_422(self, user: TestClient):
         """D7: PATCH cannot re-link a payment to a different supplier."""
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
-        pago = _create_pago(pago_client, headers, prov["id"], "100.00")
+        prov = _create_proveedor(user)
+        pago = _create_pago(user, prov["id"], "100.00")
 
-        resp = pago_client.patch(
+        resp = user.patch(
             f"/api/pagos/{pago['id']}",
             json={"proveedor_id": str(uuid.uuid4())},
-            headers=headers,
         )
         assert resp.status_code == 422
 
-    def test_update_future_fecha_rejected_422(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
-        pago = _create_pago(pago_client, headers, prov["id"], "100.00")
+    def test_update_future_fecha_rejected_422(self, user: TestClient):
+        prov = _create_proveedor(user)
+        pago = _create_pago(user, prov["id"], "100.00")
 
-        resp = pago_client.patch(
+        resp = user.patch(
             f"/api/pagos/{pago['id']}",
             json={"fecha": (date.today() + timedelta(days=1)).isoformat()},
-            headers=headers,
         )
         assert resp.status_code == 422
 
-    def test_update_monto_zero_rejected_422(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
-        pago = _create_pago(pago_client, headers, prov["id"], "100.00")
+    def test_update_monto_zero_rejected_422(self, user: TestClient):
+        prov = _create_proveedor(user)
+        pago = _create_pago(user, prov["id"], "100.00")
 
-        resp = pago_client.patch(
+        resp = user.patch(
             f"/api/pagos/{pago['id']}",
             json={"monto": "0"},
-            headers=headers,
         )
         assert resp.status_code == 422
 
-    def test_update_foreign_pago_returns_404(self, pago_client: TestClient):
-        _, headers_a = _register_and_login(pago_client)
-        _, headers_b = _register_and_login(pago_client)
-        prov_a = _create_proveedor(pago_client, headers_a)
-        pago_a = _create_pago(pago_client, headers_a, prov_a["id"])
+    def test_update_foreign_pago_returns_404(self, pago_app):
+        client_a = make_user_client(pago_app, prefix="pago_a")
+        client_b = make_user_client(pago_app, prefix="pago_b")
+        prov_a = _create_proveedor(client_a)
+        pago_a = _create_pago(client_a, prov_a["id"])
+        assert pago_a["usuario_id"] == client_a.usuario_id
 
-        resp = pago_client.patch(
+        resp = client_b.patch(
             f"/api/pagos/{pago_a['id']}",
             json={"monto": "999.00"},
-            headers=headers_b,
         )
         assert resp.status_code == 404
 
-    def test_update_nonexistent_pago_returns_404(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        resp = pago_client.patch(
+    def test_update_nonexistent_pago_returns_404(self, user: TestClient):
+        resp = user.patch(
             f"/api/pagos/{uuid.uuid4()}",
             json={"monto": "500.00"},
-            headers=headers,
         )
         assert resp.status_code == 404
 
@@ -512,43 +467,41 @@ class TestUpdatePago:
 
 
 class TestDeletePago:
-    def test_soft_delete_returns_204(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
-        pago = _create_pago(pago_client, headers, prov["id"], "100.00")
+    def test_soft_delete_returns_204(self, user: TestClient):
+        prov = _create_proveedor(user)
+        pago = _create_pago(user, prov["id"], "100.00")
 
-        resp = pago_client.delete(f"/api/pagos/{pago['id']}", headers=headers)
+        resp = user.delete(f"/api/pagos/{pago['id']}")
         assert resp.status_code == 204
 
         # GET returns 404 after soft-delete
-        get_resp = pago_client.get(f"/api/pagos/{pago['id']}", headers=headers)
+        get_resp = user.get(f"/api/pagos/{pago['id']}")
         assert get_resp.status_code == 404
 
-    def test_delete_foreign_pago_returns_404(self, pago_client: TestClient):
-        _, headers_a = _register_and_login(pago_client)
-        _, headers_b = _register_and_login(pago_client)
-        prov_a = _create_proveedor(pago_client, headers_a)
-        pago_a = _create_pago(pago_client, headers_a, prov_a["id"])
+    def test_delete_foreign_pago_returns_404(self, pago_app):
+        client_a = make_user_client(pago_app, prefix="pago_a")
+        client_b = make_user_client(pago_app, prefix="pago_b")
+        prov_a = _create_proveedor(client_a)
+        pago_a = _create_pago(client_a, prov_a["id"])
+        assert pago_a["usuario_id"] == client_a.usuario_id
 
-        resp = pago_client.delete(f"/api/pagos/{pago_a['id']}", headers=headers_b)
+        resp = client_b.delete(f"/api/pagos/{pago_a['id']}")
         assert resp.status_code == 404
 
-    def test_delete_already_deleted_returns_404(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
-        pago = _create_pago(pago_client, headers, prov["id"], "100.00")
+    def test_delete_already_deleted_returns_404(self, user: TestClient):
+        prov = _create_proveedor(user)
+        pago = _create_pago(user, prov["id"], "100.00")
 
         # First delete → 204
-        resp1 = pago_client.delete(f"/api/pagos/{pago['id']}", headers=headers)
+        resp1 = user.delete(f"/api/pagos/{pago['id']}")
         assert resp1.status_code == 204
 
         # Second delete → 404
-        resp2 = pago_client.delete(f"/api/pagos/{pago['id']}", headers=headers)
+        resp2 = user.delete(f"/api/pagos/{pago['id']}")
         assert resp2.status_code == 404
 
-    def test_delete_nonexistent_returns_404(self, pago_client: TestClient):
-        _, headers = _register_and_login(pago_client)
-        resp = pago_client.delete(f"/api/pagos/{uuid.uuid4()}", headers=headers)
+    def test_delete_nonexistent_returns_404(self, user: TestClient):
+        resp = user.delete(f"/api/pagos/{uuid.uuid4()}")
         assert resp.status_code == 404
 
 
@@ -563,68 +516,64 @@ class TestFifoIntegration:
     integration test in test_factura_integration.py.
     """
 
-    def test_crear_pago_feeds_factura_estado(self, pago_client: TestClient):
+    def test_crear_pago_feeds_factura_estado(self, user: TestClient):
         """
         1. Create an invoice of 100.
         2. Create a pago of 100 for the same proveedor.
         3. GET the invoice → estado should be PAGADA.
         """
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
+        prov = _create_proveedor(user)
 
         # Create invoice
-        fac_resp = pago_client.post(
+        fac_resp = user.post(
             "/api/facturas/",
             json={
                 "proveedor_id": prov["id"],
                 "fecha_emision": date.today().isoformat(),
                 "monto_total": "100.00",
             },
-            headers=headers,
         )
         assert fac_resp.status_code == 201
         fac_id = fac_resp.json()["id"]
 
         # Initially PENDIENTE
-        get1 = pago_client.get(f"/api/facturas/{fac_id}", headers=headers).json()
+        get1 = user.get(f"/api/facturas/{fac_id}").json()
         assert get1["estado"] == "PENDIENTE"
 
         # Create pago via the migrated POST /api/pagos endpoint
-        _create_pago(pago_client, headers, prov["id"], "100.00")
+        _create_pago(user, prov["id"], "100.00")
 
         # Now PAGADA
-        get2 = pago_client.get(f"/api/facturas/{fac_id}", headers=headers).json()
+        get2 = user.get(f"/api/facturas/{fac_id}").json()
         assert get2["estado"] == "PAGADA"
 
-    def test_delete_pago_reverses_factura_estado(self, pago_client: TestClient):
+    def test_delete_pago_reverses_factura_estado(self, user: TestClient):
         """
         1. Create invoice (100) + pago (100) → PAGADA.
         2. DELETE the pago → invoice returns to PENDIENTE.
         """
-        _, headers = _register_and_login(pago_client)
-        prov = _create_proveedor(pago_client, headers)
+        prov = _create_proveedor(user)
 
-        fac_resp = pago_client.post(
+        fac_resp = user.post(
             "/api/facturas/",
             json={
                 "proveedor_id": prov["id"],
                 "fecha_emision": date.today().isoformat(),
                 "monto_total": "100.00",
             },
-            headers=headers,
         )
         fac_id = fac_resp.json()["id"]
 
-        pago = _create_pago(pago_client, headers, prov["id"], "100.00")
+        pago = _create_pago(user, prov["id"], "100.00")
 
         # PAGADA
-        get1 = pago_client.get(f"/api/facturas/{fac_id}", headers=headers).json()
+        get1 = user.get(f"/api/facturas/{fac_id}").json()
         assert get1["estado"] == "PAGADA"
 
         # Delete pago
-        del_resp = pago_client.delete(f"/api/pagos/{pago['id']}", headers=headers)
+        del_resp = user.delete(f"/api/pagos/{pago['id']}")
         assert del_resp.status_code == 204
 
         # Now PENDIENTE
-        get2 = pago_client.get(f"/api/facturas/{fac_id}", headers=headers).json()
+        get2 = user.get(f"/api/facturas/{fac_id}").json()
         assert get2["estado"] == "PENDIENTE"

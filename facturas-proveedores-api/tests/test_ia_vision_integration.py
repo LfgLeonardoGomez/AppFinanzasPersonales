@@ -29,6 +29,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlmodel import Session, SQLModel
 
+from tests.conftest import make_anon_client, make_user_client
+
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -178,8 +180,9 @@ def ia_client(engine, env_vars):
         with patch.object(ClaudeVisionExtractor, "__init__", patched_claude_init), patch.object(
             OpenAIVisionExtractor, "__init__", patched_openai_init
         ):
-            client = TestClient(app)
-            yield client, state
+            # One context-managed client so the app's lifespan runs once.
+            with TestClient(app):
+                yield app, state
     finally:
         app.dependency_overrides.clear()
 
@@ -194,7 +197,7 @@ def _reset_sdk_state(request):
         reset_ia_rate_limit_store()
 
 
-def _client(fixture):
+def _app(fixture):
     return fixture[0]
 
 
@@ -202,25 +205,6 @@ def _state(fixture):
     return fixture[1]
 
 
-def _register_login(ia_client):
-    """Register + login. Returns headers dict."""
-    email = f"ia_{uuid.uuid4().hex[:8]}@test.com"
-    password = "testpass123"
-    ip = f"10.{uuid.uuid4().int % 256}.{uuid.uuid4().int % 256}.3"
-
-    ia_client.post(
-        "/api/auth/registro",
-        json={"email": email, "password": password, "nombre": "Test"},
-        headers={"X-Forwarded-For": ip},
-    )
-    login = ia_client.post(
-        "/api/auth/login",
-        json={"email": email, "password": password},
-        headers={"X-Forwarded-For": ip},
-    )
-    assert login.status_code == 200
-    token = login.cookies.get("access_token")
-    return {"Cookie": f"access_token={token}"}
 
 
 # ── /api/facturas/extraer-ia — happy paths ────────────────────────────────────
@@ -228,13 +212,11 @@ def _register_login(ia_client):
 
 class TestFacturaHappyPath:
     def test_jpeg_returns_200_with_proposal(self, ia_client):
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         resp = client.post(
             "/api/facturas/extraer-ia",
             files={"file": ("f.jpg", VALID_JPEG, "image/jpeg")},
-            headers=headers,
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
@@ -245,13 +227,11 @@ class TestFacturaHappyPath:
         assert data["fecha_emision"] == "2026-06-15"
 
     def test_png_returns_200(self, ia_client):
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         resp = client.post(
             "/api/facturas/extraer-ia",
             files={"file": ("f.png", VALID_PNG, "image/png")},
-            headers=headers,
         )
         if resp.status_code != 200:
             print(f"DEBUG: status={resp.status_code} body={resp.text}")
@@ -259,13 +239,11 @@ class TestFacturaHappyPath:
         assert resp.json()["error"] is False
 
     def test_webp_returns_200(self, ia_client):
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         resp = client.post(
             "/api/facturas/extraer-ia",
             files={"file": ("f.webp", VALID_WEBP, "image/webp")},
-            headers=headers,
         )
         assert resp.status_code == 200
         assert resp.json()["error"] is False
@@ -276,76 +254,64 @@ class TestFacturaHappyPath:
 
 class TestFacturaRejection:
     def test_pdf_rejected_with_422(self, ia_client):
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         resp = client.post(
             "/api/facturas/extraer-ia",
             files={"file": ("doc.pdf", PDF_BYTES, "application/pdf")},
-            headers=headers,
         )
         assert resp.status_code == 422
         assert "PDF" in resp.text
 
     def test_gif_rejected_with_422(self, ia_client):
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         resp = client.post(
             "/api/facturas/extraer-ia",
             files={"file": ("anim.gif", GIF_BYTES, "image/gif")},
-            headers=headers,
         )
         assert resp.status_code == 422
         assert "GIF" in resp.text
 
     def test_heic_rejected_with_422(self, ia_client):
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         resp = client.post(
             "/api/facturas/extraer-ia",
             files={"file": ("photo.heic", HEIC_BYTES, "image/heic")},
-            headers=headers,
         )
         assert resp.status_code == 422
         assert "HEIC" in resp.text
 
     def test_oversize_rejected_with_422(self, ia_client):
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         # 10 MB + 1 byte of PNG
         oversize = VALID_PNG + b"\x00" * (10 * 1024 * 1024)
         resp = client.post(
             "/api/facturas/extraer-ia",
             files={"file": ("huge.png", oversize, "image/png")},
-            headers=headers,
         )
         assert resp.status_code == 422
         assert "10 MB" in resp.text
 
     def test_pdf_rejected_even_if_content_type_lies(self, ia_client):
         """The router validates magic bytes, not the Content-Type header."""
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         resp = client.post(
             "/api/facturas/extraer-ia",
             files={"file": ("sneaky.jpg", PDF_BYTES, "image/jpeg")},
-            headers=headers,
         )
         assert resp.status_code == 422
         assert "PDF" in resp.text
 
     def test_missing_file_part_rejected(self, ia_client):
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         # No `file` part at all
         resp = client.post(
             "/api/facturas/extraer-ia",
-            headers=headers,
         )
         assert resp.status_code == 422
 
@@ -355,7 +321,7 @@ class TestFacturaRejection:
 
 class TestFacturaAuthAndError:
     def test_unauthenticated_returns_401(self, ia_client):
-        client = _client(ia_client)
+        client = make_anon_client(_app(ia_client))
         # No register, no login
 
         resp = client.post(
@@ -366,7 +332,7 @@ class TestFacturaAuthAndError:
 
     def test_extractor_error_returns_200_with_error(self, ia_client):
         """RN-IA-05: SDK failure → 200 with `error=true`, fields=None."""
-        client = _client(ia_client)
+        client = make_user_client(_app(ia_client), prefix="ia")
         state = _state(ia_client)
 
         # Make the SDK raise — the extractor should catch and return
@@ -375,12 +341,9 @@ class TestFacturaAuthAndError:
             "simulated SDK failure"
         )
 
-        headers = _register_login(client)
-
         resp = client.post(
             "/api/facturas/extraer-ia",
             files={"file": ("f.png", VALID_PNG, "image/png")},
-            headers=headers,
         )
         data = resp.json()
         assert data["error"] is True
@@ -427,13 +390,11 @@ class TestFacturaRouteOrdering:
     def test_post_to_extraer_ia_does_not_match_factura_id(self, ia_client):
         """Sending a POST to /api/facturas/extraer-ia must NOT be captured by
         the /{factura_id} path param."""
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         resp = client.post(
             "/api/facturas/extraer-ia",
             files={"file": ("f.png", VALID_PNG, "image/png")},
-            headers=headers,
         )
         # If captured by /{factura_id} with a UUID validator, it would be 422
         # (not a valid UUID). The IA route handles it and returns 200.
@@ -453,23 +414,20 @@ class TestFacturaRateLimit:
 
         monkeypatch.setenv("IA_RATE_MAX_REQUESTS", "10")
         reset_ia_rate_limit_store()
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         # 10 calls in a row
         for _ in range(10):
             r = client.post(
                 "/api/facturas/extraer-ia",
                 files={"file": ("f.png", VALID_PNG, "image/png")},
-                headers=headers,
-            )
+                )
             assert r.status_code == 200
 
         # 11th is rate-limited
         r11 = client.post(
             "/api/facturas/extraer-ia",
             files={"file": ("f.png", VALID_PNG, "image/png")},
-            headers=headers,
         )
         assert r11.status_code == 429
         assert "Retry-After" in r11.headers
@@ -481,13 +439,11 @@ class TestFacturaRateLimit:
 
 class TestPagoHappyPath:
     def test_png_returns_200_with_pago_proposal(self, ia_client):
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         resp = client.post(
             "/api/pagos/extraer-ia",
             files={"file": ("p.png", VALID_PNG, "image/png")},
-            headers=headers,
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -496,18 +452,16 @@ class TestPagoHappyPath:
         assert data["fecha"] == "2026-06-20"
 
     def test_pdf_rejected_with_422(self, ia_client):
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         resp = client.post(
             "/api/pagos/extraer-ia",
             files={"file": ("doc.pdf", PDF_BYTES, "application/pdf")},
-            headers=headers,
         )
         assert resp.status_code == 422
 
     def test_unauthenticated_returns_401(self, ia_client):
-        client = _client(ia_client)
+        client = make_anon_client(_app(ia_client))
 
         resp = client.post(
             "/api/pagos/extraer-ia",
@@ -516,7 +470,7 @@ class TestPagoHappyPath:
         assert resp.status_code == 401
 
     def test_extractor_error_returns_200_with_error(self, ia_client):
-        client = _client(ia_client)
+        client = make_user_client(_app(ia_client), prefix="ia")
         state = _state(ia_client)
 
         # VISION_PROVIDER=claude → factory returns ClaudeVisionExtractor
@@ -525,12 +479,9 @@ class TestPagoHappyPath:
             "simulated failure"
         )
 
-        headers = _register_login(client)
-
         resp = client.post(
             "/api/pagos/extraer-ia",
             files={"file": ("p.png", VALID_PNG, "image/png")},
-            headers=headers,
         )
         data = resp.json()
         assert data["error"] is True
@@ -577,35 +528,30 @@ class TestSharedRateLimit:
 
         monkeypatch.setenv("IA_RATE_MAX_REQUESTS", "10")
         reset_ia_rate_limit_store()
-        client = _client(ia_client)
-        headers = _register_login(client)
+        client = make_user_client(_app(ia_client), prefix="ia")
 
         # 6 to /facturas + 4 to /pagos = 10 total
         for _ in range(6):
             r = client.post(
                 "/api/facturas/extraer-ia",
                 files={"file": ("f.png", VALID_PNG, "image/png")},
-                headers=headers,
-            )
+                )
             assert r.status_code == 200
         for _ in range(4):
             r = client.post(
                 "/api/pagos/extraer-ia",
                 files={"file": ("p.png", VALID_PNG, "image/png")},
-                headers=headers,
-            )
+                )
             assert r.status_code == 200
 
         # 11th — regardless of which endpoint — is rate-limited
         r11 = client.post(
             "/api/facturas/extraer-ia",
             files={"file": ("f.png", VALID_PNG, "image/png")},
-            headers=headers,
         )
         assert r11.status_code == 429
         r12 = client.post(
             "/api/pagos/extraer-ia",
             files={"file": ("p.png", VALID_PNG, "image/png")},
-            headers=headers,
         )
         assert r12.status_code == 429

@@ -15,6 +15,8 @@ PRERREQUISITO: Docker Desktop corriendo en el host.
 """
 
 import os
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 from testcontainers.postgres import PostgresContainer
@@ -108,3 +110,79 @@ def client(env_vars) -> TestClient:
     from app.main import app
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
+
+
+# ── Multi-user auth harness (c-22) ────────────────────────────────────────────
+#
+# The API authenticates ONLY through HttpOnly cookies. A TestClient (httpx)
+# keeps a persistent cookie jar, so identity must be established per CLIENT —
+# never by passing a hand-written {"Cookie": "access_token=..."} header.
+#
+# Two measured failure modes of the header approach (see c-22 design.md):
+#   1. On write requests the jar wins over the explicit header, so a resource
+#      "created by A" is actually persisted with B's usuario_id. Cross-tenant
+#      tests then compare a user against itself and 404 assertions fail.
+#   2. The jar leaks between tests sharing a module-scoped client, so a request
+#      meant to be anonymous arrives authenticated by an earlier test's login.
+#
+# Rule: one client per identity, session only in that client's own jar.
+
+def unique_test_email(prefix: str = "user") -> str:
+    """Collision-free email so parallel users never clash in the DB."""
+    return f"{prefix}_{uuid.uuid4().hex[:10]}@test.com"
+
+
+def unique_client_ip() -> str:
+    """Distinct source IP per login.
+
+    The auth rate limiter is per-IP (D-C03-7). Creating several users inside
+    one test from the same IP would trip it, so each login gets its own.
+    """
+    raw = uuid.uuid4().int
+    return f"10.{raw % 256}.{(raw >> 8) % 256}.{((raw >> 16) % 254) + 1}"
+
+
+def make_anon_client(app) -> TestClient:
+    """A client guaranteed to carry no session.
+
+    Use for 401 assertions so they prove the absence of a session instead of
+    inheriting one from a previous test.
+    """
+    client = TestClient(app, raise_server_exceptions=True)
+    client.cookies.clear()
+    return client
+
+
+def make_user_client(app, *, prefix: str = "user", password: str = "testpass123") -> TestClient:
+    """Register + log in a fresh user and return that user's own client.
+
+    The returned client carries the session in its own cookie jar. Requests
+    made through it need no auth argument — that is the point: identity cannot
+    be forgotten, mistyped, or silently overridden.
+
+    The client is annotated with `usuario_id` and `email` for assertions.
+    """
+    client = TestClient(app, raise_server_exceptions=True)
+    email = unique_test_email(prefix)
+    ip_headers = {"X-Forwarded-For": unique_client_ip()}
+
+    registro = client.post(
+        "/api/auth/registro",
+        json={"email": email, "password": password, "nombre": "Test User"},
+        headers=ip_headers,
+    )
+    assert registro.status_code == 201, f"registro failed: {registro.text}"
+
+    login = client.post(
+        "/api/auth/login",
+        json={"email": email, "password": password},
+        headers=ip_headers,
+    )
+    assert login.status_code == 200, f"login failed: {login.text}"
+
+    me = client.get("/api/me")
+    assert me.status_code == 200, f"/api/me failed right after login: {me.text}"
+
+    client.usuario_id = me.json()["id"]
+    client.email = email
+    return client

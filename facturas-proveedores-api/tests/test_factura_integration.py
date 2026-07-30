@@ -14,11 +14,15 @@ Covers:
 - Foreign id → 404
 - GET /api/facturas?estado=PAGADA → filtered after FIFO
 - items_sum_mismatch=True when items sum != monto_total
+
+c-22: identity is per-client, never a hand-written Cookie header. Each user
+drives its own logged-in client (`make_user_client`), so "user A" and "user B"
+cannot silently collapse into the same identity — which is exactly what made
+the cross-tenant 404 assertions vacuous before. See tests/test_multiuser_harness.py.
 """
 
 import uuid
 from datetime import date, timedelta
-from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -26,6 +30,7 @@ from sqlalchemy import create_engine
 from sqlmodel import Session, SQLModel
 
 import app.models  # noqa: F401
+from tests.conftest import make_anon_client, make_user_client
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -40,8 +45,8 @@ def engine(db_url: str):
 
 
 @pytest.fixture(scope="module")
-def fac_client(engine, env_vars) -> TestClient:
-    """Integration client with DB override and rate-limit store reset.
+def fac_app(engine, env_vars):
+    """The app wired to the throwaway Postgres, with the rate-limit store reset.
 
     C-16 (D-3): `get_settings.cache_clear()` removed — `get_settings` is
     no longer cached.
@@ -58,49 +63,26 @@ def fac_client(engine, env_vars) -> TestClient:
 
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app, raise_server_exceptions=True) as c:
-        yield c
+    # One context-managed client so the app's lifespan runs once per module.
+    with TestClient(app, raise_server_exceptions=True):
+        yield app
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def user(fac_app) -> TestClient:
+    """A logged-in client; its session lives only in its own cookie jar."""
+    return make_user_client(fac_app, prefix="fac")
 
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
 
-def _unique_email():
-    return f"fac_{uuid.uuid4().hex[:8]}@test.com"
-
-
-def _unique_ip():
-    return f"10.{uuid.uuid4().int % 256}.{uuid.uuid4().int % 256}.3"
-
-
-def _register_and_login(client: TestClient) -> tuple[str, str]:
-    """Register a new user and return (access_token, headers)."""
-    email = _unique_email()
-    password = "testpass123"
-    ip = _unique_ip()
-
-    client.post(
-        "/api/auth/registro",
-        json={"email": email, "password": password, "nombre": "Test User"},
-        headers={"X-Forwarded-For": ip},
-    )
-    login_resp = client.post(
-        "/api/auth/login",
-        json={"email": email, "password": password},
-        headers={"X-Forwarded-For": ip},
-    )
-    assert login_resp.status_code == 200
-    token = login_resp.cookies.get("access_token")
-    return token, {"Cookie": f"access_token={token}"}
-
-
-def _create_proveedor(client: TestClient, headers: dict) -> dict:
+def _create_proveedor(client: TestClient) -> dict:
     resp = client.post(
         "/api/proveedores/",
         json={"nombre": f"Prov {uuid.uuid4().hex[:6]}", "categoria": "OTRO"},
-        headers=headers,
     )
     assert resp.status_code == 201
     return resp.json()
@@ -108,7 +90,6 @@ def _create_proveedor(client: TestClient, headers: dict) -> dict:
 
 def _create_pago(
     client: TestClient,
-    headers: dict,
     proveedor_id: str,
     monto: str = "100.00",
 ) -> dict:
@@ -120,8 +101,20 @@ def _create_pago(
             "fecha": date.today().isoformat(),
             "metodo": "EFECTIVO",
         },
-        headers=headers,
     )
+    assert resp.status_code == 201
+    return resp.json()
+
+
+def _create_factura(client: TestClient, proveedor_id: str, **overrides) -> dict:
+    """Create an invoice with sensible defaults; overrides win."""
+    payload = {
+        "proveedor_id": proveedor_id,
+        "fecha_emision": date.today().isoformat(),
+        "monto_total": "100.00",
+    }
+    payload.update(overrides)
+    resp = client.post("/api/facturas/", json=payload)
     assert resp.status_code == 201
     return resp.json()
 
@@ -130,16 +123,19 @@ def _create_pago(
 
 
 class TestUnauthenticated:
-    def test_list_requires_auth(self, fac_client: TestClient):
-        resp = fac_client.get("/api/facturas/")
+    """Each test uses a client with a guaranteed-empty jar, so a 401 proves the
+    absence of a session instead of depending on test execution order."""
+
+    def test_list_requires_auth(self, fac_app):
+        resp = make_anon_client(fac_app).get("/api/facturas/")
         assert resp.status_code == 401
 
-    def test_create_requires_auth(self, fac_client: TestClient):
-        resp = fac_client.post("/api/facturas/", json={})
+    def test_create_requires_auth(self, fac_app):
+        resp = make_anon_client(fac_app).post("/api/facturas/", json={})
         assert resp.status_code == 401
 
-    def test_get_requires_auth(self, fac_client: TestClient):
-        resp = fac_client.get(f"/api/facturas/{uuid.uuid4()}")
+    def test_get_requires_auth(self, fac_app):
+        resp = make_anon_client(fac_app).get(f"/api/facturas/{uuid.uuid4()}")
         assert resp.status_code == 401
 
 
@@ -147,18 +143,16 @@ class TestUnauthenticated:
 
 
 class TestCreateFactura:
-    def test_create_minimal_factura(self, fac_client: TestClient):
-        _, headers = _register_and_login(fac_client)
-        prov = _create_proveedor(fac_client, headers)
+    def test_create_minimal_factura(self, user: TestClient):
+        prov = _create_proveedor(user)
 
-        resp = fac_client.post(
+        resp = user.post(
             "/api/facturas/",
             json={
                 "proveedor_id": prov["id"],
                 "fecha_emision": date.today().isoformat(),
                 "monto_total": "500.00",
             },
-            headers=headers,
         )
 
         assert resp.status_code == 201
@@ -169,11 +163,10 @@ class TestCreateFactura:
         assert data["items_sum_mismatch"] is False
         assert data["origen"] == "MANUAL"
 
-    def test_create_with_items(self, fac_client: TestClient):
-        _, headers = _register_and_login(fac_client)
-        prov = _create_proveedor(fac_client, headers)
+    def test_create_with_items(self, user: TestClient):
+        prov = _create_proveedor(user)
 
-        resp = fac_client.post(
+        resp = user.post(
             "/api/facturas/",
             json={
                 "proveedor_id": prov["id"],
@@ -187,7 +180,6 @@ class TestCreateFactura:
                     }
                 ],
             },
-            headers=headers,
         )
 
         assert resp.status_code == 201
@@ -196,12 +188,11 @@ class TestCreateFactura:
         assert data["items"][0]["descripcion"] == "Producto A"
         assert data["items_sum_mismatch"] is False
 
-    def test_create_items_sum_mismatch_flag(self, fac_client: TestClient):
+    def test_create_items_sum_mismatch_flag(self, user: TestClient):
         """items sum (100) != monto_total (500) → items_sum_mismatch=True, not block."""
-        _, headers = _register_and_login(fac_client)
-        prov = _create_proveedor(fac_client, headers)
+        prov = _create_proveedor(user)
 
-        resp = fac_client.post(
+        resp = user.post(
             "/api/facturas/",
             json={
                 "proveedor_id": prov["id"],
@@ -211,55 +202,52 @@ class TestCreateFactura:
                     {"descripcion": "Item", "cantidad": "1", "precio_unitario": "100.00"}
                 ],
             },
-            headers=headers,
         )
 
         assert resp.status_code == 201
         assert resp.json()["items_sum_mismatch"] is True
 
-    def test_create_monto_zero_rejected(self, fac_client: TestClient):
-        _, headers = _register_and_login(fac_client)
-        prov = _create_proveedor(fac_client, headers)
+    def test_create_monto_zero_rejected(self, user: TestClient):
+        prov = _create_proveedor(user)
 
-        resp = fac_client.post(
+        resp = user.post(
             "/api/facturas/",
             json={
                 "proveedor_id": prov["id"],
                 "fecha_emision": date.today().isoformat(),
                 "monto_total": "0.00",
             },
-            headers=headers,
         )
         assert resp.status_code == 422
 
-    def test_create_future_fecha_rejected(self, fac_client: TestClient):
-        _, headers = _register_and_login(fac_client)
-        prov = _create_proveedor(fac_client, headers)
+    def test_create_future_fecha_rejected(self, user: TestClient):
+        prov = _create_proveedor(user)
 
-        resp = fac_client.post(
+        resp = user.post(
             "/api/facturas/",
             json={
                 "proveedor_id": prov["id"],
                 "fecha_emision": (date.today() + timedelta(days=1)).isoformat(),
                 "monto_total": "100.00",
             },
-            headers=headers,
         )
         assert resp.status_code == 422
 
-    def test_create_foreign_proveedor_returns_404(self, fac_client: TestClient):
-        _, headers_a = _register_and_login(fac_client)
-        _, headers_b = _register_and_login(fac_client)
-        prov_b = _create_proveedor(fac_client, headers_b)
+    def test_create_foreign_proveedor_returns_404(self, fac_app):
+        client_a = make_user_client(fac_app, prefix="fac_a")
+        client_b = make_user_client(fac_app, prefix="fac_b")
+        prov_b = _create_proveedor(client_b)
+        # ProveedorResponse does not expose usuario_id; ownership is proven by
+        # A being unable to reach B's proveedor at all.
+        assert client_a.get(f"/api/proveedores/{prov_b['id']}").status_code == 404
 
-        resp = fac_client.post(
+        resp = client_a.post(  # User A tries to use User B's proveedor
             "/api/facturas/",
             json={
                 "proveedor_id": prov_b["id"],
                 "fecha_emision": date.today().isoformat(),
                 "monto_total": "100.00",
             },
-            headers=headers_a,  # User A tries to use User B's proveedor
         )
         assert resp.status_code == 404
 
@@ -268,66 +256,41 @@ class TestCreateFactura:
 
 
 class TestListFacturas:
-    def test_list_returns_user_facturas(self, fac_client: TestClient):
-        _, headers = _register_and_login(fac_client)
-        prov = _create_proveedor(fac_client, headers)
+    def test_list_returns_user_facturas(self, user: TestClient):
+        prov = _create_proveedor(user)
+        _create_factura(user, prov["id"])
 
-        fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov["id"],
-                "fecha_emision": date.today().isoformat(),
-                "monto_total": "100.00",
-            },
-            headers=headers,
-        )
-
-        resp = fac_client.get("/api/facturas/", headers=headers)
+        resp = user.get("/api/facturas/")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) >= 1
         assert all("estado" in item for item in data)
 
-    def test_list_with_estado_filter(self, fac_client: TestClient):
+    def test_list_with_estado_filter(self, user: TestClient):
         """
         Create 2 facturas, pay only the first. Filter by PAGADA → 1 result.
         Estado filter applied AFTER FIFO (not SQL WHERE).
         """
-        _, headers = _register_and_login(fac_client)
-        prov = _create_proveedor(fac_client, headers)
+        prov = _create_proveedor(user)
 
         # Older invoice first
-        resp1 = fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov["id"],
-                "fecha_emision": (date.today() - timedelta(days=1)).isoformat(),
-                "monto_total": "100.00",
-            },
-            headers=headers,
-        )
-        fac1_id = resp1.json()["id"]
+        fac1_id = _create_factura(
+            user,
+            prov["id"],
+            fecha_emision=(date.today() - timedelta(days=1)).isoformat(),
+            monto_total="100.00",
+        )["id"]
 
         # Newer invoice
-        resp2 = fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov["id"],
-                "fecha_emision": date.today().isoformat(),
-                "monto_total": "200.00",
-            },
-            headers=headers,
-        )
-        fac2_id = resp2.json()["id"]
+        fac2_id = _create_factura(user, prov["id"], monto_total="200.00")["id"]
 
         # Pay exactly the first one
-        _create_pago(fac_client, headers, prov["id"], "100.00")
+        _create_pago(user, prov["id"], "100.00")
 
         # Filter by PAGADA → should get only fac1
-        resp = fac_client.get(
+        resp = user.get(
             "/api/facturas/",
             params={"estado": "PAGADA"},
-            headers=headers,
         )
         assert resp.status_code == 200
         pagadas = resp.json()
@@ -335,60 +298,30 @@ class TestListFacturas:
         assert fac1_id in pagada_ids
         assert fac2_id not in pagada_ids
 
-    def test_list_by_proveedor_filter(self, fac_client: TestClient):
-        _, headers = _register_and_login(fac_client)
-        prov1 = _create_proveedor(fac_client, headers)
-        prov2 = _create_proveedor(fac_client, headers)
+    def test_list_by_proveedor_filter(self, user: TestClient):
+        prov1 = _create_proveedor(user)
+        prov2 = _create_proveedor(user)
 
-        resp1 = fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov1["id"],
-                "fecha_emision": date.today().isoformat(),
-                "monto_total": "100.00",
-            },
-            headers=headers,
-        )
-        fac1_id = resp1.json()["id"]
+        fac1_id = _create_factura(user, prov1["id"], monto_total="100.00")["id"]
+        fac2_id = _create_factura(user, prov2["id"], monto_total="200.00")["id"]
 
-        resp2 = fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov2["id"],
-                "fecha_emision": date.today().isoformat(),
-                "monto_total": "200.00",
-            },
-            headers=headers,
-        )
-        fac2_id = resp2.json()["id"]
-
-        resp = fac_client.get(
+        resp = user.get(
             "/api/facturas/",
             params={"proveedor_id": prov1["id"]},
-            headers=headers,
         )
         assert resp.status_code == 200
         ids = [f["id"] for f in resp.json()]
         assert fac1_id in ids
         assert fac2_id not in ids
 
-    def test_list_user_isolation(self, fac_client: TestClient):
-        _, headers_a = _register_and_login(fac_client)
-        _, headers_b = _register_and_login(fac_client)
-        prov_a = _create_proveedor(fac_client, headers_a)
+    def test_list_user_isolation(self, fac_app):
+        client_a = make_user_client(fac_app, prefix="fac_a")
+        client_b = make_user_client(fac_app, prefix="fac_b")
+        prov_a = _create_proveedor(client_a)
 
-        resp = fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov_a["id"],
-                "fecha_emision": date.today().isoformat(),
-                "monto_total": "100.00",
-            },
-            headers=headers_a,
-        )
-        fac_a_id = resp.json()["id"]
+        fac_a_id = _create_factura(client_a, prov_a["id"])["id"]
 
-        resp_b = fac_client.get("/api/facturas/", headers=headers_b)
+        resp_b = client_b.get("/api/facturas/")
         assert resp_b.status_code == 200
         ids_b = [f["id"] for f in resp_b.json()]
         assert fac_a_id not in ids_b
@@ -398,26 +331,18 @@ class TestListFacturas:
 
 
 class TestGetFactura:
-    def test_get_returns_full_response(self, fac_client: TestClient):
-        _, headers = _register_and_login(fac_client)
-        prov = _create_proveedor(fac_client, headers)
+    def test_get_returns_full_response(self, user: TestClient):
+        prov = _create_proveedor(user)
 
-        create_resp = fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov["id"],
-                "fecha_emision": date.today().isoformat(),
-                "monto_total": "300.00",
-                "numero": "F-999",
-                "items": [
-                    {"descripcion": "X", "cantidad": "1", "precio_unitario": "300.00"}
-                ],
-            },
-            headers=headers,
-        )
-        fac_id = create_resp.json()["id"]
+        fac_id = _create_factura(
+            user,
+            prov["id"],
+            monto_total="300.00",
+            numero="F-999",
+            items=[{"descripcion": "X", "cantidad": "1", "precio_unitario": "300.00"}],
+        )["id"]
 
-        resp = fac_client.get(f"/api/facturas/{fac_id}", headers=headers)
+        resp = user.get(f"/api/facturas/{fac_id}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == fac_id
@@ -425,28 +350,18 @@ class TestGetFactura:
         assert data["estado"] == "PENDIENTE"
         assert len(data["items"]) == 1
 
-    def test_get_foreign_returns_404(self, fac_client: TestClient):
-        _, headers_a = _register_and_login(fac_client)
-        _, headers_b = _register_and_login(fac_client)
-        prov_a = _create_proveedor(fac_client, headers_a)
+    def test_get_foreign_returns_404(self, fac_app):
+        client_a = make_user_client(fac_app, prefix="fac_a")
+        client_b = make_user_client(fac_app, prefix="fac_b")
+        prov_a = _create_proveedor(client_a)
 
-        create_resp = fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov_a["id"],
-                "fecha_emision": date.today().isoformat(),
-                "monto_total": "100.00",
-            },
-            headers=headers_a,
-        )
-        fac_id = create_resp.json()["id"]
+        fac_id = _create_factura(client_a, prov_a["id"])["id"]
 
-        resp = fac_client.get(f"/api/facturas/{fac_id}", headers=headers_b)
+        resp = client_b.get(f"/api/facturas/{fac_id}")
         assert resp.status_code == 404
 
-    def test_get_nonexistent_returns_404(self, fac_client: TestClient):
-        _, headers = _register_and_login(fac_client)
-        resp = fac_client.get(f"/api/facturas/{uuid.uuid4()}", headers=headers)
+    def test_get_nonexistent_returns_404(self, user: TestClient):
+        resp = user.get(f"/api/facturas/{uuid.uuid4()}")
         assert resp.status_code == 404
 
 
@@ -454,25 +369,14 @@ class TestGetFactura:
 
 
 class TestUpdateFactura:
-    def test_partial_update(self, fac_client: TestClient):
-        _, headers = _register_and_login(fac_client)
-        prov = _create_proveedor(fac_client, headers)
+    def test_partial_update(self, user: TestClient):
+        prov = _create_proveedor(user)
 
-        create_resp = fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov["id"],
-                "fecha_emision": date.today().isoformat(),
-                "monto_total": "100.00",
-            },
-            headers=headers,
-        )
-        fac_id = create_resp.json()["id"]
+        fac_id = _create_factura(user, prov["id"])["id"]
 
-        resp = fac_client.patch(
+        resp = user.patch(
             f"/api/facturas/{fac_id}",
             json={"numero": "F-UPDATED", "monto_total": "250.00"},
-            headers=headers,
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -480,26 +384,16 @@ class TestUpdateFactura:
         assert data["monto_total"] == "250.00"
         assert "estado" in data
 
-    def test_update_foreign_returns_404(self, fac_client: TestClient):
-        _, headers_a = _register_and_login(fac_client)
-        _, headers_b = _register_and_login(fac_client)
-        prov_a = _create_proveedor(fac_client, headers_a)
+    def test_update_foreign_returns_404(self, fac_app):
+        client_a = make_user_client(fac_app, prefix="fac_a")
+        client_b = make_user_client(fac_app, prefix="fac_b")
+        prov_a = _create_proveedor(client_a)
 
-        create_resp = fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov_a["id"],
-                "fecha_emision": date.today().isoformat(),
-                "monto_total": "100.00",
-            },
-            headers=headers_a,
-        )
-        fac_id = create_resp.json()["id"]
+        fac_id = _create_factura(client_a, prov_a["id"])["id"]
 
-        resp = fac_client.patch(
+        resp = client_b.patch(
             f"/api/facturas/{fac_id}",
             json={"numero": "HACKED"},
-            headers=headers_b,
         )
         assert resp.status_code == 404
 
@@ -508,45 +402,26 @@ class TestUpdateFactura:
 
 
 class TestDeleteFactura:
-    def test_soft_delete_returns_204(self, fac_client: TestClient):
-        _, headers = _register_and_login(fac_client)
-        prov = _create_proveedor(fac_client, headers)
+    def test_soft_delete_returns_204(self, user: TestClient):
+        prov = _create_proveedor(user)
 
-        create_resp = fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov["id"],
-                "fecha_emision": date.today().isoformat(),
-                "monto_total": "100.00",
-            },
-            headers=headers,
-        )
-        fac_id = create_resp.json()["id"]
+        fac_id = _create_factura(user, prov["id"])["id"]
 
-        resp = fac_client.delete(f"/api/facturas/{fac_id}", headers=headers)
+        resp = user.delete(f"/api/facturas/{fac_id}")
         assert resp.status_code == 204
 
         # Verify soft-deleted (GET returns 404)
-        get_resp = fac_client.get(f"/api/facturas/{fac_id}", headers=headers)
+        get_resp = user.get(f"/api/facturas/{fac_id}")
         assert get_resp.status_code == 404
 
-    def test_delete_foreign_returns_404(self, fac_client: TestClient):
-        _, headers_a = _register_and_login(fac_client)
-        _, headers_b = _register_and_login(fac_client)
-        prov_a = _create_proveedor(fac_client, headers_a)
+    def test_delete_foreign_returns_404(self, fac_app):
+        client_a = make_user_client(fac_app, prefix="fac_a")
+        client_b = make_user_client(fac_app, prefix="fac_b")
+        prov_a = _create_proveedor(client_a)
 
-        create_resp = fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov_a["id"],
-                "fecha_emision": date.today().isoformat(),
-                "monto_total": "100.00",
-            },
-            headers=headers_a,
-        )
-        fac_id = create_resp.json()["id"]
+        fac_id = _create_factura(client_a, prov_a["id"])["id"]
 
-        resp = fac_client.delete(f"/api/facturas/{fac_id}", headers=headers_b)
+        resp = client_b.delete(f"/api/facturas/{fac_id}")
         assert resp.status_code == 404
 
 
@@ -554,7 +429,7 @@ class TestDeleteFactura:
 
 
 class TestFifoEndToEnd:
-    def test_fifo_estado_changes_when_pagos_added(self, fac_client: TestClient):
+    def test_fifo_estado_changes_when_pagos_added(self, user: TestClient):
         """
         Integration FIFO test:
         1. Create 2 invoices (100 each).
@@ -562,48 +437,34 @@ class TestFifoEndToEnd:
         3. Add pago of 150 → first PAGADA, second PARCIAL.
         4. Add another pago of 50 → second PAGADA.
         """
-        _, headers = _register_and_login(fac_client)
-        prov = _create_proveedor(fac_client, headers)
+        prov = _create_proveedor(user)
 
         # Create older invoice first
-        resp1 = fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov["id"],
-                "fecha_emision": (date.today() - timedelta(days=1)).isoformat(),
-                "monto_total": "100.00",
-            },
-            headers=headers,
-        )
-        fac1_id = resp1.json()["id"]
+        fac1_id = _create_factura(
+            user,
+            prov["id"],
+            fecha_emision=(date.today() - timedelta(days=1)).isoformat(),
+            monto_total="100.00",
+        )["id"]
 
-        resp2 = fac_client.post(
-            "/api/facturas/",
-            json={
-                "proveedor_id": prov["id"],
-                "fecha_emision": date.today().isoformat(),
-                "monto_total": "100.00",
-            },
-            headers=headers,
-        )
-        fac2_id = resp2.json()["id"]
+        fac2_id = _create_factura(user, prov["id"], monto_total="100.00")["id"]
 
         # Both should be PENDIENTE
-        g1 = fac_client.get(f"/api/facturas/{fac1_id}", headers=headers).json()
-        g2 = fac_client.get(f"/api/facturas/{fac2_id}", headers=headers).json()
+        g1 = user.get(f"/api/facturas/{fac1_id}").json()
+        g2 = user.get(f"/api/facturas/{fac2_id}").json()
         assert g1["estado"] == "PENDIENTE"
         assert g2["estado"] == "PENDIENTE"
 
         # Add pago of 150 → fac1 PAGADA, fac2 PARCIAL
-        _create_pago(fac_client, headers, prov["id"], "150.00")
+        _create_pago(user, prov["id"], "150.00")
 
-        g1 = fac_client.get(f"/api/facturas/{fac1_id}", headers=headers).json()
-        g2 = fac_client.get(f"/api/facturas/{fac2_id}", headers=headers).json()
+        g1 = user.get(f"/api/facturas/{fac1_id}").json()
+        g2 = user.get(f"/api/facturas/{fac2_id}").json()
         assert g1["estado"] == "PAGADA"
         assert g2["estado"] == "PARCIAL"
 
         # Add pago of 50 → fac2 PAGADA
-        _create_pago(fac_client, headers, prov["id"], "50.00")
+        _create_pago(user, prov["id"], "50.00")
 
-        g2 = fac_client.get(f"/api/facturas/{fac2_id}", headers=headers).json()
+        g2 = user.get(f"/api/facturas/{fac2_id}").json()
         assert g2["estado"] == "PAGADA"

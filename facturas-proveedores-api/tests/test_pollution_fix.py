@@ -129,7 +129,7 @@ class TestRouterModuleIdentityInvariant:
 
 class TestFacturaIntegrationFixtureContract:
     """
-    `tests/test_factura_integration.py::fac_client` must import `get_db`
+    `tests/test_factura_integration.py::fac_app` must import `get_db`
     from `app.routers.facturas`, NOT from `app.core.deps`.
 
     Before the fix: `from app.core.deps import get_db` (WRONG — gets the
@@ -138,22 +138,22 @@ class TestFacturaIntegrationFixtureContract:
     the router module's namespace keeps the OLD get_db reference).
     """
 
-    def test_fac_client_imports_get_db_from_router(self):
+    def test_fac_app_imports_get_db_from_router(self):
         path = os.path.join(TESTS_DIR, "test_factura_integration.py")
         text = _read(path)
-        module = _imported_get_db_from(text, "fac_client")
+        module = _imported_get_db_from(text, "fac_app")
         assert module is not None, (
-            "test_factura_integration.py::fac_client does not import `get_db` "
+            "test_factura_integration.py::fac_app does not import `get_db` "
             "at all — the fixture does not set up the dependency override"
         )
         assert module.startswith("app.routers."), (
-            f"test_factura_integration.py::fac_client imports `get_db` from "
+            f"test_factura_integration.py::fac_app imports `get_db` from "
             f"`{module}` — MUST import from a router module (e.g. "
             f"`app.routers.facturas`) to survive the test_deps.py "
             f"`del sys.modules` + re-import. This is the c-17 pollution fix."
         )
         assert not module.startswith("app.core.deps"), (
-            f"test_factura_integration.py::fac_client imports `get_db` from "
+            f"test_factura_integration.py::fac_app imports `get_db` from "
             f"`{module}` — this is the BUGGY pattern. After test_deps.py "
             f"reloads `app.core.deps`, the import gets the NEW `get_db` "
             f"while the routers use the OLD one, so the override is for "
@@ -164,24 +164,24 @@ class TestFacturaIntegrationFixtureContract:
 
 class TestPagoIntegrationFixtureContract:
     """
-    `tests/test_pago_integration.py::pago_client` must import `get_db`
+    `tests/test_pago_integration.py::pago_app` must import `get_db`
     from `app.routers.pagos`, NOT from `app.core.deps`.
     """
 
-    def test_pago_client_imports_get_db_from_router(self):
+    def test_pago_app_imports_get_db_from_router(self):
         path = os.path.join(TESTS_DIR, "test_pago_integration.py")
         text = _read(path)
-        module = _imported_get_db_from(text, "pago_client")
+        module = _imported_get_db_from(text, "pago_app")
         assert module is not None, (
-            "test_pago_integration.py::pago_client does not import `get_db`"
+            "test_pago_integration.py::pago_app does not import `get_db`"
         )
         assert module.startswith("app.routers."), (
-            f"test_pago_integration.py::pago_client imports `get_db` from "
+            f"test_pago_integration.py::pago_app imports `get_db` from "
             f"`{module}` — MUST import from `app.routers.pagos` to survive "
             f"the test_deps.py reload. This is the c-17 pollution fix."
         )
         assert not module.startswith("app.core.deps"), (
-            f"test_pago_integration.py::pago_client imports `get_db` from "
+            f"test_pago_integration.py::pago_app imports `get_db` from "
             f"`{module}` — this is the BUGGY pattern."
         )
 
