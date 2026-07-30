@@ -28,11 +28,13 @@ export const AUTH_QUERY_KEYS = {
  * Bootstrap query: called once at app load to determine if the session cookie
  * is valid. Uses skipAuthRedirect so a 401 here does NOT trigger the interceptor
  * redirect (a 401 from /me means "not logged in", not "session expired").
+ *
+ * This hook reports session validity only — it does NOT write to the authStore.
+ * `RequireAuthWithBootstrap` owns that sync via useEffect (see RequireAuth.tsx).
+ * Do NOT re-add `onSuccess` / `onError` here: TanStack Query v5 removed those
+ * query callbacks, so they are silently never called.
  */
 export function useMe() {
-  const login = useAuthStore((s) => s.login)
-  const logout = useAuthStore((s) => s.logout)
-
   return useQuery<Usuario>({
     queryKey: AUTH_QUERY_KEYS.me,
     queryFn: async () => {
@@ -43,13 +45,7 @@ export function useMe() {
     },
     retry: false,
     staleTime: 1000 * 60 * 5, // 5 min — amortizes the bootstrap round-trip
-    onSuccess: (data: Usuario) => {
-      login(data)
-    },
-    onError: () => {
-      logout()
-    },
-  } as Parameters<typeof useQuery<Usuario>>[0])
+  })
 }
 
 // ── useRegister ───────────────────────────────────────────────────────────────

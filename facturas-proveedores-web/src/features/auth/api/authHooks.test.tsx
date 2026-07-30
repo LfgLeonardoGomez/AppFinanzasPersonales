@@ -46,6 +46,60 @@ afterEach(() => {
   server.close()
 })
 
+// ── useMe ─────────────────────────────────────────────────────────────────────
+
+describe('useMe — bootstrap query', () => {
+  it('resolves with the user profile when the session cookie is valid', async () => {
+    server.use(
+      http.get(`${BASE}/api/me`, () =>
+        HttpResponse.json({ id: '1', email: 'me@test.com', nombre: 'Me', created_at: '' }),
+      ),
+    )
+
+    const { useMe } = await import('./authHooks')
+    const { result } = renderHook(() => useMe(), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(result.current.status).toBe('success'))
+    expect(result.current.data?.email).toBe('me@test.com')
+  })
+
+  it('settles into error on 401 instead of retrying or redirecting', async () => {
+    server.use(
+      http.get(`${BASE}/api/me`, () => new HttpResponse(null, { status: 401 })),
+    )
+
+    const { useMe } = await import('./authHooks')
+    const { result } = renderHook(() => useMe(), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(result.current.status).toBe('error'))
+    // skipAuthRedirect: a 401 here means "not logged in", not "session expired",
+    // so the interceptor must not bounce the user anywhere.
+    expect(window.location.assign).not.toHaveBeenCalled()
+  })
+
+  it('does NOT write to the authStore — syncing is the caller\'s job', async () => {
+    server.use(
+      http.get(`${BASE}/api/me`, () =>
+        HttpResponse.json({ id: '1', email: 'me@test.com', nombre: 'Me', created_at: '' }),
+      ),
+    )
+
+    const { useAuthStore } = await import('../store/authStore')
+    act(() => useAuthStore.getState().logout())
+
+    const { useMe } = await import('./authHooks')
+    const { result } = renderHook(() => useMe(), { wrapper: makeWrapper() })
+    await waitFor(() => expect(result.current.status).toBe('success'))
+
+    // The query only reports session validity. `RequireAuthWithBootstrap`
+    // owns the store sync via useEffect (see RequireAuth.tsx, FE-BOOT-01).
+    // Pinning this prevents re-adding a v4-style onSuccess callback, which
+    // TanStack Query v5 removed and therefore never fires.
+    expect(useAuthStore.getState().user).toBeNull()
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+})
+
 // ── useRegister ───────────────────────────────────────────────────────────────
 
 describe('useRegister', () => {
