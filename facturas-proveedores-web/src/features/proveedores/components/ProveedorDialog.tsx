@@ -65,7 +65,13 @@ export function ProveedorDialog({
           <Dialog.Content
             aria-label="Formulario de proveedor"
             aria-modal="true"
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 p-4 focus:outline-none"
+            // max-h + overflow: centring with -translate-y-1/2 and no height
+            // cap pushes content off-screen in BOTH directions when the form
+            // is taller than the viewport (clipped heading, half-visible
+            // button). dvh — not vh — because the mobile address bar and the
+            // on-screen keyboard shrink the usable height precisely while the
+            // user is filling this form.
+            className="fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto p-4 focus:outline-none"
           >
             <Dialog.Title className="sr-only">Formulario de proveedor</Dialog.Title>
             <Dialog.Description className="sr-only">

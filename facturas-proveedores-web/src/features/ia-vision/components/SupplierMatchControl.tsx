@@ -42,21 +42,39 @@ export function SupplierMatchControl({
   const autoMatch = useAutoMatchProveedor(proveedorNombre)
   const createMutation = useCreateProveedor()
   const [editableName, setEditableName] = useState(proveedorNombre ?? '')
+  /** True once the user has cleared the supplier for the current proposal. */
+  const [dismissedAutoMatch, setDismissedAutoMatch] = useState(false)
 
   // Keep the editable inline-create name in sync when a new proposal
-  // (a different detected name) comes in.
+  // (a different detected name) comes in. A new proposal is also a new
+  // decision for the user, so any earlier rejection stops applying.
   useEffect(() => {
     setEditableName(proveedorNombre ?? '')
+    setDismissedAutoMatch(false)
   }, [proveedorNombre])
 
-  // Pre-select on a unique normalized-exact match. Only fires while
-  // nothing is selected yet, so it never clobbers a user's manual pick
-  // or a later inline-create.
+  // Pre-select on a unique normalized-exact match, unless the user has
+  // already rejected the match for this proposal.
+  //
+  // `selectedProveedor === null` on its own is NOT a safe guard: it is the
+  // state both before the first pick and immediately after the user clears
+  // one. Guarding on it alone re-applied the match on the very next render,
+  // which made the clear control inert and left the user unable to override
+  // the AI (c-23). `dismissedAutoMatch` is what separates the two cases.
   useEffect(() => {
-    if (autoMatch.status === 'matched' && selectedProveedor === null) {
+    if (autoMatch.status === 'matched' && selectedProveedor === null && !dismissedAutoMatch) {
       onProveedorChange(autoMatch.proveedor)
     }
-  }, [autoMatch, selectedProveedor, onProveedorChange])
+  }, [autoMatch, selectedProveedor, dismissedAutoMatch, onProveedorChange])
+
+  // Clearing the selection is an explicit rejection of the AI's proposal
+  // (RN-IA-06: the AI proposes, the human confirms — and may refuse).
+  function handleProveedorChange(proveedor: ProveedorListItem | null): void {
+    if (proveedor === null) {
+      setDismissedAutoMatch(true)
+    }
+    onProveedorChange(proveedor)
+  }
 
   function handleCreate(): void {
     const nombre = editableName.trim()
@@ -77,7 +95,7 @@ export function SupplierMatchControl({
       <label className="block text-xs font-medium text-slate-600 mb-1">Proveedor</label>
       <SupplierSearch
         value={selectedProveedor}
-        onChange={onProveedorChange}
+        onChange={handleProveedorChange}
         placeholder="Buscar proveedor…"
       />
       {proveedorNombre ? (

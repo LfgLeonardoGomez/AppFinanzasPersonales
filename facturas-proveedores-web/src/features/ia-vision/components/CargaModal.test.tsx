@@ -57,6 +57,41 @@ function renderModal(overrides: Partial<Parameters<typeof CargaModal>[0]> = {}) 
   )
 }
 
+describe('CargaModal — viewport fit (c-23)', () => {
+  it('caps its height and scrolls internally so content is never clipped', () => {
+    // This card grows with the AI proposal form, making it the dialog most
+    // likely to outgrow a phone screen. See the sibling contract in
+    // `features/proveedores/components/ModalViewportFit.test.tsx` — and note
+    // the same caveat: JSDOM does no layout, so this locks the declaration,
+    // not the rendered result.
+    renderModal()
+
+    const dialog = screen.getByRole('dialog')
+
+    expect(
+      /max-h-\[\d+dvh\]/.test(dialog.className),
+      'no dvh-based max-height — a tall proposal form will overflow the viewport',
+    ).toBe(true)
+    expect(
+      /overflow-(y-)?auto/.test(dialog.className),
+      'height cap without a scroll container just hides the overflow',
+    ).toBe(true)
+  })
+
+  it('keeps the flex centring layout after the cap', () => {
+    // The cap sits on the card, not on the flex wrapper — regression guard
+    // for the hand-rolled (non-Radix) centring this modal relies on.
+    renderModal()
+
+    const dialog = screen.getByRole('dialog')
+
+    expect(dialog.className).toMatch(/\bflex\b/)
+    expect(dialog.className).toMatch(/flex-col/)
+    expect(dialog.parentElement?.className).toMatch(/items-center/)
+    expect(dialog.parentElement?.className).toMatch(/justify-center/)
+  })
+})
+
 describe('CargaModal — basic render and origen step', () => {
   it('renders the dialog when open, titled for the initial tipo, with both toggles and the dropzone', () => {
     renderModal()

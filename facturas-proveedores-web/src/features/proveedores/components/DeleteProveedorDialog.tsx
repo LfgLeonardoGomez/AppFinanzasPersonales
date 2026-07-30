@@ -68,7 +68,10 @@ export function DeleteProveedorDialog({
           }}
           onPointerDownOutside={(event) => event.preventDefault()}
           onInteractOutside={(event) => event.preventDefault()}
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-card bg-surface p-6 shadow-card ring-1 ring-border-subtle focus:outline-none dark:bg-card-dark dark:ring-white/10"
+          // max-h-[90dvh] + overflow-y-auto: same viewport-fit contract as the
+          // other dialogs (c-23). Content is short today, so this is a guard
+          // against growth, not a fix for an observed clip.
+          className="fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-card bg-surface p-6 shadow-card ring-1 ring-border-subtle focus:outline-none dark:bg-card-dark dark:ring-white/10"
         >
           <Dialog.Title className="mb-2 font-inter text-lg font-semibold text-ink dark:text-zinc-100">
             Eliminar proveedor

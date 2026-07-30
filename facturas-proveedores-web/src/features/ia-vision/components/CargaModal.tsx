@@ -395,7 +395,11 @@ export function CargaModal({
         aria-busy={state.step === 'processing'}
         aria-labelledby="carga-modal-title"
         onKeyDown={handleKeyDown}
-        className="flex w-full max-w-lg flex-col gap-6 rounded-card bg-surface p-6 font-inter shadow-ia ring-1 ring-border-subtle transition-all duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]"
+        // max-h-[90dvh] + overflow-y-auto (c-23): this card grows with the AI
+        // proposal form, so it is the most likely of the three dialogs to
+        // outgrow a phone screen. The cap sits on the card, not the flex
+        // wrapper, so the existing centring is preserved.
+        className="flex max-h-[90dvh] w-full max-w-lg flex-col gap-6 overflow-y-auto rounded-card bg-surface p-6 font-inter shadow-ia ring-1 ring-border-subtle transition-all duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]"
       >
         <ModalHeader tipo={state.tipo} {...(canClose ? { onClose: handleClose } : {})} />
 
