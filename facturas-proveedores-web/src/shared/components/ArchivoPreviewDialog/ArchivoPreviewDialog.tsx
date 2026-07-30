@@ -26,7 +26,8 @@
  * — no dialog in this codebase may clip its content off-screen.
  */
 import * as Dialog from '@radix-ui/react-dialog'
-import { ExternalLink } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ExternalLink, Minus, Plus, RotateCcw, X } from 'lucide-react'
 
 interface ArchivoPreviewDialogProps {
   url: string | null
@@ -40,15 +41,30 @@ function isPdf(url: string): boolean {
   return withoutQuery.toLowerCase().endsWith('.pdf')
 }
 
+/** Fit level. Below this the file shrinks to a thumbnail — never useful. */
+const MIN_ZOOM = 1
+/** Enough to read a CUIT or a handwritten amount on a phone photo. */
+const MAX_ZOOM = 4
+const ZOOM_STEP = 0.5
+
 export function ArchivoPreviewDialog({
   url,
   open,
   onOpenChange,
   title = 'Vista previa del archivo',
 }: ArchivoPreviewDialogProps) {
+  const [zoom, setZoom] = useState(MIN_ZOOM)
+
+  // A new file, or reopening, starts at fit level — inheriting the previous
+  // file's zoom would open on an arbitrary corner of the image.
+  useEffect(() => {
+    setZoom(MIN_ZOOM)
+  }, [url, open])
+
   if (!url) return null
 
   const pdf = isPdf(url)
+  const clamp = (value: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -64,7 +80,61 @@ export function ArchivoPreviewDialog({
             Vista previa en la aplicación del archivo adjunto.
           </Dialog.Description>
 
-          <div className="flex-1">
+          {/* Toolbar. Esc and backdrop-click already close the dialog, but both
+              are invisible — and on touch there is no Esc key at all, so the
+              explicit button is the only discoverable exit on mobile. */}
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1">
+              {!pdf && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Alejar"
+                    onClick={() => setZoom((z) => clamp(z - ZOOM_STEP))}
+                    disabled={zoom <= MIN_ZOOM}
+                    className="rounded-full p-2 text-ink-soft-2 transition-colors hover:bg-page/60 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <span className="min-w-[3.5rem] text-center text-xs tabular-nums text-ink-soft">
+                    {Math.round(zoom * 100)}%
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Acercar"
+                    onClick={() => setZoom((z) => clamp(z + ZOOM_STEP))}
+                    disabled={zoom >= MAX_ZOOM}
+                    className="rounded-full p-2 text-ink-soft-2 transition-colors hover:bg-page/60 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Restablecer zoom"
+                    onClick={() => setZoom(MIN_ZOOM)}
+                    disabled={zoom === MIN_ZOOM}
+                    className="rounded-full p-2 text-ink-soft-2 transition-colors hover:bg-page/60 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </button>
+                </>
+              )}
+            </div>
+
+            <button
+              type="button"
+              aria-label="Cerrar"
+              onClick={() => onOpenChange(false)}
+              className="rounded-full p-2 text-ink-soft-2 transition-colors hover:bg-danger-bg hover:text-danger"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* overflow-auto on the frame + transform on the image: panning is
+              plain scrolling, which works with a mouse, a trackpad and a
+              finger without a custom gesture handler. */}
+          <div className="flex-1 overflow-auto rounded-card-sm">
             {pdf ? (
               <iframe
                 src={url}
@@ -75,7 +145,8 @@ export function ArchivoPreviewDialog({
               <img
                 src={url}
                 alt={title}
-                className="max-h-[70vh] w-full rounded-card-sm object-contain"
+                style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}
+                className="max-h-[70vh] w-full rounded-card-sm object-contain transition-transform duration-150"
               />
             )}
           </div>

@@ -11,6 +11,92 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ArchivoPreviewDialog } from './ArchivoPreviewDialog'
 
+describe('ArchivoPreviewDialog — close affordance', () => {
+  it('offers a visible close button, not only Esc and the backdrop', async () => {
+    // Esc and backdrop-click are invisible affordances. On touch there is no
+    // Esc key at all, so a dialog whose only exits are hidden is a trap.
+    const onOpenChange = vi.fn()
+    render(
+      <ArchivoPreviewDialog
+        url="https://res.cloudinary.com/demo/facturas/abc.jpg"
+        open
+        onOpenChange={onOpenChange}
+      />,
+    )
+
+    const close = screen.getByRole('button', { name: /cerrar/i })
+    await userEvent.click(close)
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+})
+
+describe('ArchivoPreviewDialog — zoom', () => {
+  const IMG = 'https://res.cloudinary.com/demo/facturas/abc.jpg'
+
+  function scaleOf(img: HTMLElement): number {
+    const match = /scale\(([\d.]+)\)/.exec(img.style.transform)
+    return match?.[1] ? Number(match[1]) : 1
+  }
+
+  it('starts at 1x', () => {
+    render(<ArchivoPreviewDialog url={IMG} open onOpenChange={vi.fn()} />)
+
+    expect(scaleOf(screen.getByRole('img'))).toBe(1)
+  })
+
+  it('zooms in and back out, and never below the fit level', async () => {
+    render(<ArchivoPreviewDialog url={IMG} open onOpenChange={vi.fn()} />)
+    const zoomIn = screen.getByRole('button', { name: /acercar/i })
+    const zoomOut = screen.getByRole('button', { name: /alejar/i })
+
+    await userEvent.click(zoomIn)
+    const zoomed = scaleOf(screen.getByRole('img'))
+    expect(zoomed).toBeGreaterThan(1)
+
+    await userEvent.click(zoomOut)
+    expect(scaleOf(screen.getByRole('img'))).toBe(1)
+
+    // Clamped: zooming out past the fit level would shrink the file to a
+    // thumbnail, which is not a useful state for reading an invoice.
+    await userEvent.click(zoomOut)
+    expect(scaleOf(screen.getByRole('img'))).toBe(1)
+  })
+
+  it('caps how far it zooms in', async () => {
+    render(<ArchivoPreviewDialog url={IMG} open onOpenChange={vi.fn()} />)
+    const zoomIn = screen.getByRole('button', { name: /acercar/i })
+
+    for (let i = 0; i < 12; i++) await userEvent.click(zoomIn)
+
+    expect(scaleOf(screen.getByRole('img'))).toBeLessThanOrEqual(4)
+  })
+
+  it('resets to 1x', async () => {
+    render(<ArchivoPreviewDialog url={IMG} open onOpenChange={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /acercar/i }))
+    expect(scaleOf(screen.getByRole('img'))).toBeGreaterThan(1)
+
+    await userEvent.click(screen.getByRole('button', { name: /restablecer zoom/i }))
+
+    expect(scaleOf(screen.getByRole('img'))).toBe(1)
+  })
+
+  it('does not offer zoom controls for a PDF — the embedded viewer has its own', () => {
+    render(
+      <ArchivoPreviewDialog
+        url="https://res.cloudinary.com/demo/facturas/doc.pdf"
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /acercar/i })).not.toBeInTheDocument()
+    // The close button must still be there.
+    expect(screen.getByRole('button', { name: /cerrar/i })).toBeInTheDocument()
+  })
+})
+
 describe('ArchivoPreviewDialog', () => {
   it('renders an <img> for an image URL, plus the fallback link', () => {
     render(
