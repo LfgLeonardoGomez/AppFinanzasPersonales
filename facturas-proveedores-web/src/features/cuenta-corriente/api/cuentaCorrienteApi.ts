@@ -49,6 +49,8 @@ interface RawEntradaHistorial {
   fecha: string
   monto: string
   saldo_acumulado: string
+  /** Optional: rows created before the field existed omit it entirely. */
+  archivo_url?: string | null
 }
 
 interface RawCuentaCorrienteResponse {
@@ -106,6 +108,15 @@ function parseFacturaConEstado(raw: RawFacturaConEstado): FacturaConEstado {
   }
 }
 
+/**
+ * NOTE — this rebuilds the row field by field, so it is an explicit
+ * WHITELIST: any field the backend adds and this function does not copy is
+ * dropped silently, with no type error and no failing test elsewhere. That
+ * is precisely how `archivo_url` went missing in C-24 — the API returned it
+ * and the table read it, but this boundary threw it away, so the
+ * "Ver archivo" button never rendered for pagos. When you add a field to
+ * `EntradaHistorial`, add it here too.
+ */
 function parseEntradaHistorial(raw: RawEntradaHistorial): EntradaHistorial {
   return {
     id: raw.id,
@@ -113,6 +124,9 @@ function parseEntradaHistorial(raw: RawEntradaHistorial): EntradaHistorial {
     fecha: raw.fecha,
     monto: toFiniteNumber(raw.monto, 'monto'),
     saldo_acumulado: toFiniteNumber(raw.saldo_acumulado, 'saldo_acumulado'),
+    // `?? null` so a row predating the field is `null`, not `undefined` —
+    // the UI checks truthiness, but the two differ when serialized.
+    archivo_url: raw.archivo_url ?? null,
   }
 }
 

@@ -49,6 +49,89 @@ function rawResponse(saldo: string, monto = '0.00', saldoAcumulado = '0.00') {
   }
 }
 
+describe('parseCuentaCorriente — historial carries archivo_url', () => {
+  /**
+   * `parseEntradaHistorial` rebuilds each row field by field, so it is an
+   * explicit whitelist: a field the backend sends but the parser does not
+   * copy is dropped silently, with no type error and no failing test
+   * anywhere else. That is exactly how archivo_url went missing — the
+   * backend returned it, the component read it, and the boundary in between
+   * threw it away, so the "Ver archivo" button never rendered for pagos.
+   */
+  function rawWithHistorial(historial: unknown[]) {
+    return {
+      proveedor_id: 'p-1',
+      saldo: '0.00',
+      facturas_con_estado: [],
+      historial,
+    }
+  }
+
+  it('keeps archivo_url on a PAGO row', () => {
+    const out = parseCuentaCorriente(
+      rawWithHistorial([
+        {
+          id: 'pg-1',
+          tipo: 'PAGO',
+          fecha: '2026-07-18',
+          monto: '15000.00',
+          saldo_acumulado: '100.00',
+          archivo_url: 'https://res.cloudinary.com/demo/comprobantes/x.jpg',
+        },
+      ]) as never,
+    )
+
+    expect(out.historial[0]?.archivo_url).toBe(
+      'https://res.cloudinary.com/demo/comprobantes/x.jpg',
+    )
+  })
+
+  it('keeps archivo_url on a FACTURA row', () => {
+    const out = parseCuentaCorriente(
+      rawWithHistorial([
+        {
+          id: 'f-1',
+          tipo: 'FACTURA',
+          fecha: '2026-07-10',
+          monto: '500.00',
+          saldo_acumulado: '500.00',
+          archivo_url: 'https://res.cloudinary.com/demo/facturas/y.pdf',
+        },
+      ]) as never,
+    )
+
+    expect(out.historial[0]?.archivo_url).toBe(
+      'https://res.cloudinary.com/demo/facturas/y.pdf',
+    )
+  })
+
+  it('normalises a missing or null archivo_url to null, never undefined', () => {
+    const out = parseCuentaCorriente(
+      rawWithHistorial([
+        {
+          id: 'pg-2',
+          tipo: 'PAGO',
+          fecha: '2026-07-09',
+          monto: '105000.00',
+          saldo_acumulado: '0.00',
+          archivo_url: null,
+        },
+        // Older rows may predate the field entirely.
+        {
+          id: 'pg-3',
+          tipo: 'PAGO',
+          fecha: '2026-07-09',
+          monto: '1.00',
+          saldo_acumulado: '0.00',
+        },
+      ]) as never,
+    )
+
+    expect(out.historial[0]?.archivo_url).toBeNull()
+    expect(out.historial[1]?.archivo_url).toBeNull()
+  })
+})
+
 describe('parseCuentaCorriente — boundary values', () => {
   it('round-trip 0', () => {
     const out: CuentaCorrienteResponse = parseCuentaCorriente(rawResponse('0.00'))
