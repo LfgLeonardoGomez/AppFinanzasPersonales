@@ -47,13 +47,17 @@ function EditPagoPage({ id }: { id: string }) {
   //
   // C-18 (FE-005): prefer `pago.proveedor_nombre` (populated by the
   // backend service) so the user sees the supplier's actual name, not
-  // the UUID. When the supplier is soft-deleted, the backend returns
-  // `null` and we fall back to the UUID (the previous behavior, kept
-  // for the soft-deleted case).
+  // the UUID.
+  //
+  // c-26 (D1): when the supplier is soft-deleted, the backend returns
+  // `null`. This USED to fall back to `pago.proveedor_id`, which is the
+  // same UUID-leak defect as the invoice form — a supplier id is never
+  // a valid label. `PagoForm` renders a neutral placeholder when
+  // `nombre` is empty, so we pass `''` here instead of the id.
   const proveedorForDisplay: ProveedorListItem = {
     id: pago.proveedor_id,
     usuario_id: pago.usuario_id,
-    nombre: pago.proveedor_nombre ?? pago.proveedor_id,
+    nombre: pago.proveedor_nombre ?? '',
     cuit: null,
     telefono: null,
     categoria: 'OTRO',

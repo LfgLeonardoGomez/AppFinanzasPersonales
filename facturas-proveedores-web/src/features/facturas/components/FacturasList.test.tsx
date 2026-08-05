@@ -21,17 +21,11 @@ import type { FacturaListItem } from '@shared/api/api'
 
 const mockFacturaPendiente: FacturaListItem = {
   id: 'fac-1',
-  usuario_id: 'user-1',
   proveedor_id: 'prov-1',
   numero: 'FAC-001',
   fecha_emision: '2026-06-01',
-  fecha_vencimiento: null,
   monto_total: 1500,
-  archivo_url: null,
-  origen: 'MANUAL',
   estado: 'PENDIENTE',
-  created_at: '2026-06-01T10:00:00',
-  updated_at: '2026-06-01T10:00:00',
 }
 
 const mockFacturaPagada: FacturaListItem = {
@@ -90,6 +84,48 @@ function createWrapper() {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('FacturasList', () => {
+  it('opens the read-only detail when the row is activated (c-26)', async () => {
+    render(<FacturasList filters={{}} onEditFactura={vi.fn()} />, {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(screen.getByText('FAC-001', { exact: false })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /ver detalle de la factura FAC-001/i }))
+
+    // The detail dialog, not the edit form.
+    const dialog = await screen.findByTestId('factura-detail-dialog')
+    expect(dialog).toBeInTheDocument()
+    expect(dialog).toHaveTextContent('FAC-001')
+  })
+
+  it('does NOT open the detail when the row edit control is used (D4)', async () => {
+    // The action buttons sit OUTSIDE the clickable region by construction, so
+    // this cannot regress by someone forgetting a stopPropagation call.
+    const onEditFactura = vi.fn()
+    render(<FacturasList filters={{}} onEditFactura={onEditFactura} />, {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(screen.getByText('FAC-001', { exact: false })).toBeInTheDocument())
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Editar' })[0] as HTMLElement)
+
+    expect(onEditFactura).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('factura-detail-dialog')).not.toBeInTheDocument()
+  })
+
+  it('editing from inside the detail reaches the same edit callback', async () => {
+    const onEditFactura = vi.fn()
+    render(<FacturasList filters={{}} onEditFactura={onEditFactura} />, {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(screen.getByText('FAC-001', { exact: false })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /ver detalle de la factura FAC-001/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^editar$/i }))
+
+    expect(onEditFactura).toHaveBeenCalledWith(expect.objectContaining({ id: 'fac-1' }))
+  })
+
   it('renders estado badges from the response (PENDIENTE + PAGADA)', async () => {
     render(<FacturasList filters={{}} onEditFactura={vi.fn()} />, {
       wrapper: createWrapper(),

@@ -29,7 +29,7 @@ import { useFactura, useCreateFactura } from './api/facturasHooks'
 import { useCreatePago } from '@features/pagos/api/pagosHooks'
 import { useProveedor } from '@features/proveedores/api/proveedoresHooks'
 import { CargaModal } from '@features/ia-vision/components/CargaModal'
-import type { FacturaResponse, PagoResponse } from '@shared/api/api'
+import type { FacturaResponse, PagoResponse, ProveedorListItem } from '@shared/api/api'
 
 // ── Edit mode: load existing factura ─────────────────────────────────────────
 
@@ -45,6 +45,24 @@ function EditFacturaPage({ id }: { id: string }) {
     return <p role="alert">No se encontró la factura.</p>
   }
 
+  // c-26 (D1): for the read-only supplier display, mirror PagoFormPage's
+  // shape (a bare ProveedorListItem built from proveedor_nombre). Unlike
+  // the pre-c-26 payment form, `nombre` never falls back to the id —
+  // `FacturaForm` itself renders a neutral placeholder when this is
+  // empty (soft-deleted supplier, or the name failed to resolve).
+  const proveedorForDisplay: ProveedorListItem = {
+    id: factura.proveedor_id,
+    usuario_id: factura.usuario_id,
+    nombre: factura.proveedor_nombre ?? '',
+    cuit: null,
+    telefono: null,
+    categoria: 'OTRO',
+    notas: null,
+    saldo: 0,
+    created_at: factura.created_at,
+    updated_at: factura.updated_at,
+  }
+
   function handleSuccess(_saved: FacturaResponse) {
     void navigate('/facturas', {
       state: { successMessage: 'Factura actualizada exitosamente.' },
@@ -56,6 +74,7 @@ function EditFacturaPage({ id }: { id: string }) {
       <h1 className="text-xl font-semibold mb-4">Editar factura</h1>
       <FacturaForm
         factura={factura}
+        proveedor={proveedorForDisplay}
         onSuccess={handleSuccess}
         onCancel={() => void navigate('/facturas')}
       />

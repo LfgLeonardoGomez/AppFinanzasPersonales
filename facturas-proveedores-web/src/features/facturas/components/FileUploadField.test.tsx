@@ -68,6 +68,57 @@ function makeFile(name: string, type: string, sizeBytes: number): File {
   return new File([content], name, { type })
 }
 
+// ── c-26 — the attachment opens in-app, not in a new tab ─────────────────────
+
+describe('FileUploadField — viewing an existing attachment', () => {
+  const URL_JPG = 'https://res.cloudinary.com/test-cloud/image/upload/factura.jpg'
+
+  function renderWithAttachment() {
+    return render(
+      <FileUploadField tipo="factura" onUrlChange={vi.fn()} currentUrl={URL_JPG} />,
+      { wrapper: createWrapper() },
+    )
+  }
+
+  it('opens the in-app viewer instead of navigating away', () => {
+    // C-24 replaced the new-tab link with an in-app viewer, but only in the
+    // cuenta-corriente tables. Here — the attachment shown while editing —
+    // the same action still left the app, so "ver archivo" meant two
+    // different things depending on where the user clicked it.
+    renderWithAttachment()
+
+    const trigger = screen.getByRole('button', { name: /ver adjunto/i })
+    expect(trigger).toBeInTheDocument()
+
+    fireEvent.click(trigger)
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+    // The file itself is rendered inside the dialog.
+    expect(screen.getByRole('img')).toHaveAttribute('src', URL_JPG)
+  })
+
+  it('does not render a link that leaves the application', () => {
+    renderWithAttachment()
+
+    const escapingLinks = screen
+      .queryAllByRole('link')
+      .filter((a) => a.getAttribute('target') === '_blank')
+
+    // The viewer keeps its own "abrir en pestaña nueva" fallback, but it only
+    // exists once the dialog is open — never on the form itself.
+    expect(escapingLinks).toHaveLength(0)
+  })
+
+  it('offers no viewer when there is no attachment', () => {
+    render(<FileUploadField tipo="factura" onUrlChange={vi.fn()} />, {
+      wrapper: createWrapper(),
+    })
+
+    expect(screen.queryByRole('button', { name: /ver adjunto/i })).not.toBeInTheDocument()
+  })
+})
+
 // ── Task 5.1 / 5.2 — Type and size validation ────────────────────────────────
 
 describe('FileUploadField — client-side validation', () => {

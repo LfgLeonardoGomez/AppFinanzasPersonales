@@ -26,6 +26,7 @@ import { Card } from '@shared/components/Card/Card'
 import { Button } from '@shared/components/Button/Button'
 import { EmptyState } from '@shared/components/EmptyState/EmptyState'
 import { LoadingState } from '@shared/components/LoadingState/LoadingState'
+import { FacturaDetailDialog } from './FacturaDetailDialog'
 import { Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { FacturaListItem, FacturasFilters } from '@shared/api/api'
 
@@ -105,6 +106,7 @@ export function FacturasList({ filters, onEditFactura }: FacturasListProps) {
   const [page, setPage] = useState(1)
   const [pendingDelete, setPendingDelete] = useState<FacturaListItem | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [detalle, setDetalle] = useState<FacturaListItem | null>(null)
 
   const { data, isLoading, isError } = useFacturas({ ...filters, page })
   const deleteMutation = useDeleteFactura()
@@ -163,25 +165,37 @@ export function FacturasList({ filters, onEditFactura }: FacturasListProps) {
           <div className="flex flex-col divide-y divide-border-subtle-2">
             {items.map((factura) => (
               <div key={factura.id} className="flex items-center gap-3.5 py-3.5">
-                <ProveedorChip
-                  proveedorId={factura.proveedor_id}
-                  nombre={proveedorNombreById.get(factura.proveedor_id)}
-                />
+                {/* c-26 (D4): the informational area is the clickable region and
+                    the action buttons live OUTSIDE it. Nesting them inside a
+                    clickable row would put interactive controls inside an
+                    interactive control, and would leave correctness depending
+                    on every future action remembering to stop propagation. */}
+                <button
+                  type="button"
+                  onClick={() => setDetalle(factura)}
+                  aria-label={`Ver detalle de la factura ${factura.numero ?? factura.id}`}
+                  className="flex min-w-0 flex-1 items-center gap-3.5 rounded-lg text-left transition-colors hover:bg-page/40"
+                >
+                  <ProveedorChip
+                    proveedorId={factura.proveedor_id}
+                    nombre={proveedorNombreById.get(factura.proveedor_id)}
+                  />
 
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-ink">
-                    {proveedorNombreById.get(factura.proveedor_id) ?? 'Proveedor'}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-ink">
+                      {proveedorNombreById.get(factura.proveedor_id) ?? 'Proveedor'}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-ink-soft">
+                      N.° {factura.numero ?? '—'} · {factura.fecha_emision}
+                    </p>
+                  </div>
+
+                  <EstadoBadge estado={factura.estado} />
+
+                  <p className="w-24 shrink-0 text-right text-sm font-bold tabular-nums text-ink">
+                    {formatMonto(factura.monto_total)}
                   </p>
-                  <p className="mt-0.5 truncate text-xs text-ink-soft">
-                    N.° {factura.numero ?? '—'} · {factura.fecha_emision}
-                  </p>
-                </div>
-
-                <EstadoBadge estado={factura.estado} />
-
-                <p className="w-24 shrink-0 text-right text-sm font-bold tabular-nums text-ink">
-                  {formatMonto(factura.monto_total)}
-                </p>
+                </button>
 
                 <div className="flex shrink-0 items-center gap-1">
                   <button
@@ -207,6 +221,19 @@ export function FacturasList({ filters, onEditFactura }: FacturasListProps) {
           </div>
         </Card>
       )}
+
+      <FacturaDetailDialog
+        factura={detalle}
+        proveedorNombre={detalle ? proveedorNombreById.get(detalle.proveedor_id) : undefined}
+        open={detalle !== null}
+        onOpenChange={(next) => {
+          if (!next) setDetalle(null)
+        }}
+        onEdit={(factura) => {
+          setDetalle(null)
+          onEditFactura(factura)
+        }}
+      />
 
       {(page > 1 || hasMore) && (
         <div className="flex items-center justify-between gap-3">

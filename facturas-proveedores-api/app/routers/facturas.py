@@ -25,6 +25,7 @@ from app.core.image_validation import validate_image_bytes
 from app.core.rate_limit_ia import rate_limit_ia
 from app.models.enums import EstadoFactura
 from app.models.usuario import Usuario
+from app.repositories.proveedor_repository import ProveedorRepository
 from app.schemas.factura import (
     FacturaCreate,
     FacturaItemResponse,
@@ -43,8 +44,37 @@ CurrentUser = Annotated[Usuario, Depends(get_current_user)]
 DbSession = Annotated[Session, Depends(get_db)]
 
 
-def _to_response(result) -> FacturaResponse:
-    """Map a FacturaConEstado to FacturaResponse."""
+def _resolve_proveedor_nombre(
+    session: Session,
+    proveedor_id: uuid.UUID,
+) -> Optional[str]:
+    """
+    Return the supplier's name for the given id, or None if the
+    supplier is soft-deleted / does not exist.
+
+    c-26 (D1): mirrors app/routers/pagos.py's `_resolve_proveedor_nombre`
+    shape. Used by the single-factura routes (POST/PATCH/GET /{id}) to
+    populate `FacturaResponse.proveedor_nombre`. The list endpoint
+    resolves supplier names its own way and does not use this helper.
+    """
+    repo = ProveedorRepository(session)
+    proveedor = repo.get(proveedor_id)
+    if proveedor is None or getattr(proveedor, "deleted_at", None) is not None:
+        return None
+    return proveedor.nombre
+
+
+def _to_response(
+    result,
+    proveedor_nombre: Optional[str] = None,
+) -> FacturaResponse:
+    """Map a FacturaConEstado to FacturaResponse.
+
+    c-26 (D1): `proveedor_nombre` is an optional lookup passed in by the
+    caller (mirrors app/routers/pagos.py::_to_response). Callers that
+    do not resolve a name (none exist yet, but kept optional for
+    symmetry) get `None`, matching the schema's default.
+    """
     return FacturaResponse(
         id=result.id,
         usuario_id=result.usuario_id,
@@ -69,6 +99,7 @@ def _to_response(result) -> FacturaResponse:
         items_sum_mismatch=result.items_sum_mismatch,
         created_at=result.created_at,
         updated_at=result.updated_at,
+        proveedor_nombre=proveedor_nombre,
     )
 
 
@@ -152,7 +183,9 @@ def create_factura(
     svc = FacturaService(session)
     result = svc.crear(current_user.id, body)
     session.commit()
-    return _to_response(result)
+    # c-26 (D1): populate proveedor_nombre for the response.
+    proveedor_nombre = _resolve_proveedor_nombre(session, result.proveedor_id)
+    return _to_response(result, proveedor_nombre=proveedor_nombre)
 
 
 # ── POST /extraer-ia — extract invoice header from image (C-14) ───────────────
@@ -225,7 +258,9 @@ def get_factura(
     """
     svc = FacturaService(session)
     result = svc.get(current_user.id, factura_id)
-    return _to_response(result)
+    # c-26 (D1): populate proveedor_nombre for the response.
+    proveedor_nombre = _resolve_proveedor_nombre(session, result.proveedor_id)
+    return _to_response(result, proveedor_nombre=proveedor_nombre)
 
 
 # ── PATCH /{id} — update invoice ─────────────────────────────────────────────
@@ -251,7 +286,9 @@ def update_factura(
     svc = FacturaService(session)
     result = svc.actualizar(current_user.id, factura_id, body)
     session.commit()
-    return _to_response(result)
+    # c-26 (D1): populate proveedor_nombre for the response.
+    proveedor_nombre = _resolve_proveedor_nombre(session, result.proveedor_id)
+    return _to_response(result, proveedor_nombre=proveedor_nombre)
 
 
 # ── DELETE /{id} — soft-delete invoice ───────────────────────────────────────

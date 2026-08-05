@@ -6,6 +6,7 @@
  * button names, alert roles.
  */
 import { useState, useEffect, useRef, type FormEvent, type ChangeEvent } from 'react'
+import { X } from 'lucide-react'
 import { SupplierSearch } from '@shared/components/SupplierSearch/SupplierSearch'
 import { ItemsEditor } from './ItemsEditor'
 import { FileUploadField } from './FileUploadField'
@@ -25,6 +26,11 @@ import type {
 
 type CreateFacturaMutation = UseMutationResult<FacturaResponse, Error, FacturaCreate>
 type UpdateFacturaMutation = UseMutationResult<FacturaResponse, Error, { id: string; data: FacturaUpdate }>
+
+// c-26 (D1): a supplier id is never a valid label. When no name is
+// available (not passed, or the supplier was soft-deleted upstream),
+// show this neutral placeholder instead of falling back to the id.
+const PROVEEDOR_NOMBRE_PLACEHOLDER = 'Proveedor no disponible'
 
 interface FormErrors {
   proveedor?: string
@@ -208,9 +214,23 @@ export function FacturaForm({
 
   return (
     <Card>
-      <h2 className="mb-6 font-serif text-xl font-semibold text-navy-800 dark:text-zinc-100">
-        {isEditMode ? 'Editar factura' : 'Nueva factura'}
-      </h2>
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <h2 className="font-serif text-xl font-semibold text-navy-800 dark:text-zinc-100">
+          {isEditMode ? 'Editar factura' : 'Nueva factura'}
+        </h2>
+        {/* c-26 (D2): additive top-right close control — Cancelar stays at
+            the bottom. Same action, so a scrolled-past user still has an
+            exit within view. */}
+        <button
+          type="button"
+          aria-label="Cerrar formulario"
+          onClick={onCancel}
+          disabled={isPending}
+          className="rounded-full p-2 text-navy-400 transition-colors hover:bg-cream-dark hover:text-navy-600 disabled:opacity-50 dark:text-zinc-500 dark:hover:bg-white/[0.04]"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
 
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
         {/* Proveedor */}
@@ -223,7 +243,9 @@ export function FacturaForm({
               data-testid="proveedor-readonly"
               className="rounded-xl border border-black/[0.06] bg-cream-dark/50 px-3 py-2.5 text-sm text-navy-700 dark:border-white/10 dark:bg-white/[0.03] dark:text-zinc-300"
             >
-              {initialProveedor?.nombre ?? factura?.proveedor_id}
+              {/* c-26 (D1): NEVER fall back to factura?.proveedor_id — a
+                  UUID is not a degraded name, it is noise. */}
+              {initialProveedor?.nombre?.trim() || PROVEEDOR_NOMBRE_PLACEHOLDER}
             </div>
           ) : (
             <div className="relative">

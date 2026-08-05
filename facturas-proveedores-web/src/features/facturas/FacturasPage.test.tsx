@@ -16,17 +16,11 @@ import type { FacturaListItem } from '@shared/api/api'
 
 const mockFactura: FacturaListItem = {
   id: 'fac-1',
-  usuario_id: 'user-1',
   proveedor_id: 'prov-1',
   numero: 'FAC-001',
   fecha_emision: '2026-06-01',
-  fecha_vencimiento: null,
   monto_total: 1500,
-  archivo_url: null,
-  origen: 'MANUAL',
   estado: 'PENDIENTE',
-  created_at: '2026-06-01T10:00:00',
-  updated_at: '2026-06-01T10:00:00',
 }
 
 const server = setupServer(

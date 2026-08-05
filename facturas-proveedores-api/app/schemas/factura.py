@@ -165,6 +165,11 @@ class FacturaResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # c-26 (D1): OPTIONAL field populated by the router's supplier lookup,
+    # mirroring PagoResponse.proveedor_nombre (C-18, FE-005). Carries the
+    # supplier's name when active, None when soft-deleted — never the id.
+    proveedor_nombre: Optional[str] = None
+
 
 # ── FacturaListItem ────────────────────────────────────────────────────────────
 

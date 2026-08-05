@@ -9,6 +9,7 @@ import { useState, useRef, type ChangeEvent } from 'react'
 import { useCloudinaryPreset } from '../api/facturasHooks'
 import { uploadToCloudinary } from '@shared/utils/uploadToCloudinary'
 import { Upload, File, X, Eye } from 'lucide-react'
+import { ArchivoPreviewDialog } from '@shared/components/ArchivoPreviewDialog/ArchivoPreviewDialog'
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024
 const ACCEPTED_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
@@ -34,6 +35,7 @@ export function FileUploadField({ tipo, onUrlChange, currentUrl }: FileUploadFie
   const [validationError, setValidationError] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const { data: preset, isLoading: isPresetLoading } = useCloudinaryPreset(
@@ -120,15 +122,18 @@ export function FileUploadField({ tipo, onUrlChange, currentUrl }: FileUploadFie
               </div>
               <div>
                 <p className="text-sm font-medium text-navy-700 dark:text-zinc-200">Archivo cargado</p>
-                <a
-                  href={currentUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                {/* c-26: opens the shared in-app viewer. It used to be an
+                    <a target="_blank">, so the same "ver archivo" action left
+                    the app here while staying inside it in the cuenta-corriente
+                    tables (C-24). One action, one behaviour. */}
+                <button
+                  type="button"
+                  onClick={() => setPreviewOpen(true)}
                   className="inline-flex items-center gap-1 text-xs text-accent-500 hover:text-accent-600 dark:text-accent-400"
                 >
                   <Eye className="h-3 w-3" />
                   Ver adjunto
-                </a>
+                </button>
               </div>
             </div>
             <button
@@ -189,6 +194,13 @@ export function FileUploadField({ tipo, onUrlChange, currentUrl }: FileUploadFie
           {error}
         </p>
       )}
+
+      <ArchivoPreviewDialog
+        url={currentUrl ?? null}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        title="Archivo adjunto"
+      />
     </div>
   )
 }

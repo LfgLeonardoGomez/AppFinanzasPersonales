@@ -6,6 +6,7 @@
  * button names, alert roles, RN-PAG-01 note.
  */
 import { useState, useEffect, useRef, type FormEvent, type ChangeEvent } from 'react'
+import { X } from 'lucide-react'
 import { SupplierSearch } from '@shared/components/SupplierSearch/SupplierSearch'
 import { FileUploadField } from '@features/facturas/components/FileUploadField'
 import { useCreatePago, useUpdatePago } from '../api/pagosHooks'
@@ -25,6 +26,10 @@ import type {
 
 type CreatePagoMutation = UseMutationResult<PagoResponse, Error, PagoCreate>
 type UpdatePagoMutation = UseMutationResult<PagoResponse, Error, { id: string; data: PagoUpdate }>
+
+// c-26 (D1): mirrors FacturaForm's placeholder — a supplier id is never
+// a valid label, soft-deleted or not.
+const PROVEEDOR_NOMBRE_PLACEHOLDER = 'Proveedor no disponible'
 
 interface FormErrors {
   proveedor?: string
@@ -204,9 +209,23 @@ export function PagoForm({
 
   return (
     <Card>
-      <h2 className="mb-6 font-serif text-xl font-semibold text-navy-800 dark:text-zinc-100">
-        {isEditMode ? 'Editar pago' : 'Nuevo pago'}
-      </h2>
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <h2 className="font-serif text-xl font-semibold text-navy-800 dark:text-zinc-100">
+          {isEditMode ? 'Editar pago' : 'Nuevo pago'}
+        </h2>
+        {/* c-26 (D2): additive top-right close control — Cancelar stays at
+            the bottom. Same action, so a scrolled-past user still has an
+            exit within view. */}
+        <button
+          type="button"
+          aria-label="Cerrar formulario"
+          onClick={onCancel}
+          disabled={isPending}
+          className="rounded-full p-2 text-navy-400 transition-colors hover:bg-cream-dark hover:text-navy-600 disabled:opacity-50 dark:text-zinc-500 dark:hover:bg-white/[0.04]"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
 
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
         {/* Proveedor */}
@@ -219,7 +238,9 @@ export function PagoForm({
               data-testid="proveedor-readonly"
               className="rounded-xl border border-black/[0.06] bg-cream-dark/50 px-3 py-2.5 text-sm text-navy-700 dark:border-white/10 dark:bg-white/[0.03] dark:text-zinc-300"
             >
-              {initialProveedor?.nombre ?? pago?.proveedor_id}
+              {/* c-26 (D1): NEVER fall back to pago?.proveedor_id — a
+                  UUID is not a degraded name, it is noise. */}
+              {initialProveedor?.nombre?.trim() || PROVEEDOR_NOMBRE_PLACEHOLDER}
             </div>
           ) : (
             <>

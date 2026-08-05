@@ -430,6 +430,40 @@ describe('PagoForm — edit mode', () => {
   })
 })
 
+// ── c-26 (D2) — top-right close control ──────────────────────────────────────
+
+describe('PagoForm — top-right close control', () => {
+  it('exposes a close control that performs the same action as Cancelar', () => {
+    const onCancel = vi.fn()
+    render(
+      <PagoForm
+        pago={mockPagoListItem}
+        proveedor={mockProveedor}
+        onSuccess={vi.fn()}
+        onCancel={onCancel}
+      />,
+      { wrapper: createWrapper() },
+    )
+    const closeBtn = screen.getByRole('button', { name: /cerrar formulario/i })
+    fireEvent.click(closeBtn)
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps Cancelar in its original place at the bottom of the form (additive, D2)', () => {
+    render(
+      <PagoForm
+        pago={mockPagoListItem}
+        proveedor={mockProveedor}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByRole('button', { name: /^cancelar$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /cerrar formulario/i })).toBeInTheDocument()
+  })
+})
+
 // ── Task 6 — Comprobante upload (C-09 FileUploadField, reused) ──────────────
 
 describe('PagoForm — comprobante upload (Task 6)', () => {

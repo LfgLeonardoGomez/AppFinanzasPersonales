@@ -2,10 +2,14 @@
  * PagoCard — pure presentational row for a single payment.
  *
  * Redesigned to the new design system: a low-density list row (not a tile),
- * matching FacturasList's row rhythm. Still pure presentational — no data
- * fetching, no hooks; `proveedorNombre` is resolved and passed down by the
- * parent `PagosList` (display-only lookup via the existing `useProveedores`
- * hook — `PagoListItem` only carries `proveedor_id`).
+ * matching FacturasList's row rhythm. No data fetching — `proveedorNombre` is
+ * resolved and passed down by the parent `PagosList` (display-only lookup via
+ * the existing `useProveedores` hook — `PagoListItem` only carries
+ * `proveedor_id`).
+ *
+ * c-26: it now holds ONE piece of local UI state — whether the comprobante
+ * viewer is open — mirroring how `TablaFacturasConEstado` and
+ * `PagosRegistrados` own their viewer (C-24). Still no fetching.
  *
  * INVARIANTS preserved:
  *  - monto (Intl ARS) shown in green with a leading "-" (it's money going out).
@@ -19,7 +23,9 @@
 import type { PagoListItem } from '@shared/api/api'
 import { MetodoBadge } from './MetodoBadge'
 import { formatMonto } from '@shared/utils/currency'
+import { useState } from 'react'
 import { Pencil, Trash2, ExternalLink, CreditCard } from 'lucide-react'
+import { ArchivoPreviewDialog } from '@shared/components/ArchivoPreviewDialog/ArchivoPreviewDialog'
 
 interface PagoCardProps {
   pago: PagoListItem & { comprobante_url?: string | null }
@@ -45,6 +51,7 @@ function pickChipPalette(seed: string): { bg: string; text: string } {
 
 export function PagoCard({ pago, proveedorNombre, onEdit, onDelete }: PagoCardProps) {
   const palette = pickChipPalette(pago.proveedor_id)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   return (
     <div
@@ -77,16 +84,25 @@ export function PagoCard({ pago, proveedorNombre, onEdit, onDelete }: PagoCardPr
       </p>
 
       {pago.comprobante_url && (
-        <a
-          href={pago.comprobante_url}
-          target="_blank"
-          rel="noopener noreferrer"
+        // c-26: opens the shared in-app viewer instead of a new tab, so
+        // "ver comprobante" behaves the same here as in the cuenta-corriente
+        // tables (C-24).
+        <button
+          type="button"
+          onClick={() => setPreviewOpen(true)}
           aria-label="Ver comprobante"
           className="shrink-0 rounded-lg p-1.5 text-ink-soft transition-colors hover:bg-violet-50 hover:text-violet-500"
         >
           <ExternalLink className="h-4 w-4" />
-        </a>
+        </button>
       )}
+
+      <ArchivoPreviewDialog
+        url={pago.comprobante_url ?? null}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        title="Comprobante de pago"
+      />
 
       <div className="flex shrink-0 items-center gap-1">
         <button

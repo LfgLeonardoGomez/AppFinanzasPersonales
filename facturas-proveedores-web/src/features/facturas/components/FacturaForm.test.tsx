@@ -219,6 +219,54 @@ describe('FacturaForm — edit mode', () => {
     expect(supplierDisplay).toBeInTheDocument()
     expect(supplierDisplay.textContent).toContain('Proveedor Test SA')
   })
+
+  it('never renders the supplier UUID; shows a neutral placeholder when no name is available (c-26 D1)', () => {
+    render(
+      <FacturaForm
+        factura={mockCreatedFactura}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { wrapper: createWrapper() },
+    )
+    const supplierDisplay = screen.getByTestId('proveedor-readonly')
+    expect(supplierDisplay).not.toHaveTextContent(mockCreatedFactura.proveedor_id)
+    expect(supplierDisplay.textContent).toMatch(/proveedor no disponible/i)
+  })
+})
+
+// ── c-26 (D2) — top-right close control ──────────────────────────────────────
+
+describe('FacturaForm — top-right close control', () => {
+  it('exposes a close control that performs the same action as Cancelar', () => {
+    const onCancel = vi.fn()
+    render(
+      <FacturaForm
+        factura={mockCreatedFactura}
+        proveedor={mockProveedor}
+        onSuccess={vi.fn()}
+        onCancel={onCancel}
+      />,
+      { wrapper: createWrapper() },
+    )
+    const closeBtn = screen.getByRole('button', { name: /cerrar formulario/i })
+    fireEvent.click(closeBtn)
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps Cancelar in its original place at the bottom of the form (additive, D2)', () => {
+    render(
+      <FacturaForm
+        factura={mockCreatedFactura}
+        proveedor={mockProveedor}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { wrapper: createWrapper() },
+    )
+    expect(screen.getByRole('button', { name: /^cancelar$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /cerrar formulario/i })).toBeInTheDocument()
+  })
 })
 
 // ── Task 6.5 — TRIANGULATE ────────────────────────────────────────────────────

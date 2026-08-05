@@ -4,6 +4,11 @@
  * the UUID. Before the fix, the page constructed the readonly ProveedorListItem
  * with `nombre: pago.proveedor_id` as a fallback (the backend did not
  * populate the name).
+ *
+ * c-26 (D1): the soft-deleted case previously fell back to the UUID too
+ * (`nombre: pago.proveedor_nombre ?? pago.proveedor_id`) — the same defect
+ * as the invoice form, just not caught by this test until now. It now
+ * falls back to a neutral placeholder, never the id.
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
@@ -70,7 +75,7 @@ describe('PagoFormPage — FE-005 edit-mode supplier name display', () => {
     expect(readonlyField).not.toHaveTextContent(PROVEEDOR_ID)
   })
 
-  it('falls back to the UUID when proveedor_nombre is null (soft-deleted supplier)', async () => {
+  it('shows a neutral placeholder — never the UUID — when proveedor_nombre is null (soft-deleted supplier, c-26 D1)', async () => {
     // Override the response to simulate a soft-deleted supplier.
     server.use(
       http.get(`/api/pagos/${encodeURIComponent('pago-uuid-1')}`, () => {
@@ -90,9 +95,10 @@ describe('PagoFormPage — FE-005 edit-mode supplier name display', () => {
       }),
     )
     render(<PagoFormPage />, { wrapper: createWrapper() })
-    // When proveedor_nombre is null, the readonly field falls back to
-    // the UUID (the previous behavior, preserved per the spec).
+    // c-26 (D1): a UUID is not a degraded name, it is noise. The id must
+    // never render, soft-deleted or not.
     const readonlyField = await screen.findByTestId('proveedor-readonly')
-    expect(readonlyField).toHaveTextContent(PROVEEDOR_ID)
+    expect(readonlyField).not.toHaveTextContent(PROVEEDOR_ID)
+    expect(readonlyField.textContent).toMatch(/proveedor no disponible/i)
   })
 })

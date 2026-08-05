@@ -4,7 +4,10 @@
  * TDD: Task 4.1 (RED) → 4.2 (GREEN) → 4.3 (TRIANGULATE).
  *
  * INVARIANTS:
- *   - `PagoCard` is pure presentational (no data fetching, no hooks).
+ *   - `PagoCard` does NO data fetching. Since c-26 it holds one piece of
+ *     local UI state — whether the comprobante viewer is open — matching how
+ *     `TablaFacturasConEstado` and `PagosRegistrados` own their own viewer
+ *     (C-24). The invariant that matters is "no fetching", not "no state".
  *   - It shows: monto (Intl ARS), fecha, MetodoBadge, comprobante link,
  *     edit/delete actions, and a "Pago al proveedor" reinforcement label
  *     (RN-PAG-01).
@@ -26,6 +29,39 @@ const basePago: PagoListItem = {
   created_at: '2026-06-15T10:00:00',
 }
 
+describe('PagoCard — viewing the comprobante (c-26)', () => {
+  const URL_JPG = 'https://res.cloudinary.com/demo/comprobantes/x.jpg'
+  const conComprobante = { ...basePago, comprobante_url: URL_JPG }
+
+  it('opens the in-app viewer instead of navigating away', () => {
+    // Same leftover as FileUploadField: C-24 moved the cuenta-corriente
+    // tables to the in-app viewer but this list kept opening a new tab, so
+    // one action had two behaviours depending on the screen.
+    render(<PagoCard pago={conComprobante} onEdit={vi.fn()} onDelete={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /ver comprobante/i }))
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByRole('img')).toHaveAttribute('src', URL_JPG)
+  })
+
+  it('does not render a link that leaves the application', () => {
+    render(<PagoCard pago={conComprobante} onEdit={vi.fn()} onDelete={vi.fn()} />)
+
+    const escaping = screen
+      .queryAllByRole('link')
+      .filter((a) => a.getAttribute('target') === '_blank')
+
+    expect(escaping).toHaveLength(0)
+  })
+
+  it('offers nothing when the payment has no comprobante', () => {
+    render(<PagoCard pago={basePago} onEdit={vi.fn()} onDelete={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: /ver comprobante/i })).not.toBeInTheDocument()
+  })
+})
+
 describe('PagoCard', () => {
   it('renders monto formatted as ARS, fecha, and the MetodoBadge', () => {
     render(
@@ -43,7 +79,12 @@ describe('PagoCard', () => {
     expect(screen.getByText(/pago al proveedor/i)).toBeInTheDocument()
   })
 
-  it('renders a comprobante link when comprobante_url is provided', () => {
+  it('renders a comprobante control when comprobante_url is provided', () => {
+    // c-26 — BREAKING TEST CONTRACT, intentional: this used to assert an
+    // anchor with an href, because the card navigated away. It is now a
+    // button that opens the in-app viewer, so the role changed link→button.
+    // The behaviour it guards (a control appears iff there is a comprobante)
+    // is unchanged.
     const pagoConComprobante = {
       ...basePago,
       comprobante_url: 'https://res.cloudinary.com/test/image/upload/comprobante.pdf',
@@ -55,8 +96,9 @@ describe('PagoCard', () => {
         onDelete={vi.fn()}
       />,
     )
-    const link = screen.getByRole('link', { name: /comprobante|ver adjunto|adjunto/i })
-    expect(link).toHaveAttribute('href', pagoConComprobante.comprobante_url)
+    expect(
+      screen.getByRole('button', { name: /comprobante|ver adjunto|adjunto/i }),
+    ).toBeInTheDocument()
   })
 
   it('does NOT render a comprobante link when comprobante_url is missing', () => {
