@@ -135,6 +135,85 @@ describe('CargaModal — escape and close', () => {
   })
 })
 
+describe('CargaModal — clearing the prefilled supplier (c-26)', () => {
+  /**
+   * Reproduces the user's actual path: opening the carga from INSIDE a
+   * proveedor (`?proveedor_id=`), which arrives as `initialSelectedProveedor`.
+   *
+   * The prefill-sync effect guarded on `selectedProveedor === null`, a state
+   * that means both "the prefill has not been applied yet" and "the user just
+   * cleared it on purpose", so clearing was undone on the next render. Same
+   * defect as SupplierMatchControl in c-23, one level up — fixing the child
+   * alone was not enough, because this parent re-applies the prefill.
+   *
+   * The assertion has to survive an effect pass; asserting synchronously
+   * right after the click passes against the broken code.
+   */
+  const PREFILL = {
+    id: 'prov-1',
+    usuario_id: 'user-1',
+    nombre: 'Pencamar',
+    cuit: null,
+    telefono: null,
+    categoria: 'OTRO' as const,
+    notas: null,
+    saldo: 0,
+    created_at: '2026-07-01T00:00:00',
+    updated_at: '2026-07-01T00:00:00',
+  }
+
+  async function reachReviewWithPrefill() {
+    renderModal({ initialSelectedProveedor: PREFILL })
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
+    await waitFor(() => expect(screen.getByLabelText(/Monto total/i)).toBeInTheDocument())
+  }
+
+  it('prefills the supplier when opened from a proveedor', async () => {
+    await reachReviewWithPrefill()
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /limpiar/i })).toBeInTheDocument(),
+    )
+  })
+
+  it('keeps the supplier cleared after the user clicks the x', async () => {
+    await reachReviewWithPrefill()
+    const clear = await screen.findByRole('button', { name: /limpiar/i })
+
+    fireEvent.click(clear)
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /limpiar/i })).not.toBeInTheDocument(),
+    )
+    // Survives the next effect pass — the whole point of the bug.
+    await new Promise((r) => setTimeout(r, 60))
+    expect(screen.queryByRole('button', { name: /limpiar/i })).not.toBeInTheDocument()
+  })
+
+  it('leaves the supplier search usable so a different one can be typed', async () => {
+    await reachReviewWithPrefill()
+    fireEvent.click(await screen.findByRole('button', { name: /limpiar/i }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /limpiar/i })).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('combobox')).toBeEnabled()
+  })
+
+  it('disables Confirmar once the supplier is cleared', async () => {
+    // A cleared supplier must not be silently re-applied at confirm time —
+    // creating the resource against the prefilled supplier the user just
+    // rejected would be worse than the visual glitch.
+    await reachReviewWithPrefill()
+    fireEvent.click(await screen.findByRole('button', { name: /limpiar/i }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled(),
+    )
+  })
+})
+
 describe('CargaModal — manual flow reaches review with empty fields', () => {
   it('Manual → Continuar renders the review step with empty inputs and no image banner', async () => {
     renderModal()

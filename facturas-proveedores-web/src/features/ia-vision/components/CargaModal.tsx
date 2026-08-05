@@ -126,6 +126,8 @@ export function CargaModal({
   const [state, dispatch] = useReducer(cargaModalReducer, initialTipo, initialCargaModalState)
   const [pickedFile, setPickedFile] = useState<File | null>(null)
   const [selectedProveedor, setSelectedProveedor] = useState<ProveedorListItem | null>(null)
+  /** True once the user has cleared the supplier for the current proposal. */
+  const [proveedorDismissed, setProveedorDismissed] = useState(false)
   const [editablePropuesta, setEditablePropuesta] = useState<PropuestaFactura | PropuestaPago | null>(null)
   const [isConfirming, setIsConfirming] = useState(false)
   const [confirmError, setConfirmError] = useState<string | null>(null)
@@ -149,6 +151,7 @@ export function CargaModal({
       dispatch({ kind: 'RESET', tipo: initialTipo })
       setPickedFile(null)
       setSelectedProveedor(initialSelectedProveedor ?? null)
+      setProveedorDismissed(false)
       setEditablePropuesta(null)
       setConfirmError(null)
       setIsConfirming(false)
@@ -163,14 +166,36 @@ export function CargaModal({
   }, [open, initialTipo])
 
   // Sync the supplier prefill once it resolves (e.g. `?proveedor_id=`
-  // fetched asynchronously via `useProveedor` in the parent page) —
-  // covers entering review before the query settles. Never overrides an
-  // explicit user pick (only applies while nothing is selected yet).
+  // fetched asynchronously via `useProveedor` in the parent page) — covers
+  // entering review before the query settles.
+  //
+  // `selectedProveedor === null` alone is NOT a safe guard: it is the state
+  // both before the prefill lands and immediately after the user clears the
+  // supplier on purpose. Guarding on it alone re-applied the prefill on the
+  // next render, so the clear control was inert whenever the modal was
+  // opened from inside a proveedor — and worse, Confirmar stayed enabled,
+  // so the resource could be created against a supplier the user had
+  // rejected. `proveedorDismissed` is what separates the two cases (c-26;
+  // same defect fixed one level down in SupplierMatchControl by c-23).
   useEffect(() => {
-    if (state.step === 'review' && selectedProveedor === null && initialSelectedProveedor) {
+    if (
+      state.step === 'review' &&
+      selectedProveedor === null &&
+      !proveedorDismissed &&
+      initialSelectedProveedor
+    ) {
       setSelectedProveedor(initialSelectedProveedor)
     }
-  }, [state.step, initialSelectedProveedor, selectedProveedor])
+  }, [state.step, initialSelectedProveedor, selectedProveedor, proveedorDismissed])
+
+  // Clearing the supplier is an explicit rejection of the prefill/AI match
+  // (RN-IA-06: the AI proposes, the human confirms — and may refuse).
+  const handleProveedorChange = useCallback((proveedor: ProveedorListItem | null) => {
+    if (proveedor === null) {
+      setProveedorDismissed(true)
+    }
+    setSelectedProveedor(proveedor)
+  }, [])
 
   // 429 countdown — fires once when a rate_limit error enters state.
   useEffect(() => {
@@ -207,6 +232,7 @@ export function CargaModal({
           }
           setEditablePropuesta(propuesta)
           setSelectedProveedor(initialSelectedProveedor ?? null)
+      setProveedorDismissed(false)
           dispatch({ kind: 'EXTRACT_SUCCESS', propuesta })
         },
         onError: (err: unknown) => {
@@ -264,6 +290,7 @@ export function CargaModal({
       const propuesta = emptyPropuesta(state.tipo)
       setEditablePropuesta(propuesta)
       setSelectedProveedor(initialSelectedProveedor ?? null)
+      setProveedorDismissed(false)
       dispatch({ kind: 'MANUAL_CONTINUE', propuesta })
     }
   }
@@ -427,7 +454,7 @@ export function CargaModal({
               propuesta={editablePropuesta}
               onChange={setEditablePropuesta}
               selectedProveedor={selectedProveedor}
-              onProveedorChange={setSelectedProveedor}
+              onProveedorChange={handleProveedorChange}
             />
           ) : null}
 
