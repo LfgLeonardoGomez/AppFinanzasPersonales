@@ -7,8 +7,11 @@
  *  - data-testid="historial-saldo-acumulado"
  *  - "Sin movimientos registrados." text
  */
+import { useState } from 'react'
+import { ExternalLink } from 'lucide-react'
 import type { EntradaHistorial } from '@shared/api/api'
 import { formatMonto, formatSaldo } from '@shared/utils/currency'
+import { ArchivoPreviewDialog } from '@shared/components/ArchivoPreviewDialog/ArchivoPreviewDialog'
 
 interface HistorialCronologicoProps {
   historial: EntradaHistorial[]
@@ -30,6 +33,10 @@ function chipFor(tipo: EntradaHistorial['tipo']) {
 }
 
 export function HistorialCronologico({ historial }: HistorialCronologicoProps) {
+  // c-27: local UI state only — no fetching, and the array is still rendered
+  // exactly in the order received (the C-24 saldo_acumulado invariant).
+  const [preview, setPreview] = useState<{ url: string; title: string } | null>(null)
+
   if (historial.length === 0) {
     return (
       <p role="status" className="text-sm text-ink-soft">
@@ -54,6 +61,9 @@ export function HistorialCronologico({ historial }: HistorialCronologicoProps) {
             </th>
             <th className="px-4 py-3 font-inter text-xs font-semibold uppercase tracking-wider text-ink-soft">
               Saldo acumulado
+            </th>
+            <th className="px-4 py-3 font-inter text-xs font-semibold uppercase tracking-wider text-ink-soft">
+              Archivo
             </th>
           </tr>
         </thead>
@@ -87,11 +97,39 @@ export function HistorialCronologico({ historial }: HistorialCronologicoProps) {
                 >
                   {formatSaldo(h.saldo_acumulado)}
                 </td>
+                <td className="px-4 py-3">
+                  {h.archivo_url ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPreview({
+                          url: h.archivo_url!,
+                          title: h.tipo === 'PAGO' ? 'Comprobante de pago' : 'Archivo de factura',
+                        })
+                      }
+                      className="inline-flex items-center gap-1 text-xs font-medium text-violet-500 transition-colors hover:text-violet-600"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Ver archivo
+                    </button>
+                  ) : (
+                    <span className="text-ink-soft">—</span>
+                  )}
+                </td>
               </tr>
             )
           })}
         </tbody>
       </table>
+
+      <ArchivoPreviewDialog
+        url={preview?.url ?? null}
+        open={preview !== null}
+        onOpenChange={(next) => {
+          if (!next) setPreview(null)
+        }}
+        title={preview?.title}
+      />
     </div>
   )
 }

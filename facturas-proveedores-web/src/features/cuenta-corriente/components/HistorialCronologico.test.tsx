@@ -24,7 +24,7 @@
  * TDD: Task 7.1 (RED) → 7.2 (GREEN) → 7.3 (TRIANGULATE).
  */
 import { describe, it, expect } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, fireEvent } from '@testing-library/react'
 import { HistorialCronologico } from './HistorialCronologico'
 import type { EntradaHistorial } from '@shared/api/api'
 
@@ -131,5 +131,69 @@ describe('HistorialCronologico', () => {
     const chip1 = within(screen.getByTestId('historial-row-f-1')).getByTestId('historial-chip')
     const chip2 = within(screen.getByTestId('historial-row-p-1')).getByTestId('historial-chip')
     expect(chip1.dataset.tipo).not.toBe(chip2.dataset.tipo)
+  })
+})
+
+// ── c-27 Item A — the tab exposes the attachment it already receives ─────────
+
+describe('HistorialCronologico — attachment (c-27)', () => {
+  const URL_JPG = 'https://res.cloudinary.com/demo/comprobantes/x.jpg'
+
+  const conArchivo: EntradaHistorial = {
+    id: 'p-9',
+    tipo: 'PAGO',
+    fecha: '2026-07-18',
+    monto: 15000,
+    saldo_acumulado: 0,
+    archivo_url: URL_JPG,
+  }
+  const sinArchivo: EntradaHistorial = {
+    id: 'p-10',
+    tipo: 'PAGO',
+    fecha: '2026-07-09',
+    monto: 105000,
+    saldo_acumulado: 0,
+    archivo_url: null,
+  }
+
+  it('offers a view-file control for a row that carries an attachment', () => {
+    // C-24 threaded archivo_url onto every historial row and the Facturas and
+    // Pagos tabs both render a control from it. This tab — same data, one tab
+    // over — ignored it, so the same row behaved differently depending on
+    // which tab showed it.
+    render(<HistorialCronologico historial={[conArchivo]} />)
+
+    const row = screen.getByTestId(`historial-row-${conArchivo.id}`)
+    expect(within(row).getByRole('button', { name: /ver archivo/i })).toBeInTheDocument()
+  })
+
+  it('offers nothing for a row without an attachment', () => {
+    render(<HistorialCronologico historial={[sinArchivo]} />)
+
+    const row = screen.getByTestId(`historial-row-${sinArchivo.id}`)
+    expect(within(row).queryByRole('button', { name: /ver archivo/i })).not.toBeInTheDocument()
+  })
+
+  it('opens the file inside the application, never in a new tab', () => {
+    render(<HistorialCronologico historial={[conArchivo]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /ver archivo/i }))
+
+    expect(screen.getByRole('img')).toHaveAttribute('src', URL_JPG)
+    const escaping = screen
+      .queryAllByRole('link')
+      .filter((a) => a.getAttribute('target') === '_blank')
+    // The viewer keeps its own fallback link, but only inside the dialog.
+    expect(escaping.every((a) => a.closest('[role="dialog"]') !== null)).toBe(true)
+  })
+
+  it('still renders rows in the order received', () => {
+    // The C-24 invariant: this component never reorders and never recomputes
+    // saldo_acumulado. Adding a column must not change that.
+    render(<HistorialCronologico historial={[conArchivo, sinArchivo]} />)
+
+    const rows = screen.getAllByTestId(/^historial-row-/)
+    expect(rows[0]).toHaveAttribute('data-testid', `historial-row-${conArchivo.id}`)
+    expect(rows[1]).toHaveAttribute('data-testid', `historial-row-${sinArchivo.id}`)
   })
 })
