@@ -53,21 +53,22 @@ const PROVEEDOR_B = 'proveedor-B'
 
 const mockFacturaListItem: FacturaListItem = {
   id: 'factura-1',
-  usuario_id: 'user-1',
   proveedor_id: PROVEEDOR_A,
   numero: 'FAC-001',
   fecha_emision: '2026-06-01',
-  fecha_vencimiento: null,
   monto_total: 1000,
-  archivo_url: null,
-  origen: 'MANUAL',
   estado: 'PENDIENTE',
-  created_at: '2026-06-01T10:00:00',
-  updated_at: '2026-06-01T10:00:00',
 }
 
 const mockFacturaResponse: FacturaResponse = {
   ...mockFacturaListItem,
+  // c-26: the LEAN list row does not carry these — the full response does.
+  usuario_id: 'user-1',
+  fecha_vencimiento: null,
+  archivo_url: null,
+  origen: 'MANUAL',
+  created_at: '2026-06-01T10:00:00',
+  updated_at: '2026-06-01T10:00:00',
   items: [],
   items_sum_mismatch: false,
 }
@@ -92,7 +93,7 @@ const mockPagoResponse: PagoResponse = {
 const mockCuentaCorriente: CuentaCorrienteResponse = {
   proveedor_id: PROVEEDOR_A,
   saldo: 1000,
-  facturas_con_estado: [mockFacturaListItem],
+  facturas_con_estado: [{ ...mockFacturaResponse, estado: 'PENDIENTE' as const }],
   historial: [
     {
       id: 'factura-1',

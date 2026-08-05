@@ -238,25 +238,39 @@ export interface FacturaResponse {
   items_sum_mismatch: boolean
   created_at: string
   updated_at: string
+  /**
+   * c-26 (D1): the related supplier's name, populated by the backend
+   * for POST/GET/PATCH responses — mirrors PagoResponse.proveedor_nombre
+   * (C-18, FE-005). `null` when the supplier was soft-deleted (the
+   * factura remains valid; the supplier's absence is informational).
+   * The list endpoint does NOT carry this field on FacturaListItem.
+   */
+  proveedor_nombre?: string | null
 }
 
 /**
  * Item in the paginated invoice list (GET /api/facturas).
  * Carries computed estado; items array is NOT included in list items.
  */
+/**
+ * Lean row for the paginated listing — this is what `GET /api/facturas`
+ * ACTUALLY returns.
+ *
+ * c-26: this type used to declare `usuario_id`, `fecha_vencimiento`,
+ * `archivo_url`, `origen`, `created_at` and `updated_at`. The backend's
+ * `FacturaListItem` omits every one of them on purpose ("Omits items,
+ * timestamps, and archivo_url to keep payload small"), so the type was
+ * promising fields that arrive as `undefined` at runtime — a compiler that
+ * vouches for data the server never sends. Anything needing those fields
+ * must fetch the full invoice via `GET /api/facturas/{id}`.
+ */
 export interface FacturaListItem {
   id: string
-  usuario_id: string
   proveedor_id: string
   numero: string | null
   fecha_emision: string
-  fecha_vencimiento: string | null
   monto_total: number
-  archivo_url: string | null
-  origen: OrigenDocumento
   estado: EstadoFactura
-  created_at: string
-  updated_at: string
 }
 
 /**
