@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -246,5 +247,132 @@ describe('CargaModal — imagen extraction flow', () => {
     })
     expect(onCreated).not.toHaveBeenCalled()
     expect(createFactura).not.toHaveBeenCalled()
+  })
+})
+
+// ── Radix dialog shell (c-27, item B) ───────────────────────────────────────
+//
+// These lock the contract added by `specs/ia-vision-frontend/spec.md`
+// ("The carga modal behaves like every other dialog") for the Radix
+// migration. They are NEW coverage — the pre-existing tests above are the
+// behaviour-preservation contract (design D3) and are deliberately left
+// untouched.
+describe('CargaModal — Radix dialog shell (c-27)', () => {
+  it('traps focus: tabbing forward past the last focusable control stays inside the modal', async () => {
+    const user = userEvent.setup()
+    render(
+      <div>
+        <button type="button" data-testid="outside-button">
+          Fuera del modal
+        </button>
+        <CargaModal
+          open
+          initialTipo="factura"
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
+          createFactura={vi.fn()}
+          createPago={vi.fn()}
+        />
+      </div>,
+      { wrapper: makeWrapper() },
+    )
+    // Manual origin enables Continuar immediately, making it the last
+    // focusable control without waiting on an extraction round-trip.
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }))
+    const continuar = screen.getByRole('button', { name: 'Continuar' })
+    continuar.focus()
+    expect(continuar).toHaveFocus()
+
+    await user.tab()
+
+    // The outside button is aria-hidden while the dialog is open (Radix
+    // hides the rest of the page from assistive tech), so it is queried by
+    // raw DOM lookup here rather than getByRole — an accessible-role query
+    // would correctly fail to find it at all while the trap is active.
+    const outsideButton = document.querySelector('[data-testid="outside-button"]')
+    expect(outsideButton).not.toBeNull()
+    expect(outsideButton).not.toHaveFocus()
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true)
+  })
+
+  it('Esc closes the modal from the review step when dismissal is allowed', async () => {
+    const onClose = vi.fn()
+    renderModal({ onClose })
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
+    await waitFor(() => expect(screen.getByLabelText(/Monto total/i)).toBeInTheDocument())
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('activating the backdrop closes the modal when dismissal is allowed', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    renderModal({ onClose })
+
+    const overlay = document.querySelector('[data-testid="carga-modal-overlay"]')
+    expect(overlay).not.toBeNull()
+    await user.click(overlay as Element)
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOT close on Esc or backdrop activation while extraction is in progress', async () => {
+    // The extraction request never resolves, holding the modal on
+    // 'processing' for the duration of the assertions.
+    server.use(
+      http.post('/api/facturas/extraer-ia', () => new Promise(() => {})),
+    )
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    renderModal({ onClose })
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File([new Uint8Array(100)], 'f.jpg', { type: 'image/jpeg' })
+    fireEvent.change(input, { target: { files: [file] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
+
+    await waitFor(() => expect(screen.getByText(/La IA está leyendo el documento/i)).toBeInTheDocument())
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    const overlay = document.querySelector('[data-testid="carga-modal-overlay"]')
+    if (overlay) {
+      await user.click(overlay as Element)
+    }
+
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('returns focus to the element that opened it (B.7)', async () => {
+    // The hand-rolled version tracked the previously-focused element in a ref
+    // and restored it by hand. Radix's FocusScope does this on unmount, so the
+    // manual ref was removed — this test is what makes that removal safe
+    // instead of a silent regression.
+    const opener = document.createElement('button')
+    opener.textContent = 'Cargar'
+    document.body.appendChild(opener)
+    opener.focus()
+    expect(document.activeElement).toBe(opener)
+
+    const { rerender } = renderModal({ open: true })
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+    // Focus moved into the dialog.
+    expect(document.activeElement).not.toBe(opener)
+
+    rerender(
+      <CargaModal
+        open={false}
+        initialTipo="factura"
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+        createFactura={vi.fn()}
+        createPago={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => expect(document.activeElement).toBe(opener))
+    opener.remove()
   })
 })

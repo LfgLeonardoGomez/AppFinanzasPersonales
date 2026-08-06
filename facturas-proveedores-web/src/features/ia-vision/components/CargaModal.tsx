@@ -43,16 +43,8 @@
  * entry point) and the user can freely toggle tipo inside. See the
  * `CargaModalProps` below.
  */
-import {
-  useCallback,
-  useEffect,
-  useReducer,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
-} from 'react'
-import { createPortal } from 'react-dom'
+import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react'
+import * as Dialog from '@radix-ui/react-dialog'
 import type {
   FacturaCreate,
   FacturaResponse,
@@ -133,7 +125,6 @@ export function CargaModal({
   const [confirmError, setConfirmError] = useState<string | null>(null)
   const [countdown, setCountdown] = useState(0)
   const [createdResult, setCreatedResult] = useState<CreatedResult | null>(null)
-  const cardRef = useRef<HTMLDivElement>(null)
   const previouslyFocusedRef = useRef<HTMLElement | null>(null)
 
   const facturaMutation = useExtraerFacturaIA()
@@ -145,22 +136,29 @@ export function CargaModal({
     state.step === 'review' && state.origen === 'imagen' ? (state.tipo === 'factura' ? 'factura' : 'comprobante') : ''
   const { data: cloudinaryPreset } = useCloudinaryPreset(cloudinaryPresetTipo)
 
-  // Reset state on open/close.
+  // Reset state on open, and restore focus to the opener on close.
+  //
+  // The migration to Radix (c-27) first dropped this manual restore on the
+  // assumption that FocusScope's onUnmountAutoFocus covers it. It does not
+  // here: this dialog is controlled by an `open` prop rather than opened from
+  // a `Dialog.Trigger`, and the B.7 test showed focus landing on <body>
+  // instead of the button that opened the modal. Keeping the ref makes the
+  // behaviour ours rather than a library detail we cannot verify.
   useEffect(() => {
-    if (open) {
-      dispatch({ kind: 'RESET', tipo: initialTipo })
-      setPickedFile(null)
-      setSelectedProveedor(initialSelectedProveedor ?? null)
-      setProveedorDismissed(false)
-      setEditablePropuesta(null)
-      setConfirmError(null)
-      setIsConfirming(false)
-      setCountdown(0)
-      setCreatedResult(null)
-      previouslyFocusedRef.current = document.activeElement as HTMLElement | null
-    } else {
+    if (!open) {
       previouslyFocusedRef.current?.focus()
+      return
     }
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null
+    dispatch({ kind: 'RESET', tipo: initialTipo })
+    setPickedFile(null)
+    setSelectedProveedor(initialSelectedProveedor ?? null)
+    setProveedorDismissed(false)
+    setEditablePropuesta(null)
+    setConfirmError(null)
+    setIsConfirming(false)
+    setCountdown(0)
+    setCreatedResult(null)
     // initialSelectedProveedor is intentionally read only at open-time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTipo])
@@ -368,132 +366,114 @@ export function CargaModal({
     onCreated(createdResult.resource)
   }
 
-  // Escape key handling: close in every step EXCEPT processing (RN-IA-01:
-  // prevent losing the in-flight extraction request).
-  function handleKeyDown(e: ReactKeyboardEvent<HTMLDivElement>): void {
-    if (e.key !== 'Escape') return
-    if (state.step === 'processing') return
-    handleClose()
-  }
-
-  // Focus trap: cycle Tab within the modal.
-  useEffect(() => {
-    if (!open) return
-    function onTab(e: globalThis.KeyboardEvent): void {
-      if (e.key !== 'Tab' || !cardRef.current) return
-      const focusables = cardRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      )
-      if (focusables.length === 0) return
-      const first = focusables[0]
-      const last = focusables[focusables.length - 1]
-      if (!first || !last) return
-      const active = document.activeElement as HTMLElement | null
-      if (e.shiftKey && active === first) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault()
-        first.focus()
-      }
-    }
-    document.addEventListener('keydown', onTab)
-    return () => document.removeEventListener('keydown', onTab)
-  }, [open])
-
-  if (!open) return null
-
   const canClose = state.step !== 'processing'
   const canConfirm = state.step === 'review' && selectedProveedor !== null && !isConfirming
 
-  const modal = (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && canClose) {
+  return (
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        // Radix fires this for Esc, backdrop/outside activation, AND any
+        // explicit Dialog.Close — dismissal must respect the same guard the
+        // hand-rolled version enforced (RN-IA-01: never lose an in-flight
+        // extraction request). When canClose is false this is a no-op: we
+        // never flip our own `open` prop, so Radix keeps the content mounted.
+        if (!next && canClose) {
           handleClose()
         }
       }}
     >
-      <div
-        ref={cardRef}
-        role="dialog"
-        aria-modal="true"
-        aria-busy={state.step === 'processing'}
-        aria-labelledby="carga-modal-title"
-        onKeyDown={handleKeyDown}
-        // max-h-[90dvh] + overflow-y-auto (c-23): this card grows with the AI
-        // proposal form, so it is the most likely of the three dialogs to
-        // outgrow a phone screen. The cap sits on the card, not the flex
-        // wrapper, so the existing centring is preserved.
-        className="flex max-h-[90dvh] w-full max-w-lg flex-col gap-6 overflow-y-auto rounded-card bg-surface p-6 font-inter shadow-ia ring-1 ring-border-subtle transition-all duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]"
-      >
-        <ModalHeader tipo={state.tipo} {...(canClose ? { onClose: handleClose } : {})} />
-
-        <div role="status" aria-live="polite" className="flex min-h-[180px] flex-col gap-4">
-          {state.step === 'origen' ? (
-            <OrigenStep
-              state={state}
-              pickedFile={pickedFile}
-              countdown={countdown}
-              onSetTipo={handleSetTipo}
-              onSetOrigen={handleSetOrigen}
-              onPickFile={handlePickFile}
-              onClearFile={handleClearFile}
-              onRetryError={handleRetryError}
-              onManualLoadFromError={handleManualLoadFromError}
-            />
-          ) : null}
-
-          {state.step === 'processing' ? <ProcessingStep /> : null}
-
-          {state.step === 'review' ? (
-            <ReviewStep
-              tipo={state.tipo}
-              origen={state.origen}
-              propuesta={editablePropuesta}
-              onChange={setEditablePropuesta}
-              selectedProveedor={selectedProveedor}
-              onProveedorChange={handleProveedorChange}
-            />
-          ) : null}
-
-          {state.step === 'success' && createdResult ? (
-            <SuccessStep tipo={state.tipo} proveedorNombre={createdResult.proveedorNombre} />
-          ) : null}
-        </div>
-
-        {state.step === 'origen' ? (
-          <Button
-            variant="primary"
-            fullWidth
-            disabled={state.origen === 'imagen' && !pickedFile}
-            onClick={handleContinuar}
+      <Dialog.Portal>
+        {/* The centring wrapper (flex + items-center + justify-center) lives
+            on the Overlay, with Content nested inside it — the same shape the
+            hand-rolled backdrop/card pair had, so the c-23 viewport-fit
+            contract (cap on the card, centring on the wrapper) carries over
+            unchanged. Radix's outside-click detection is a DOM-containment
+            check, so clicking the overlay's own background (not the content
+            inside it) still counts as "outside" and dismisses. */}
+        <Dialog.Overlay
+          data-testid="carga-modal-overlay"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+        >
+          <Dialog.Content
+            aria-modal="true"
+            aria-busy={state.step === 'processing'}
+            // max-h-[90dvh] + overflow-y-auto (c-23): this card grows with the
+            // AI proposal form, so it is the most likely of the three dialogs
+            // to outgrow a phone screen. The cap sits on the card, not the
+            // flex wrapper, so the existing centring is preserved.
+            className="flex max-h-[90dvh] w-full max-w-lg flex-col gap-6 overflow-y-auto rounded-card bg-surface p-6 font-inter shadow-ia ring-1 ring-border-subtle transition-all duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] focus:outline-none"
           >
-            Continuar
-          </Button>
-        ) : null}
+            <ModalHeader tipo={state.tipo} {...(canClose ? { onClose: handleClose } : {})} />
+            <Dialog.Description className="sr-only">
+              Formulario para cargar una factura o registrar un pago, con datos extraídos por IA
+              desde una imagen o completados a mano.
+            </Dialog.Description>
 
-        {state.step === 'review' ? (
-          <ReviewFooter
-            canConfirm={canConfirm}
-            isConfirming={isConfirming}
-            confirmError={confirmError}
-            onVolver={handleBack}
-            onConfirmar={() => void handleConfirm()}
-          />
-        ) : null}
+            <div role="status" aria-live="polite" className="flex min-h-[180px] flex-col gap-4">
+              {state.step === 'origen' ? (
+                <OrigenStep
+                  state={state}
+                  pickedFile={pickedFile}
+                  countdown={countdown}
+                  onSetTipo={handleSetTipo}
+                  onSetOrigen={handleSetOrigen}
+                  onPickFile={handlePickFile}
+                  onClearFile={handleClearFile}
+                  onRetryError={handleRetryError}
+                  onManualLoadFromError={handleManualLoadFromError}
+                />
+              ) : null}
 
-        {state.step === 'success' ? (
-          <Button variant="primary" fullWidth onClick={handleViewCuentaCorriente}>
-            Ver cuenta corriente
-          </Button>
-        ) : null}
-      </div>
-    </div>
+              {state.step === 'processing' ? <ProcessingStep /> : null}
+
+              {state.step === 'review' ? (
+                <ReviewStep
+                  tipo={state.tipo}
+                  origen={state.origen}
+                  propuesta={editablePropuesta}
+                  onChange={setEditablePropuesta}
+                  selectedProveedor={selectedProveedor}
+                  onProveedorChange={handleProveedorChange}
+                />
+              ) : null}
+
+              {state.step === 'success' && createdResult ? (
+                <SuccessStep tipo={state.tipo} proveedorNombre={createdResult.proveedorNombre} />
+              ) : null}
+            </div>
+
+            {state.step === 'origen' ? (
+              <Button
+                variant="primary"
+                fullWidth
+                disabled={state.origen === 'imagen' && !pickedFile}
+                onClick={handleContinuar}
+              >
+                Continuar
+              </Button>
+            ) : null}
+
+            {state.step === 'review' ? (
+              <ReviewFooter
+                canConfirm={canConfirm}
+                isConfirming={isConfirming}
+                confirmError={confirmError}
+                onVolver={handleBack}
+                onConfirmar={() => void handleConfirm()}
+              />
+            ) : null}
+
+            {state.step === 'success' ? (
+              <Button variant="primary" fullWidth onClick={handleViewCuentaCorriente}>
+                Ver cuenta corriente
+              </Button>
+            ) : null}
+          </Dialog.Content>
+        </Dialog.Overlay>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
-
-  return createPortal(modal, document.body)
 }
 
 export default CargaModal
@@ -517,9 +497,12 @@ function ModalHeader({ tipo, onClose }: { tipo: Tipo; onClose?: () => void }) {
         <div className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] bg-gradient-to-br from-violet-500 to-magenta-600">
           <IaGlyph />
         </div>
-        <h2 id="carga-modal-title" className="text-base font-bold text-ink">
+        {/* Dialog.Title renders an <h2> by default, so this is the same DOM
+            node the hand-rolled version had — it now also drives Radix's
+            automatic aria-labelledby wiring on Dialog.Content. */}
+        <Dialog.Title id="carga-modal-title" className="text-base font-bold text-ink">
           {title}
-        </h2>
+        </Dialog.Title>
       </div>
       {onClose ? (
         <button
