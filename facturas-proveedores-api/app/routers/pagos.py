@@ -144,12 +144,23 @@ def _resolve_proveedor_nombre(
 
 
 # ── GET / — paginated listing ─────────────────────────────────────────────────
+#
+# c-27 (design.md D1): the collection route is registered on BOTH "" and "/"
+# so neither form redirects (307 would let a client rebuild the request from
+# its own cookie jar, dropping an explicit Cookie header — see C-22). The
+# "/" registration is kept out of the OpenAPI schema (include_in_schema=False)
+# so the generated client sees one operation, not two.
 
 
 @router.get(
     "",
     response_model=PagoListResponse,
     summary="List active payments for the authenticated user",
+)
+@router.get(
+    "/",
+    response_model=PagoListResponse,
+    include_in_schema=False,
 )
 def list_pagos(
     proveedor_id: Annotated[
@@ -199,6 +210,12 @@ def list_pagos(
     response_model=PagoResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new payment",
+)
+@router.post(
+    "/",
+    response_model=PagoResponse,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
 )
 def create_pago(
     body: PagoCreate,

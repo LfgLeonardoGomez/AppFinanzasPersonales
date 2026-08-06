@@ -104,12 +104,23 @@ def _to_response(
 
 
 # ── GET / — paginated listing ─────────────────────────────────────────────────
+#
+# c-27 (design.md D1): the collection route is registered on BOTH "" and "/"
+# so neither form redirects (307 would let a client rebuild the request from
+# its own cookie jar, dropping an explicit Cookie header — see C-22). The
+# "/" registration is kept out of the OpenAPI schema (include_in_schema=False)
+# so the generated client sees one operation, not two.
 
 
 @router.get(
     "",
     response_model=list[FacturaListItem],
     summary="List invoices with computed FIFO estado",
+)
+@router.get(
+    "/",
+    response_model=list[FacturaListItem],
+    include_in_schema=False,
 )
 def list_facturas(
     proveedor_id: Annotated[
@@ -167,6 +178,12 @@ def list_facturas(
     response_model=FacturaResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new invoice",
+)
+@router.post(
+    "/",
+    response_model=FacturaResponse,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
 )
 def create_factura(
     body: FacturaCreate,

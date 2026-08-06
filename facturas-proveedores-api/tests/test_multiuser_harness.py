@@ -143,23 +143,42 @@ class TestAnonClient:
 # ── The pattern this change bans ──────────────────────────────────────────────
 
 
-class TestHandWrittenCookieHeaderIsUnsafe:
-    """Pin the failure mode so the banned pattern cannot quietly return.
+class TestRedirectThatCausedTheBugIsGone:
+    """The mechanism behind the C-22 bug, and the guard that it stays removed.
 
-    The trap is that a hand-written Cookie header WORKS on a direct path. It
-    only breaks when the request is redirected: collection routes are declared
-    without a trailing slash, so `POST /api/proveedores/` answers 307 to
-    `/api/proveedores`, and httpx rebuilds the redirected request from its own
-    cookie jar — silently discarding the explicit header.
+    HISTORY — this class used to pin the failure mode itself. Collection routes
+    were declared without a trailing slash, so `POST /api/proveedores/` answered
+    307, and httpx rebuilt the redirected request from its own cookie jar,
+    silently discarding an explicitly-set `Cookie` header. The legacy test
+    helper used the trailing-slash form everywhere, so every "foreign resource"
+    was in fact created by whoever logged in last, and 17 tenant-isolation tests
+    passed for months while asserting nothing.
 
-    The legacy helper used the trailing-slash form everywhere, which is why
-    every "foreign resource" was in fact created by whoever logged in last.
-    A pattern that is correct on one URL shape and wrong on another is not a
-    pattern worth keeping.
+    c-27 removed the redirect at the source: collection routes now answer
+    directly on both path forms. That deliberately invalidated the three tests
+    that lived here, because they asserted the redirect and its consequences.
+    They were not adjusted to fit — they were replaced, and this note records
+    why, so nobody later reads a green suite and concludes the redirect was
+    never a problem.
+
+    What is still true, and still enforced elsewhere in this file:
+    identity in tests comes from ONE CLIENT PER USER (`make_user_client`), and
+    anonymous requests use a guaranteed-empty jar (`make_anon_client`). A
+    hand-written `Cookie` header remains banned — not because of the redirect
+    any more, but because the jar still leaks between tests sharing a client
+    (see `TestAnonClient`), and because header-versus-jar precedence is httpx's
+    behaviour to change, not a contract this suite should lean on. It has
+    surprised this project once already.
     """
 
-    def test_collection_route_with_trailing_slash_redirects(self, harness_app):
-        """The precondition for the whole failure mode."""
+    def test_collection_routes_do_not_redirect(self, harness_app):
+        """The regression guard: reintroducing the 307 brings the bug back.
+
+        `tests/test_c27_no_redirect_collection_routes.py` covers every
+        collection route in full. This one stays here, next to the story, so a
+        future change that re-adds the redirect fails somewhere that explains
+        what it costs.
+        """
         client = make_user_client(harness_app, prefix="guard_redir")
 
         resp = client.post(
@@ -168,54 +187,25 @@ class TestHandWrittenCookieHeaderIsUnsafe:
             follow_redirects=False,
         )
 
-        assert resp.status_code == 307
-        assert resp.headers["location"].endswith("/api/proveedores")
+        assert resp.status_code != 307, (
+            "A collection route answered a redirect again. On a redirect, HTTP "
+            "clients rebuild the request and can drop headers set on the "
+            "original — which is exactly how writes were attributed to the "
+            "wrong user before c-27."
+        )
+        assert resp.status_code == 201
 
-    def test_explicit_cookie_header_is_dropped_across_the_redirect(self, harness_app):
-        """With an empty jar, the header does not survive the 307 → 401.
+    def test_the_bare_path_answers_identically(self, harness_app):
+        """Both path forms must behave the same, or the ambiguity is still there."""
+        client = make_user_client(harness_app, prefix="guard_bare")
 
-        Proof that the header is not a working auth mechanism on the very URLs
-        the old tests used.
-        """
-        donor = make_user_client(harness_app, prefix="guard_donor")
-        token = donor.cookies.get("access_token")
-        assert token is not None
-
-        bare = make_anon_client(harness_app)
-        resp = bare.post(
-            "/api/proveedores/",  # trailing slash → 307
-            json={"nombre": "Should not be created", "categoria": "OTRO"},
-            headers={"Cookie": f"access_token={token}"},
+        resp = client.post(
+            "/api/proveedores",
+            json={"nombre": "Bare path probe", "categoria": "OTRO"},
+            follow_redirects=False,
         )
 
-        assert resp.status_code == 401, (
-            "A hand-written Cookie header must not be treated as a working auth "
-            "mechanism in tests — see this module's docstring."
-        )
-
-    def test_write_identity_comes_from_the_jar_on_a_redirected_route(self, harness_app):
-        """The precise bug: header says A, jar says B, the resource belongs to B.
-
-        This is what made `test_*_foreign_*_returns_404` compare a user against
-        itself. Asserting it here means the day someone reintroduces the helper,
-        this test explains what they just did.
-        """
-        client_a = make_user_client(harness_app, prefix="guard_hdr_a")
-        client_b = make_user_client(harness_app, prefix="guard_hdr_b")
-        token_a = client_a.cookies.get("access_token")
-
-        # client_b's jar holds B; the header claims A; the route redirects.
-        created = client_b.post(
-            "/api/proveedores/",
-            json={"nombre": "Whose is this?", "categoria": "OTRO"},
-            headers={"Cookie": f"access_token={token_a}"},
-        )
-        assert created.status_code == 201
-
-        # The jar decided: B owns it, not A. The header was a decoration.
-        proveedor_id = created.json()["id"]
-        assert client_b.get(f"/api/proveedores/{proveedor_id}").status_code == 200
-        assert client_a.get(f"/api/proveedores/{proveedor_id}").status_code == 404
+        assert resp.status_code == 201
 
 
 # ── Regla dura #3, asserted with trustworthy identities ───────────────────────
