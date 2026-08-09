@@ -65,10 +65,10 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 **🔴 Invariantes de negocio (violarlas rompe el sistema):**
 1. **NUNCA** persistir `saldo` ni `estado` de factura → siempre calcular on-demand (RN-SALDO, RN-FIFO). No agregar columnas para estos valores.
 2. **NUNCA** vincular un Pago a una Factura → no existe `factura_id`; el pago se asocia solo al proveedor (RN-PAG-01).
-3. **NUNCA** consultar/modificar un recurso sin filtrar por el eje de aislamiento en el **service layer** → recurso ajeno devuelve **404** (no 403).
-   - **Hoy (hasta C-28): `usuario_id`.** **Desde C-28 (D-27): `negocio_id`.**
-   - Durante la migración está **prohibido** dejar unas tablas scoped por `usuario_id` y otras por `negocio_id`: un solo eje a la vez, o se filtran datos entre cuentas.
+3. **NUNCA** consultar/modificar un recurso de negocio sin filtrar por **`negocio_id`** en el **service layer** → recurso ajeno devuelve **404** (no 403). Vigente desde C-28 (D-27).
+   - `usuario_id` sigue siendo correcto SOLO donde significa **identidad**: `usuario_service`, `usuario_repository`, `refresh_token*`, el claim `sub` de `security.py` y el cupo por usuario de `rate_limit_ia` (RN-IA-07). En ningún otro lado.
    - `creado_por_usuario_id` es **autoría, nunca autorización**. No filtrar acceso con ese campo.
+   - Lo bloquea el test `tests/test_c28_scoping_axis_guard.py`: recorre el AST de `services/` y `repositories/` y falla si `usuario_id` reaparece como filtro fuera de esa lista blanca.
 4. **NUNCA** dejar que la IA invente, persista o asigne un proveedor → la IA propone, el humano confirma (RN-IA-03/04/06).
 5. **NUNCA** registrar un fiado dos veces (D-33) → el fiado **no** es una tabla aparte: es una `Venta` con `forma_pago = CUENTA_CORRIENTE` + `cliente_id`. Y el cobro de una cuenta corriente **no** escribe en `venta` (D-34).
 6. **NUNCA** permitir saldo a favor en la cuenta corriente de un cliente (D-37) → un cobro no puede superar el saldo pendiente. Validado en el service layer.

@@ -630,7 +630,8 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `negocio_id` denormalizado en `Proveedor`, `Factura`, `Pago`; `creado_por_usuario_id` (nullable) como **autoría**, no autorización
   - Migración Alembic: crea `negocio`, crea un `Negocio` por cada `Usuario` existente (nombre desde `usuario.nombre_negocio` o fallback), backfillea `negocio_id` en todas las filas, y recién entonces aplica `NOT NULL`. **Reversible.**
   - Swap de scoping en **todos** los services y repositories: filtro por `negocio_id` en lugar de `usuario_id` (RN-NEG-01). Recurso ajeno sigue devolviendo **404**
-  - `get_current_user` / token: transporta `negocio_id` además de `usuario_id` (RN-NEG-09)
+  - `get_current_user`: resuelve el `negocio_id` desde el `Usuario` hidratado (D-39 corrige RN-NEG-09 — el token NO lo transporta) y rechaza con 401 a los usuarios `desactivado`
+  - **Registro público crea `Negocio` + `Usuario` en una transacción**, `es_admin = true`. Movido desde C-29: con `negocio_id` NOT NULL, el registro existente dejaría de funcionar (design D6)
   - Invariantes actualizadas: `Factura.negocio_id == Proveedor.negocio_id`, idem `Pago`
   - Tests: aislamiento entre dos negocios (404), dos usuarios del **mismo** negocio ven los mismos datos, migración idempotente y reversible, ningún endpoint filtra por `usuario_id`
 - **Dependencias**: `C-27`
@@ -644,7 +645,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 ### [C-29] `equipo-backend`
 - **Estado**: `[ ]`
 - **Scope**:
-  - Registro público reescrito: crea `Usuario` + `Negocio` en **una transacción**, `es_admin = true` (RN-NEG-03)
+  - ~~Registro público reescrito~~ → **entregado en C-28** (design D6, forzado por el `NOT NULL` de `usuario.negocio_id`)
   - `app/models/invitacion_empleado.py`: `codigo_hash` (único, solo hash — nunca el crudo), `negocio_id`, `creado_por_usuario_id`, `expira_en`, `usado_en`
   - `POST /api/auth/registro-empleado`: consume el código, hereda `negocio_id`, `es_admin = false`; el empleado elige su propia contraseña (RN-NEG-04). Error **genérico** si el código es inválido/vencido/usado (RN-NEG-05)
   - `GET /api/equipo`, `POST /api/equipo/invitaciones` (devuelve el código legible **una sola vez**), `POST /api/equipo/{id}/desactivar` y `/reactivar` — todos gated por `es_admin` (RN-NEG-06)
