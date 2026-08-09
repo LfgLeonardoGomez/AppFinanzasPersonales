@@ -42,6 +42,57 @@ C-01 foundation-setup
         └── C-18 housekeeping-fixes          (después de C-13)
 ```
 
+### Árbol de la evolución post-MVP (C-28 → C-39)
+
+```
+C-27 close-known-gaps ✓
+└── C-28 negocio-scoping-backend        ← CUELLO DE BOTELLA de toda la etapa
+    ├── C-29 equipo-backend
+    │   ├── C-30 equipo-frontend
+    │   └── C-31 password-recovery       (paralelo a C-30)
+    │
+    └── C-32 clientes-backend            (paralelo a C-29)
+        └── C-33 ventas-backend
+            ├── C-34 ventas-clientes-frontend   (necesita también C-30)
+            │   └── C-36 cuenta-corriente-clientes-frontend
+            ├── C-35 cuenta-corriente-clientes-backend
+            │   └── C-36 (converge acá)
+            └── C-37 estadisticas-backend
+                └── C-38 estadisticas-frontend  (necesita también C-34)
+
+C-36 ──> C-39 exportacion-pdf-xls
+```
+
+> **Regla de orden no negociable:** C-28 va **antes** que C-32. Las tablas nuevas (Cliente, Venta, CobroCliente) tienen que nacer con `negocio_id`. Si se invierte el orden, la migración pasa de 4 tablas a 8 y el sistema convive temporalmente con dos modelos de aislamiento — que es exactamente el escenario en el que se filtran datos entre cuentas.
+
+**Gates de la etapa:**
+
+```
+GATE 13: C-27 ✓
+  → C-28 negocio-scoping-backend       [Agente A]   ← aprobación humana previa (CRITICO)
+
+GATE 14: C-28 ✓ — FORK
+  → C-29 equipo-backend                [Agente A]
+  → C-32 clientes-backend              [Agente B]
+
+GATE 15: C-29 ✓ y C-32 ✓
+  → C-30 equipo-frontend               [Agente C]
+  → C-31 password-recovery             [Agente A]
+  → C-33 ventas-backend                [Agente B]
+
+GATE 16: C-33 ✓ y C-30 ✓
+  → C-34 ventas-clientes-frontend      [Agente C]
+  → C-35 cc-clientes-backend           [Agente B]
+  → C-37 estadisticas-backend          [Agente A]
+
+GATE 17: C-34 ✓ y C-35 ✓
+  → C-36 cc-clientes-frontend          [Agente C]
+  → C-38 estadisticas-frontend         [Agente C, después de C-36]
+
+GATE 18: C-36 ✓
+  → C-39 exportacion-pdf-xls           [Agente A]
+```
+
 ### Paralelismo por fase
 
 ```
@@ -521,6 +572,262 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `openspec/changes/c-20-radix-ui-and-feedback/specs/proveedores-frontend/spec.md` (delta sobre C-07)
   - `knowledge-base/09_decisiones_y_supuestos.md` D-19, D-24
 
+### [C-21] `ia-single-confirm-flow`
+- **Estado**: `[x]` archivado 2026-07-24
+- **Scope**: El modal de IA pasa a ser **terminal** (una sola confirmación): crea el recurso desde el propio modal en vez de prellenar el form grande. Auto-match de proveedor + creación inline. Rate limit de IA configurable por env. Ver D-26.
+- **Dependencias**: `C-15`
+- **Governance**: MEDIO
+
+### [C-22] `fix-multiuser-test-harness`
+- **Estado**: `[x]` archivado 2026-07-30
+- **Scope**: Fix del harness de tests multiusuario que atribuía escrituras al usuario equivocado. Causa raíz: redirects `307` en rutas de colección que hacían que el cliente HTTP reconstruyera el request y perdiera headers. Diagnosticado acá, cerrado en C-27.
+- **Dependencias**: `C-13`
+- **Governance**: ALTO
+
+### [C-23] `fix-ia-supplier-and-modal-overflow`
+- **Estado**: `[x]` archivado 2026-07-30
+- **Scope**: Fix de la resolución de proveedor en el flujo IA + cap de viewport en el modal de carga (overflow en pantallas chicas).
+- **Dependencias**: `C-21`
+- **Governance**: MEDIO
+
+### [C-24] `archivo-viewer-and-historial`
+- **Estado**: `[x]` archivado 2026-07-30
+- **Scope**: `ArchivoPreviewDialog` compartido; `archivo_url` propagado a cada `EntradaHistorial`. La tab Historial quedó con el dato pero sin control de apertura — deuda cerrada en C-27.
+- **Dependencias**: `C-13`
+- **Governance**: BAJO
+
+### [C-25] `fix-test-dependency-overrides`
+- **Estado**: `[x]` archivado 2026-07-30
+- **Scope**: Fix de los dependency overrides de FastAPI en tests (continuación de la línea C-17/RN-TEST-01).
+- **Dependencias**: `C-22`
+- **Governance**: MEDIO
+
+### [C-26] `edit-form-ux-and-factura-detail`
+- **Estado**: `[x]` archivado 2026-08-05
+- **Scope**: Los forms de edición muestran el nombre del proveedor y ganan salida visible; `FacturaListItem` alineado con lo que la API devuelve realmente.
+- **Dependencias**: `C-13`
+- **Governance**: BAJO
+
+### [C-27] `close-known-gaps`
+- **Estado**: `[x]` archivado 2026-08-06
+- **Scope**: Cierre de tres deudas arrastradas de C-23/C-26: (1) la tab Historial expone el adjunto que ya recibía; (2) `CargaModal` migrado a Radix Dialog (focus trap real, Esc y backdrop estándar) preservando su máquina de estados y sus ~105 tests; (3) rutas de colección responden en `/api/x` y `/api/x/` **sin redirect 307** (elimina el foot-gun de C-22).
+- **Dependencias**: `C-24`, `C-26`
+- **Governance**: MEDIO
+
+> **Nota**: el rediseño completo de UX/UI (sistema violeta/magenta/Inter, 9 pantallas + foundation) se entregó **fuera de la numeración de changes**, en work-units commiteados directamente sobre `main` entre C-21 y C-22, guiado por `specs/design/*.md` y el handoff de Claude Design.
+
+---
+
+## FASE 10 — Negocio y equipo multi-usuario *(evolución post-MVP)*
+
+> **Importante**: esta fase cambia el **eje de aislamiento** de todo el sistema (`usuario_id` → `negocio_id`, D-27). Se hace **antes** de Clientes y Ventas a propósito: hoy la migración toca 4 tablas; después de la FASE 11 tocaría 8. Convivir con dos modelos de scoping sería peor que cualquiera de los dos por separado.
+
+### [C-28] `negocio-scoping-backend`
+- **Estado**: `[ ]`
+- **Scope**:
+  - `app/models/negocio.py`: entidad `Negocio` (id UUIDv7, nombre, timestamps)
+  - `app/models/usuario.py`: agrega `negocio_id` (FK not null), `es_admin` (bool default false), `desactivado` (bool default false). **NO** usar `deleted_at` — ver D-32
+  - `negocio_id` denormalizado en `Proveedor`, `Factura`, `Pago`; `creado_por_usuario_id` (nullable) como **autoría**, no autorización
+  - Migración Alembic: crea `negocio`, crea un `Negocio` por cada `Usuario` existente (nombre desde `usuario.nombre_negocio` o fallback), backfillea `negocio_id` en todas las filas, y recién entonces aplica `NOT NULL`. **Reversible.**
+  - Swap de scoping en **todos** los services y repositories: filtro por `negocio_id` en lugar de `usuario_id` (RN-NEG-01). Recurso ajeno sigue devolviendo **404**
+  - `get_current_user` / token: transporta `negocio_id` además de `usuario_id` (RN-NEG-09)
+  - Invariantes actualizadas: `Factura.negocio_id == Proveedor.negocio_id`, idem `Pago`
+  - Tests: aislamiento entre dos negocios (404), dos usuarios del **mismo** negocio ven los mismos datos, migración idempotente y reversible, ningún endpoint filtra por `usuario_id`
+- **Dependencias**: `C-27`
+- **Governance**: **CRITICO** — toca auth y aislamiento multi-tenant; requiere aprobación humana explícita antes de escribir código
+- **Leer antes**:
+  - `knowledge-base/09_decisiones_y_supuestos.md` D-27, D-28, D-05 (superseded), D-06
+  - `knowledge-base/03_actores_y_roles.md` §Modelo de autorización (aislamiento por negocio)
+  - `knowledge-base/04_modelo_de_datos.md` §Negocio, §Usuario, §Convenciones generales
+  - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Negocio y equipo (RN-NEG-01/02/09)
+
+### [C-29] `equipo-backend`
+- **Estado**: `[ ]`
+- **Scope**:
+  - Registro público reescrito: crea `Usuario` + `Negocio` en **una transacción**, `es_admin = true` (RN-NEG-03)
+  - `app/models/invitacion_empleado.py`: `codigo_hash` (único, solo hash — nunca el crudo), `negocio_id`, `creado_por_usuario_id`, `expira_en`, `usado_en`
+  - `POST /api/auth/registro-empleado`: consume el código, hereda `negocio_id`, `es_admin = false`; el empleado elige su propia contraseña (RN-NEG-04). Error **genérico** si el código es inválido/vencido/usado (RN-NEG-05)
+  - `GET /api/equipo`, `POST /api/equipo/invitaciones` (devuelve el código legible **una sola vez**), `POST /api/equipo/{id}/desactivar` y `/reactivar` — todos gated por `es_admin` (RN-NEG-06)
+  - Desactivación: setea `desactivado = true` y **revoca los refresh tokens activos** del usuario (RN-NEG-07). El login rechaza desactivados
+  - **Guarda de último admin**: rechazar toda operación que deje al negocio sin `es_admin = true AND desactivado = false` (RN-NEG-08)
+  - Rate limiting en registro de empleado y en generación de invitaciones
+  - Tests: código de un solo uso (segundo intento falla), código vencido, código de otro negocio, no-admin recibe 403/404, último admin no puede desactivarse, desactivado no puede loguear, tokens revocados al desactivar
+- **Dependencias**: `C-28`
+- **Governance**: **CRITICO** — auth y control de acceso
+- **Leer antes**:
+  - `knowledge-base/09_decisiones_y_supuestos.md` D-29, D-30, D-31, D-32
+  - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Negocio y equipo (RN-NEG-03 a RN-NEG-08)
+  - `knowledge-base/04_modelo_de_datos.md` §InvitacionEmpleado, §Usuario
+  - `knowledge-base/03_actores_y_roles.md` §Rutas públicas, §Endpoints autenticados
+
+### [C-30] `equipo-frontend`
+- **Estado**: `[ ]`
+- **Scope**:
+  - Registro con **dos caminos** visibles: "Crear mi negocio" y "Sumarme a un negocio" (con campo de código) — RN-NEG-04
+  - `src/features/equipo/`: `EquipoPage.tsx` (lista de miembros con estado activo/desactivado), acción "Invitar", acción "Desactivar" con confirmación
+  - La invitación se muestra **una sola vez** con copia al portapapeles y aviso explícito de que no se puede volver a ver (RN-NEG-05)
+  - La sección Equipo solo se renderiza para `es_admin`; el guard también vive en backend (nunca solo en el front)
+  - Mensaje claro cuando se intenta desactivar al último admin (RN-NEG-08)
+  - Tests: registro por código, código inválido muestra error genérico, no-admin no ve la sección, invitación visible una sola vez
+- **Dependencias**: `C-29`
+- **Governance**: ALTO
+- **Leer antes**:
+  - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Negocio y equipo
+  - `knowledge-base/03_actores_y_roles.md` §Actores del sistema
+
+### [C-31] `password-recovery`
+- **Estado**: `[ ]`
+- **Scope**:
+  - Token de reset: un solo uso, con vencimiento, **solo hash persistido** (mismo criterio que `RefreshToken`, D-17)
+  - `POST /api/auth/recuperar` — respuesta **idéntica** exista o no el email (no enumerar cuentas); rate limiting
+  - `POST /api/auth/reset` — consume el token, setea la nueva contraseña, revoca todas las sesiones activas del usuario
+  - Envío de email: proveedor configurable por env, mockeado en tests (nunca se pega a un servicio real en CI)
+  - Frontend: pantallas "Olvidé mi contraseña" y "Nueva contraseña"
+  - Tests: token de un solo uso, token vencido, respuesta uniforme para email inexistente, sesiones revocadas tras reset
+- **Dependencias**: `C-29`
+- **Governance**: **CRITICO** — auth
+- **Leer antes**:
+  - `knowledge-base/09_decisiones_y_supuestos.md` D-38, D-17
+  - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Autenticación y sesión
+
+---
+
+## FASE 11 — Clientes y Ventas
+
+### [C-32] `clientes-backend`
+- **Estado**: `[ ]`
+- **Scope**:
+  - `app/models/cliente.py`: `negocio_id`, `nombre`, `nombre_normalizado`, `telefono?`, `notas?`, `deleted_at`
+  - Normalización (minúsculas, sin acentos, trim) **derivada en el service layer**, nunca aceptada del payload (RN-CLI-04)
+  - Migración con **índice único `(negocio_id, nombre_normalizado)`** (RN-CLI-03)
+  - `GET /api/clientes?buscar=` — autocompletado: exacta normalizada primero, luego "contiene" (RN-CLI-02)
+  - CRUD completo aislado por `negocio_id`; alta acepta solo `nombre` como obligatorio (RN-CLI-01)
+  - Tests: duplicado normalizado rechazado ("Juan Perez" vs "Juan Pérez"), búsqueda por prefijo y por contiene, aislamiento entre negocios, alta mínima solo con nombre
+- **Dependencias**: `C-28`
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Clientes, §RN-VINC (criterio de normalización análogo)
+  - `knowledge-base/04_modelo_de_datos.md` §Cliente
+  - `knowledge-base/09_decisiones_y_supuestos.md` D-36
+
+### [C-33] `ventas-backend`
+- **Estado**: `[ ]`
+- **Scope**:
+  - `app/models/venta.py`: `negocio_id`, `cliente_id?`, `fecha`, `monto`, `forma_pago`, `notas?`, `creado_por_usuario_id`, `deleted_at`
+  - Enum `FormaPago` = `EFECTIVO`/`TRANSFERENCIA`/`TARJETA`/`CUENTA_CORRIENTE`/`OTRO`
+  - **Invariante bidireccional** `cliente_id IS NOT NULL ⟺ forma_pago = CUENTA_CORRIENTE`, validada en Pydantic **y** service layer (RN-VTA-03)
+  - Validaciones: `monto > 0`, `fecha` no futura UTC-3, `Venta.negocio_id == Cliente.negocio_id`
+  - CRUD `/api/ventas` aislado por `negocio_id`, con filtros por rango de fechas, forma de pago y cliente
+  - **Sin** tabla de cargos separada: el fiado vive en esta tabla (RN-VTA-02)
+  - Tests: venta fiada sin cliente → rechazada; venta en efectivo con cliente → rechazada; monto 0 y fecha futura rechazados; aislamiento; filtros
+- **Dependencias**: `C-32`
+- **Governance**: ALTO
+- **Leer antes**:
+  - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Ventas (RN-VTA-01 a RN-VTA-06)
+  - `knowledge-base/04_modelo_de_datos.md` §Venta
+  - `knowledge-base/09_decisiones_y_supuestos.md` D-33, D-34, D-35
+
+### [C-34] `ventas-clientes-frontend`
+- **Estado**: `[ ]`
+- **Scope**:
+  - `src/features/ventas/`: listado filtrable (fecha, forma de pago, cliente) + formulario de carga
+  - Formulario optimizado para el mostrador: monto, fecha (default hoy), forma de pago. El campo cliente **aparece solo** si la forma de pago es Cuenta corriente
+  - `ClienteAutocomplete` — componente compartido: sugiere mientras se tipea y, si no hay coincidencia, ofrece **crear inline sin modal ni navegación** (RN-CLI-01/02). Espeja a `ProveedorAutocomplete`
+  - Aviso claro si el nombre tipeado coincide con un cliente existente: se ofrece el existente, no se crea otro (RN-CLI-03)
+  - Totales del día visibles al cargar, con desglose por forma de pago
+  - Tests: el campo cliente aparece/desaparece según forma de pago, alta inline de cliente, sugerencia de duplicado, totales del día
+- **Dependencias**: `C-30`, `C-33`
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Ventas, §Dominio: Clientes
+  - `knowledge-base/07_flujos_principales.md` §Flujo 2 (patrón de carga manual)
+
+---
+
+## FASE 12 — Cuenta corriente de clientes
+
+> **Reutiliza el motor de C-12/C-13 sin modificarlo.** `Proveedor : Factura : Pago` ≡ `Cliente : Venta fiada : CobroCliente`. Antes de escribir código nuevo, revisar qué se puede extraer y compartir en lugar de duplicar.
+
+### [C-35] `cuenta-corriente-clientes-backend`
+- **Estado**: `[ ]`
+- **Scope**:
+  - `app/models/cobro_cliente.py`: `negocio_id`, `cliente_id`, `monto`, `fecha`, `metodo`, `comprobante_url?`, `creado_por_usuario_id`, `deleted_at`. **Sin `venta_id`** (RN-CCC-03)
+  - `GET /api/cuenta-corriente/clientes/{id}` → `{ saldo, ventas_con_estado, historial }`
+  - Saldo = `SUM(ventas fiadas activas) − SUM(cobros activos)` (RN-CCC-01), calculado on-demand
+  - Estado de venta fiada (PENDIENTE/PARCIAL/COBRADA) por **FIFO** con el mismo desempate determinista de RN-FIFO (RN-CCC-02)
+  - Historial cronológico debe/haber con saldo acumulado por fila (RN-CCC-05)
+  - **Sin saldo negativo**: un cobro que supere el saldo pendiente se rechaza en el service layer (RN-CCC-04)
+  - CRUD `/api/cobros` aislado por `negocio_id`
+  - Tests: saldo con datos mixtos, FIFO determinista, cobro parcial → PARCIAL, cobro que excede el saldo → rechazado, historial acumulado, aislamiento
+- **Dependencias**: `C-33`
+- **Governance**: ALTO
+- **Leer antes**:
+  - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Cuenta corriente de clientes, §RN-SALDO, §RN-FIFO, §RN-HIST
+  - `knowledge-base/04_modelo_de_datos.md` §CobroCliente, §Cálculos derivados
+  - `knowledge-base/09_decisiones_y_supuestos.md` D-37
+
+### [C-36] `cuenta-corriente-clientes-frontend`
+- **Estado**: `[ ]`
+- **Scope**:
+  - `src/features/clientes/`: listado de clientes ordenable por saldo + `ClienteDetailPage` con saldo, ventas fiadas con estado e historial
+  - Reutilizar `SaldoBadge`, `TablaFacturasConEstado` y `HistorialCronologico` de C-13 (generalizar en lugar de duplicar)
+  - Acción "Registrar cobro" desde la ficha del cliente, con tope visible en el saldo pendiente (RN-CCC-04)
+  - Invalidación de cache al crear/editar ventas fiadas o cobros del mismo cliente
+  - Tests: saldo con signo, estados de venta fiada, cobro que excede el saldo bloqueado en UI **y** validado en backend, invalidación de cache
+- **Dependencias**: `C-34`, `C-35`
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Cuenta corriente de clientes
+  - `knowledge-base/07_flujos_principales.md` §Flujo 5 (patrón de cuenta corriente)
+
+---
+
+## FASE 13 — Analítica y exportación
+
+### [C-37] `estadisticas-backend`
+- **Estado**: `[ ]`
+- **Scope**:
+  - **Un solo motor de agregación** parametrizado por período (día/semana/mes) y rango, reutilizado por compras y ventas (D-35)
+  - `GET /api/estadisticas/compras?proveedor_id&desde&hasta&granularidad` — totales de compra por proveedor y período
+  - `GET /api/estadisticas/ventas?desde&hasta&granularidad` — totales de venta con **desglose por forma de pago**
+  - `GET /api/estadisticas/resumen?desde&hasta` — contraste compras vs. ventas en el mismo período
+  - Todo por agregación SQL, sin columnas persistidas (RN-VTA-05); un solo query por endpoint, sin N+1
+  - Tests: agregación correcta por día/semana/mes con datos a caballo del límite del período, desglose por forma de pago suma el total, zona horaria UTC-3 en los cortes, aislamiento por negocio
+- **Dependencias**: `C-33`
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Ventas (RN-VTA-05)
+  - `knowledge-base/04_modelo_de_datos.md` §Cálculos derivados (puntos 6 y 7)
+  - `knowledge-base/09_decisiones_y_supuestos.md` D-35
+
+### [C-38] `estadisticas-frontend`
+- **Estado**: `[ ]`
+- **Scope**:
+  - Ficha de proveedor: total comprado por período (mensual/semanal) — cierra el pedido original
+  - Pantalla de ventas: totales por día/semana/mes con desglose por forma de pago
+  - Vista de contraste compras vs. ventas del período
+  - Selector de granularidad y rango compartido entre las tres vistas
+  - Tests: cambio de granularidad refetchea, desglose suma el total mostrado, estados de carga y vacío
+- **Dependencias**: `C-34`, `C-37`
+- **Governance**: BAJO
+- **Leer antes**:
+  - `knowledge-base/06_funcionalidades.md` §Épica: Proveedores
+  - `specs/design/DESIGN_SYSTEM.md`, `specs/design/LAYOUT.md`
+
+### [C-39] `exportacion-pdf-xls`
+- **Estado**: `[ ]`
+- **Scope**:
+  - **XLS**: dump tabular de movimientos (cuenta corriente de cliente y de proveedor) para seguir trabajando en Excel. Sin formato decorativo
+  - **PDF**: *resumen de cuenta* presentable — encabezado del negocio, datos del cliente/proveedor, saldo, detalle de movimientos con saldo acumulado. Es un documento que el negocio le muestra a su cliente, no un dump de tabla
+  - Generación en **backend** (el frontend solo dispara y descarga), aislada por `negocio_id`
+  - Los montos del export salen del **mismo cálculo on-demand** que la pantalla: prohibido recalcular por otra vía y arriesgar divergencia
+  - Tests: export de cuenta con datos mixtos coincide con el saldo de la pantalla, cliente de otro negocio → 404, cuenta vacía no rompe
+- **Dependencias**: `C-36`
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-SALDO, §RN-HIST, §Dominio: Cuenta corriente de clientes
+  - `knowledge-base/01_vision_y_objetivos.md` §Alcance de la evolución post-MVP
+
 ---
 
 ## Resumen
@@ -548,9 +855,32 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-18 | housekeeping-fixes | BAJO | C-13 (housekeeping post-MVP, archivado 2026-07-01) |
 | C-19 | fix-dev-setup | BAJO | C-13 (housekeeping post-MVP, archivado 2026-07-01) |
 | C-20 | radix-ui-and-feedback | BAJO | C-13 (housekeeping post-MVP, archivado 2026-07-14) |
+| C-21 | ia-single-confirm-flow | MEDIO | C-15 (archivado 2026-07-24) |
+| C-22 | fix-multiuser-test-harness | ALTO | C-13 (archivado 2026-07-30) |
+| C-23 | fix-ia-supplier-and-modal-overflow | MEDIO | C-21 (archivado 2026-07-30) |
+| C-24 | archivo-viewer-and-historial | BAJO | C-13 (archivado 2026-07-30) |
+| C-25 | fix-test-dependency-overrides | MEDIO | C-22 (archivado 2026-07-30) |
+| C-26 | edit-form-ux-and-factura-detail | BAJO | C-13 (archivado 2026-08-05) |
+| C-27 | close-known-gaps | MEDIO | C-24, C-26 (archivado 2026-08-06) |
+| **C-28** | **negocio-scoping-backend** | **CRITICO** | C-27 |
+| **C-29** | **equipo-backend** | **CRITICO** | C-28 |
+| **C-30** | **equipo-frontend** | ALTO | C-29 |
+| **C-31** | **password-recovery** | **CRITICO** | C-29 |
+| **C-32** | **clientes-backend** | MEDIO | C-28 |
+| **C-33** | **ventas-backend** | ALTO | C-32 |
+| **C-34** | **ventas-clientes-frontend** | MEDIO | C-30, C-33 |
+| **C-35** | **cuenta-corriente-clientes-backend** | ALTO | C-33 |
+| **C-36** | **cuenta-corriente-clientes-frontend** | MEDIO | C-34, C-35 |
+| **C-37** | **estadisticas-backend** | MEDIO | C-33 |
+| **C-38** | **estadisticas-frontend** | BAJO | C-34, C-37 |
+| **C-39** | **exportacion-pdf-xls** | MEDIO | C-36 |
 
-**Total: 20 changes · 9 fases + housekeeping post-MVP · 12 gates de paralelismo**
+**Total: 40 entradas (C-01…C-39 + C-15a) · 13 fases · 28 archivadas, 12 pendientes**
 
-**Estado del MVP**: el MVP está completo y archivado (C-13 ✓ 2026-06-27). Los 6 changes de housekeeping post-MVP (C-15a, C-16, C-17, C-18, C-19, C-20) son fixes mecánicos, refactors y drift de docs; no introducen funcionalidades nuevas.
+**Estado del MVP**: completo y archivado desde C-13 (2026-06-27). C-14/C-15 cerraron la IA de visión. C-15a…C-27 fueron housekeeping, fixes y cierre de deudas; el rediseño de UX/UI se entregó fuera de la numeración (ver nota al final de la sección de housekeeping).
 
-**Para el siguiente change**: si quedan items del `known-debt.md` de C-18 (MED-002/003/005, META-002/003/004, LOW-*, FE-009+, META-005+), se puede proponer un C-21 housekeeping-fixes-2 (o absorber en C-20 si el alcance lo permite). Si se va a una funcionalidad nueva, abrir el backlog del orquestador.
+**Etapa actual — evolución a sistema de gestión (C-28 → C-39)**: decidida en la charla de diseño del 2026-08-09, documentada en D-27 a D-38. Convierte la app de "registro de facturas a proveedores" en un mini sistema para negocios chicos: equipo multi-usuario, clientes con fiado, ventas y analítica.
+
+**Para el siguiente change**: `C-28-negocio-scoping-backend`. Es **CRITICO** y es el cuello de botella real de toda la etapa — cambia el eje de aislamiento de todo el sistema. Requiere aprobación humana explícita antes de escribir código. No arrancar C-32 (clientes) antes de que C-28 esté archivado: las tablas nuevas tienen que nacer con `negocio_id`.
+
+**Deuda menor pendiente**: quedan items del `known-debt.md` de C-18 (MED-002/003/005, META-002/003/004, LOW-*). No bloquean la etapa actual; absorber oportunistamente.
