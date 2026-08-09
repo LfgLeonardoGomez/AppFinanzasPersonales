@@ -3,7 +3,7 @@ ProveedorRepository — data access for Proveedor entities.
 
 Includes:
 - get_saldo_por_proveedor: balance aggregate for all active suppliers (C-02, D-C02-8).
-- list_by_usuario: paginated listing with saldo in a SINGLE aggregate query (C-06, D1/D2/D3).
+- list_by_negocio: paginated listing with saldo in a SINGLE aggregate query (C-06, D1/D2/D3).
 - search_by_nombre: normalized case-insensitive search, scoped to user (C-06, D4).
 - create/update/soft_delete: thin wrappers over BaseRepository (C-06, task 2.4).
 - tiene_dependencias: EXISTS check for active factura or pago (C-06, D6, task 2.5).
@@ -30,11 +30,11 @@ from app.models.pago import Pago
 from app.repositories.base_repository import BaseRepository
 
 
-# ── Row-like container for list_by_usuario / search results ──────────────────
+# ── Row-like container for list_by_negocio / search results ──────────────────
 
 class ProveedorConSaldo:
     """
-    Lightweight data container returned by list_by_usuario and search_by_nombre.
+    Lightweight data container returned by list_by_negocio and search_by_nombre.
 
     Carries all Proveedor columns plus the computed saldo expression.
     Typed as a simple class (not Pydantic) to keep the repository layer
@@ -42,7 +42,7 @@ class ProveedorConSaldo:
     """
 
     __slots__ = (
-        "id", "usuario_id", "nombre", "cuit", "telefono",
+        "id", "negocio_id", "nombre", "cuit", "telefono",
         "categoria", "notas", "saldo", "created_at", "updated_at", "deleted_at",
         "ultima_factura_fecha",
     )
@@ -51,7 +51,7 @@ class ProveedorConSaldo:
         # row is a SQLAlchemy Row with columns: all Proveedor columns + saldo label
         # (+ ultima_factura_fecha label, C-Home addition)
         self.id = row.id
-        self.usuario_id = row.usuario_id
+        self.negocio_id = row.negocio_id
         self.nombre = row.nombre
         self.cuit = row.cuit
         self.telefono = row.telefono
@@ -75,7 +75,7 @@ class ProveedorRepository(BaseRepository[Proveedor]):
 
     def get_saldo_por_proveedor(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
     ) -> dict[uuid.UUID, Decimal]:
         """
         Calculate the balance (saldo) per active provider for a user.
@@ -99,7 +99,7 @@ class ProveedorRepository(BaseRepository[Proveedor]):
                 Factura.proveedor_id.label("proveedor_id"),
                 func.coalesce(func.sum(Factura.monto_total), 0).label("total_facturas"),
             )
-            .where(Factura.usuario_id == usuario_id)
+            .where(Factura.negocio_id == negocio_id)
             .where(Factura.deleted_at == None)  # noqa: E711
             .group_by(Factura.proveedor_id)
             .subquery()
@@ -111,7 +111,7 @@ class ProveedorRepository(BaseRepository[Proveedor]):
                 Pago.proveedor_id.label("proveedor_id"),
                 func.coalesce(func.sum(Pago.monto), 0).label("total_pagos"),
             )
-            .where(Pago.usuario_id == usuario_id)
+            .where(Pago.negocio_id == negocio_id)
             .where(Pago.deleted_at == None)  # noqa: E711
             .group_by(Pago.proveedor_id)
             .subquery()
@@ -127,7 +127,7 @@ class ProveedorRepository(BaseRepository[Proveedor]):
                     - func.coalesce(pago_sums.c.total_pagos, 0)
                 ).label("saldo"),
             )
-            .where(Proveedor.usuario_id == usuario_id)
+            .where(Proveedor.negocio_id == negocio_id)
             .where(Proveedor.deleted_at == None)  # noqa: E711
             .outerjoin(factura_sums, Proveedor.id == factura_sums.c.proveedor_id)
             .outerjoin(pago_sums, Proveedor.id == pago_sums.c.proveedor_id)
@@ -142,9 +142,9 @@ class ProveedorRepository(BaseRepository[Proveedor]):
 
     # ── Paginated listing with embedded saldo (C-06, D1/D2/D3) ──────────────
 
-    def list_by_usuario(
+    def list_by_negocio(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         page: int = 1,
         order_by: str = "nombre",
         page_size: int = 20,
@@ -170,7 +170,7 @@ class ProveedorRepository(BaseRepository[Proveedor]):
                 Factura.proveedor_id.label("proveedor_id"),
                 func.coalesce(func.sum(Factura.monto_total), 0).label("total_facturas"),
             )
-            .where(Factura.usuario_id == usuario_id)
+            .where(Factura.negocio_id == negocio_id)
             .where(Factura.deleted_at == None)  # noqa: E711
             .group_by(Factura.proveedor_id)
             .subquery()
@@ -181,7 +181,7 @@ class ProveedorRepository(BaseRepository[Proveedor]):
                 Pago.proveedor_id.label("proveedor_id"),
                 func.coalesce(func.sum(Pago.monto), 0).label("total_pagos"),
             )
-            .where(Pago.usuario_id == usuario_id)
+            .where(Pago.negocio_id == negocio_id)
             .where(Pago.deleted_at == None)  # noqa: E711
             .group_by(Pago.proveedor_id)
             .subquery()
@@ -195,7 +195,7 @@ class ProveedorRepository(BaseRepository[Proveedor]):
                 Factura.proveedor_id.label("proveedor_id"),
                 func.max(Factura.fecha_emision).label("ultima_factura_fecha"),
             )
-            .where(Factura.usuario_id == usuario_id)
+            .where(Factura.negocio_id == negocio_id)
             .where(Factura.deleted_at == None)  # noqa: E711
             .group_by(Factura.proveedor_id)
             .subquery()
@@ -210,7 +210,7 @@ class ProveedorRepository(BaseRepository[Proveedor]):
         statement = (
             select(
                 Proveedor.id,
-                Proveedor.usuario_id,
+                Proveedor.negocio_id,
                 Proveedor.nombre,
                 Proveedor.cuit,
                 Proveedor.telefono,
@@ -222,7 +222,7 @@ class ProveedorRepository(BaseRepository[Proveedor]):
                 saldo_expr,
                 factura_fecha_max.c.ultima_factura_fecha,
             )
-            .where(Proveedor.usuario_id == usuario_id)
+            .where(Proveedor.negocio_id == negocio_id)
             .where(Proveedor.deleted_at == None)  # noqa: E711
             .outerjoin(factura_sums, Proveedor.id == factura_sums.c.proveedor_id)
             .outerjoin(pago_sums, Proveedor.id == pago_sums.c.proveedor_id)
@@ -249,19 +249,19 @@ class ProveedorRepository(BaseRepository[Proveedor]):
 
     def search_by_nombre(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         query: str,
     ) -> list[Proveedor]:
         """
         Search active suppliers by normalized (lowercase) nombre fragment.
 
-        Filters: usuario_id match, deleted_at IS NULL, func.lower(nombre) LIKE %q%.
+        Filters: negocio_id match, deleted_at IS NULL, func.lower(nombre) LIKE %q%.
         Returns full Proveedor ORM objects (caller adds saldo if needed).
         """
         normalized = query.lower().strip()
         statement = (
             select(Proveedor)
-            .where(Proveedor.usuario_id == usuario_id)
+            .where(Proveedor.negocio_id == negocio_id)
             .where(Proveedor.deleted_at == None)  # noqa: E711
             .where(func.lower(Proveedor.nombre).like(f"%{normalized}%"))
         )

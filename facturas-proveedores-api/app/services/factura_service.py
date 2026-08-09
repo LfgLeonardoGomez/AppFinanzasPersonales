@@ -14,7 +14,7 @@ Design decisions implemented (C-08 design.md):
 - D8: Router stays thin; this service raises HTTPExceptions directly.
 
 Hard rules enforced here:
-- usuario_id is ALWAYS taken from the service arg, never from the payload.
+- negocio_id is ALWAYS taken from the service arg, never from the payload.
 - All authorization lives HERE; router just wires Depends(get_current_user).
 - Raises HTTPException(404) on foreign or missing/deleted resource.
 - NEVER persists estado or saldo.
@@ -142,7 +142,7 @@ class FacturaService:
     """
     Business logic for invoice CRUD.
 
-    All public methods take usuario_id as the first argument after self.
+    All public methods take negocio_id as the first argument after self.
     The router passes get_current_user.id here — never from the request body.
     """
 
@@ -156,7 +156,7 @@ class FacturaService:
     # ── Private helpers ────────────────────────────────────────────────────────
 
     def _get_owned_factura(
-        self, usuario_id: uuid.UUID, factura_id: uuid.UUID
+        self, negocio_id: uuid.UUID, factura_id: uuid.UUID
     ) -> Factura:
         """
         Fetch a factura by id, verifying ownership and active status.
@@ -170,13 +170,13 @@ class FacturaService:
         if (
             entity is None
             or entity.deleted_at is not None
-            or entity.usuario_id != usuario_id
+            or entity.negocio_id != negocio_id
         ):
             raise _NOT_FOUND
         return entity
 
     def _get_owned_proveedor(
-        self, usuario_id: uuid.UUID, proveedor_id: uuid.UUID
+        self, negocio_id: uuid.UUID, proveedor_id: uuid.UUID
     ):
         """
         Fetch a proveedor by id, verifying ownership and active status.
@@ -187,7 +187,7 @@ class FacturaService:
         if (
             entity is None
             or entity.deleted_at is not None
-            or entity.usuario_id != usuario_id
+            or entity.negocio_id != negocio_id
         ):
             raise _PROVEEDOR_NOT_FOUND
         return entity
@@ -226,32 +226,33 @@ class FacturaService:
         return total != monto_total
 
     def _get_payment_pool(
-        self, usuario_id: uuid.UUID, proveedor_id: uuid.UUID
+        self, negocio_id: uuid.UUID, proveedor_id: uuid.UUID
     ) -> Decimal:
         """Aggregate all active payments for a proveedor into a single Decimal pool."""
-        pagos = self._pago_repo.list_by_proveedor(usuario_id, proveedor_id)
+        pagos = self._pago_repo.list_by_proveedor(negocio_id, proveedor_id)
         return sum((p.monto for p in pagos), Decimal("0"))
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def crear(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         datos: FacturaCreate,
+        creado_por_usuario_id: uuid.UUID | None = None,
     ) -> FacturaConEstado:
         """
-        Create a new invoice for a supplier owned by usuario_id.
+        Create a new invoice for a supplier owned by negocio_id.
 
         Validates:
-        - Proveedor exists and belongs to usuario_id (D7, HARD RULE 3).
+        - Proveedor exists and belongs to negocio_id (D7, HARD RULE 3).
         - fecha_emision not future (D5, RN-FAC-02).
         - monto_total > 0 (already validated by Pydantic, re-checked here).
         - items sum mismatch → warning flag, not block (RN-FAC-04).
 
         Sets origen=MANUAL (RN-FAC-08 — service sets automatically).
-        usuario_id taken from arg, never from payload (HARD RULE).
+        negocio_id taken from arg, never from payload (HARD RULE).
         """
-        proveedor = self._get_owned_proveedor(usuario_id, datos.proveedor_id)
+        proveedor = self._get_owned_proveedor(negocio_id, datos.proveedor_id)
         self._validate_fecha_emision(datos.fecha_emision)
 
         items_data = [
@@ -266,7 +267,8 @@ class FacturaService:
         items_sum_mismatch = self._check_items_sum(datos.monto_total, items_data)
 
         factura = self._repo.create_with_items(
-            usuario_id=usuario_id,
+            negocio_id=negocio_id,
+            creado_por_usuario_id=creado_por_usuario_id,
             proveedor_id=proveedor.id,
             fecha_emision=datos.fecha_emision,
             monto_total=datos.monto_total,
@@ -278,8 +280,8 @@ class FacturaService:
         )
 
         # Compute FIFO estado for this new factura
-        pool = self._get_payment_pool(usuario_id, proveedor.id)
-        all_facturas = self._repo.list_by_proveedor(usuario_id, proveedor.id)
+        pool = self._get_payment_pool(negocio_id, proveedor.id)
+        all_facturas = self._repo.list_by_proveedor(negocio_id, proveedor.id)
         estado_map = _compute_estado_fifo(all_facturas, pool)
         estado = estado_map.get(factura.id, EstadoFactura.PENDIENTE)
 
@@ -288,7 +290,7 @@ class FacturaService:
 
     def get(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         factura_id: uuid.UUID,
     ) -> FacturaConEstado:
         """
@@ -296,11 +298,11 @@ class FacturaService:
 
         Raises 404 if the invoice belongs to another user or is soft-deleted.
         """
-        factura = self._get_owned_factura(usuario_id, factura_id)
+        factura = self._get_owned_factura(negocio_id, factura_id)
 
-        pool = self._get_payment_pool(usuario_id, factura.proveedor_id)
+        pool = self._get_payment_pool(negocio_id, factura.proveedor_id)
         all_facturas = self._repo.list_by_proveedor(
-            usuario_id, factura.proveedor_id
+            negocio_id, factura.proveedor_id
         )
         estado_map = _compute_estado_fifo(all_facturas, pool)
         estado = estado_map.get(factura_id, EstadoFactura.PENDIENTE)
@@ -310,7 +312,7 @@ class FacturaService:
 
     def listar(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         proveedor_id: Optional[uuid.UUID] = None,
         estado_filtro: Optional[EstadoFactura] = None,
         fecha_desde: Optional[date] = None,
@@ -327,7 +329,7 @@ class FacturaService:
         FIFO per distinct proveedor group (D3 — avoids N+1 per factura).
         """
         # Fetch all matching facturas (SQL filters: usuario, proveedor, dates)
-        facturas = self._repo.list_by_usuario(usuario_id, proveedor_id=proveedor_id)
+        facturas = self._repo.list_by_negocio(negocio_id, proveedor_id=proveedor_id)
 
         # Apply date range filter in Python (not SQL — consistent with FIFO)
         if fecha_desde is not None:
@@ -348,8 +350,8 @@ class FacturaService:
         # We need the full ordered list for each proveedor to compute correct estado.
         estado_map: dict[uuid.UUID, EstadoFactura] = {}
         for prov_id in by_proveedor:
-            all_prov_facturas = self._repo.list_by_proveedor(usuario_id, prov_id)
-            pool = self._get_payment_pool(usuario_id, prov_id)
+            all_prov_facturas = self._repo.list_by_proveedor(negocio_id, prov_id)
+            pool = self._get_payment_pool(negocio_id, prov_id)
             prov_estados = _compute_estado_fifo(all_prov_facturas, pool)
             estado_map.update(prov_estados)
 
@@ -367,7 +369,7 @@ class FacturaService:
 
     def actualizar(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         factura_id: uuid.UUID,
         datos: FacturaUpdate,
     ) -> FacturaConEstado:
@@ -378,7 +380,7 @@ class FacturaService:
         If items is provided (even empty list), items are replaced atomically (D4).
         Raises 404 on foreign or missing/deleted invoice.
         """
-        factura = self._get_owned_factura(usuario_id, factura_id)
+        factura = self._get_owned_factura(negocio_id, factura_id)
 
         update_data = datos.model_dump(exclude_unset=True)
 
@@ -418,8 +420,8 @@ class FacturaService:
         else:
             items_sum_mismatch = False
 
-        pool = self._get_payment_pool(usuario_id, updated.proveedor_id)
-        all_facturas = self._repo.list_by_proveedor(usuario_id, updated.proveedor_id)
+        pool = self._get_payment_pool(negocio_id, updated.proveedor_id)
+        all_facturas = self._repo.list_by_proveedor(negocio_id, updated.proveedor_id)
         estado_map = _compute_estado_fifo(all_facturas, pool)
         estado = estado_map.get(factura_id, EstadoFactura.PENDIENTE)
 
@@ -428,16 +430,16 @@ class FacturaService:
 
     def eliminar(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         factura_id: uuid.UUID,
     ) -> dict:
         """
-        Soft-delete an invoice owned by usuario_id.
+        Soft-delete an invoice owned by negocio_id.
 
         Raises 404 on foreign, missing, or already-deleted invoice.
         Returns {"id": factura_id}.
         """
-        factura = self._get_owned_factura(usuario_id, factura_id)
+        factura = self._get_owned_factura(negocio_id, factura_id)
         self._repo.soft_delete(factura.id)
         return {"id": factura.id}
 

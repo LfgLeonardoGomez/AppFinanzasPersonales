@@ -2,7 +2,7 @@
 Tests for ProveedorRepository extensions (task 2.1 — TDD RED, then GREEN).
 
 Covers:
-- list_by_usuario returns only caller's active suppliers
+- list_by_negocio returns only caller's active suppliers
 - saldo computed correctly: SUM(facturas) - SUM(pagos) in ONE aggregate query
 - saldo NOT double-counted when supplier has both invoices and payments
 - ordering by nombre (asc, case-insensitive) vs saldo (desc)
@@ -23,6 +23,8 @@ from sqlalchemy import create_engine
 from sqlmodel import Session, SQLModel
 
 import app.models  # noqa: F401 — register all SQLModel table metadata
+
+from tests.conftest import crear_negocio
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -53,6 +55,7 @@ def _make_usuario(session: Session) -> Any:
     from app.core.uuid_utils import new_uuid
 
     u = Usuario(
+        negocio_id=crear_negocio(session).id,
         id=new_uuid(),
         email=f"repo_{uuid.uuid4().hex[:8]}@test.com",
         nombre="Repo Test",
@@ -63,14 +66,14 @@ def _make_usuario(session: Session) -> Any:
     return u
 
 
-def _make_proveedor(session: Session, usuario_id: uuid.UUID, nombre: str, **kwargs) -> Any:
+def _make_proveedor(session: Session, negocio_id: uuid.UUID, nombre: str, **kwargs) -> Any:
     from app.models.proveedor import Proveedor
     from app.core.uuid_utils import new_uuid
     from app.models.enums import CategoriaProveedor
 
     p = Proveedor(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         nombre=nombre,
         categoria=kwargs.get("categoria", CategoriaProveedor.OTRO),
         cuit=kwargs.get("cuit", None),
@@ -81,14 +84,14 @@ def _make_proveedor(session: Session, usuario_id: uuid.UUID, nombre: str, **kwar
     return p
 
 
-def _make_factura(session: Session, usuario_id: uuid.UUID, proveedor_id: uuid.UUID, monto: Decimal) -> Any:
+def _make_factura(session: Session, negocio_id: uuid.UUID, proveedor_id: uuid.UUID, monto: Decimal) -> Any:
     from app.models.factura import Factura
     from app.core.uuid_utils import new_uuid
     from app.models.enums import OrigenDocumento
 
     f = Factura(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         proveedor_id=proveedor_id,
         fecha_emision=date.today(),
         monto_total=monto,
@@ -99,14 +102,14 @@ def _make_factura(session: Session, usuario_id: uuid.UUID, proveedor_id: uuid.UU
     return f
 
 
-def _make_pago(session: Session, usuario_id: uuid.UUID, proveedor_id: uuid.UUID, monto: Decimal) -> Any:
+def _make_pago(session: Session, negocio_id: uuid.UUID, proveedor_id: uuid.UUID, monto: Decimal) -> Any:
     from app.models.pago import Pago
     from app.core.uuid_utils import new_uuid
     from app.models.enums import MetodoPago, OrigenDocumento
 
     p = Pago(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         proveedor_id=proveedor_id,
         monto=monto,
         fecha=date.today(),
@@ -118,22 +121,22 @@ def _make_pago(session: Session, usuario_id: uuid.UUID, proveedor_id: uuid.UUID,
     return p
 
 
-# ── list_by_usuario isolation ─────────────────────────────────────────────────
+# ── list_by_negocio isolation ─────────────────────────────────────────────────
 
 
 class TestListByUsuario:
     def test_returns_only_caller_suppliers(self, session: Session):
-        """Spec: list_by_usuario returns ONLY the caller's active suppliers."""
+        """Spec: list_by_negocio returns ONLY the caller's active suppliers."""
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user1 = _make_usuario(session)
         user2 = _make_usuario(session)
-        _make_proveedor(session, user1.id, "Acme User1")
-        _make_proveedor(session, user2.id, "Acme User2")
+        _make_proveedor(session, user1.negocio_id, "Acme User1")
+        _make_proveedor(session, user2.negocio_id, "Acme User2")
         session.commit()
 
         repo = ProveedorRepository(session)
-        results = repo.list_by_usuario(user1.id)
+        results = repo.list_by_negocio(user1.negocio_id)
 
         names = {r.nombre for r in results}
         assert "Acme User1" in names
@@ -144,15 +147,15 @@ class TestListByUsuario:
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        _make_proveedor(session, user.id, "Active Supplier")
+        _make_proveedor(session, user.negocio_id, "Active Supplier")
         _make_proveedor(
-            session, user.id, "Deleted Supplier",
+            session, user.negocio_id, "Deleted Supplier",
             deleted_at=datetime.now(timezone.utc)
         )
         session.commit()
 
         repo = ProveedorRepository(session)
-        results = repo.list_by_usuario(user.id)
+        results = repo.list_by_negocio(user.negocio_id)
 
         names = {r.nombre for r in results}
         assert "Active Supplier" in names
@@ -168,14 +171,14 @@ class TestListByUsuario:
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        prov = _make_proveedor(session, user.id, "Saldo Supplier")
-        _make_factura(session, user.id, prov.id, Decimal("100.00"))
-        _make_factura(session, user.id, prov.id, Decimal("200.00"))
-        _make_pago(session, user.id, prov.id, Decimal("50.00"))
+        prov = _make_proveedor(session, user.negocio_id, "Saldo Supplier")
+        _make_factura(session, user.negocio_id, prov.id, Decimal("100.00"))
+        _make_factura(session, user.negocio_id, prov.id, Decimal("200.00"))
+        _make_pago(session, user.negocio_id, prov.id, Decimal("50.00"))
         session.commit()
 
         repo = ProveedorRepository(session)
-        results = repo.list_by_usuario(user.id)
+        results = repo.list_by_negocio(user.negocio_id)
 
         saldo_supplier = next(r for r in results if r.nombre == "Saldo Supplier")
         assert saldo_supplier.saldo == Decimal("250.00")
@@ -192,15 +195,15 @@ class TestListByUsuario:
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        prov = _make_proveedor(session, user.id, "NoDoubleCount")
-        _make_factura(session, user.id, prov.id, Decimal("300.00"))
-        _make_factura(session, user.id, prov.id, Decimal("400.00"))
-        _make_pago(session, user.id, prov.id, Decimal("100.00"))
-        _make_pago(session, user.id, prov.id, Decimal("50.00"))
+        prov = _make_proveedor(session, user.negocio_id, "NoDoubleCount")
+        _make_factura(session, user.negocio_id, prov.id, Decimal("300.00"))
+        _make_factura(session, user.negocio_id, prov.id, Decimal("400.00"))
+        _make_pago(session, user.negocio_id, prov.id, Decimal("100.00"))
+        _make_pago(session, user.negocio_id, prov.id, Decimal("50.00"))
         session.commit()
 
         repo = ProveedorRepository(session)
-        results = repo.list_by_usuario(user.id)
+        results = repo.list_by_negocio(user.negocio_id)
 
         r = next(r for r in results if r.nombre == "NoDoubleCount")
         assert r.saldo == Decimal("550.00")
@@ -210,11 +213,11 @@ class TestListByUsuario:
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        _make_proveedor(session, user.id, "EmptySupplier")
+        _make_proveedor(session, user.negocio_id, "EmptySupplier")
         session.commit()
 
         repo = ProveedorRepository(session)
-        results = repo.list_by_usuario(user.id)
+        results = repo.list_by_negocio(user.negocio_id)
 
         r = next(r for r in results if r.nombre == "EmptySupplier")
         assert r.saldo == Decimal("0.00")
@@ -224,11 +227,11 @@ class TestListByUsuario:
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        _make_proveedor(session, user.id, "DecimalCheck")
+        _make_proveedor(session, user.negocio_id, "DecimalCheck")
         session.commit()
 
         repo = ProveedorRepository(session)
-        results = repo.list_by_usuario(user.id)
+        results = repo.list_by_negocio(user.negocio_id)
 
         r = next(r for r in results if r.nombre == "DecimalCheck")
         assert isinstance(r.saldo, Decimal)
@@ -243,13 +246,13 @@ class TestListOrdering:
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        _make_proveedor(session, user.id, "Zebra")
-        _make_proveedor(session, user.id, "alpha")
-        _make_proveedor(session, user.id, "Middle")
+        _make_proveedor(session, user.negocio_id, "Zebra")
+        _make_proveedor(session, user.negocio_id, "alpha")
+        _make_proveedor(session, user.negocio_id, "Middle")
         session.commit()
 
         repo = ProveedorRepository(session)
-        results = repo.list_by_usuario(user.id, order_by="nombre")
+        results = repo.list_by_negocio(user.negocio_id, order_by="nombre")
 
         # Filter to this user's 3 test suppliers
         test_results = [r for r in results if r.nombre in {"Zebra", "alpha", "Middle"}]
@@ -261,16 +264,16 @@ class TestListOrdering:
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        prov_a = _make_proveedor(session, user.id, "SaldoA")
-        prov_b = _make_proveedor(session, user.id, "SaldoB")
-        prov_c = _make_proveedor(session, user.id, "SaldoC")
-        _make_factura(session, user.id, prov_a.id, Decimal("1000.00"))
-        _make_factura(session, user.id, prov_b.id, Decimal("500.00"))
+        prov_a = _make_proveedor(session, user.negocio_id, "SaldoA")
+        prov_b = _make_proveedor(session, user.negocio_id, "SaldoB")
+        prov_c = _make_proveedor(session, user.negocio_id, "SaldoC")
+        _make_factura(session, user.negocio_id, prov_a.id, Decimal("1000.00"))
+        _make_factura(session, user.negocio_id, prov_b.id, Decimal("500.00"))
         # prov_c has no movements → saldo 0
         session.commit()
 
         repo = ProveedorRepository(session)
-        results = repo.list_by_usuario(user.id, order_by="saldo")
+        results = repo.list_by_negocio(user.negocio_id, order_by="saldo")
 
         test_results = [r for r in results if r.nombre in {"SaldoA", "SaldoB", "SaldoC"}]
         saldos = [r.saldo for r in test_results]
@@ -286,13 +289,13 @@ class TestSearchByNombre:
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        _make_proveedor(session, user.id, "Electricidad del Sur")
-        _make_proveedor(session, user.id, "Electricidad del Norte")
-        _make_proveedor(session, user.id, "Gas Natural")
+        _make_proveedor(session, user.negocio_id, "Electricidad del Sur")
+        _make_proveedor(session, user.negocio_id, "Electricidad del Norte")
+        _make_proveedor(session, user.negocio_id, "Gas Natural")
         session.commit()
 
         repo = ProveedorRepository(session)
-        results = repo.search_by_nombre(user.id, "electricidad")
+        results = repo.search_by_nombre(user.negocio_id, "electricidad")
         names = {r.nombre for r in results}
         assert "Electricidad del Sur" in names
         assert "Electricidad del Norte" in names
@@ -303,15 +306,15 @@ class TestSearchByNombre:
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        _make_proveedor(session, user.id, "Active Elec", deleted_at=None)
+        _make_proveedor(session, user.negocio_id, "Active Elec", deleted_at=None)
         _make_proveedor(
-            session, user.id, "Deleted Elec",
+            session, user.negocio_id, "Deleted Elec",
             deleted_at=datetime.now(timezone.utc)
         )
         session.commit()
 
         repo = ProveedorRepository(session)
-        results = repo.search_by_nombre(user.id, "elec")
+        results = repo.search_by_nombre(user.negocio_id, "elec")
         names = {r.nombre for r in results}
         assert "Active Elec" in names
         assert "Deleted Elec" not in names
@@ -322,15 +325,15 @@ class TestSearchByNombre:
 
         user1 = _make_usuario(session)
         user2 = _make_usuario(session)
-        _make_proveedor(session, user1.id, "Shared Name")
-        _make_proveedor(session, user2.id, "Shared Name")
+        _make_proveedor(session, user1.negocio_id, "Shared Name")
+        _make_proveedor(session, user2.negocio_id, "Shared Name")
         session.commit()
 
         repo = ProveedorRepository(session)
-        results = repo.search_by_nombre(user1.id, "shared")
+        results = repo.search_by_nombre(user1.negocio_id, "shared")
         # All results must belong to user1 only
         for r in results:
-            assert r.usuario_id == user1.id
+            assert r.negocio_id == user1.negocio_id
 
 
 # ── tiene_dependencias ────────────────────────────────────────────────────────
@@ -342,8 +345,8 @@ class TestTieneDependencias:
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        prov = _make_proveedor(session, user.id, "WithFactura")
-        _make_factura(session, user.id, prov.id, Decimal("100.00"))
+        prov = _make_proveedor(session, user.negocio_id, "WithFactura")
+        _make_factura(session, user.negocio_id, prov.id, Decimal("100.00"))
         session.commit()
 
         repo = ProveedorRepository(session)
@@ -354,8 +357,8 @@ class TestTieneDependencias:
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        prov = _make_proveedor(session, user.id, "WithPago")
-        _make_pago(session, user.id, prov.id, Decimal("50.00"))
+        prov = _make_proveedor(session, user.negocio_id, "WithPago")
+        _make_pago(session, user.negocio_id, prov.id, Decimal("50.00"))
         session.commit()
 
         repo = ProveedorRepository(session)
@@ -366,7 +369,7 @@ class TestTieneDependencias:
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        prov = _make_proveedor(session, user.id, "NoDeps")
+        prov = _make_proveedor(session, user.negocio_id, "NoDeps")
         session.commit()
 
         repo = ProveedorRepository(session)
@@ -386,7 +389,7 @@ class TestCrudWrappers:
 
         repo = ProveedorRepository(session)
         prov = repo.create(
-            usuario_id=user.id,
+            negocio_id=user.negocio_id,
             nombre="Wrapper Test",
         )
         session.commit()
@@ -394,14 +397,14 @@ class TestCrudWrappers:
         fetched = repo.get(prov.id)
         assert fetched is not None
         assert fetched.nombre == "Wrapper Test"
-        assert fetched.usuario_id == user.id
+        assert fetched.negocio_id == user.negocio_id
 
     def test_soft_delete_sets_deleted_at(self, session: Session):
         """Spec: soft_delete sets deleted_at, row still exists in DB."""
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        prov = _make_proveedor(session, user.id, "ToDelete")
+        prov = _make_proveedor(session, user.negocio_id, "ToDelete")
         session.commit()
 
         repo = ProveedorRepository(session)
@@ -413,17 +416,17 @@ class TestCrudWrappers:
         assert fetched.deleted_at is not None  # marked deleted
 
     def test_soft_delete_excludes_from_list(self, session: Session):
-        """Spec: after soft_delete, supplier is excluded from list_by_usuario."""
+        """Spec: after soft_delete, supplier is excluded from list_by_negocio."""
         from app.repositories.proveedor_repository import ProveedorRepository
 
         user = _make_usuario(session)
-        prov = _make_proveedor(session, user.id, "SoftDeletedList")
+        prov = _make_proveedor(session, user.negocio_id, "SoftDeletedList")
         session.commit()
 
         repo = ProveedorRepository(session)
         repo.soft_delete(prov.id)
         session.commit()
 
-        results = repo.list_by_usuario(user.id)
+        results = repo.list_by_negocio(user.negocio_id)
         names = {r.nombre for r in results}
         assert "SoftDeletedList" not in names

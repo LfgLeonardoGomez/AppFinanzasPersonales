@@ -42,11 +42,11 @@ def get_actividad_reciente(
     Return the authenticated user's most recent facturas + pagos, merged.
 
     Most-recent-first by fecha, tiebreak created_at desc. Read-only —
-    no session.commit() is issued. Scoped entirely by usuario_id in the
+    no session.commit() is issued. Scoped entirely by negocio_id in the
     service layer (never trusts the caller beyond authentication).
     """
     svc = ActividadService(session)
-    return svc.listar_reciente(current_user.id, limit=limit)
+    return svc.listar_reciente(current_user.negocio_id, limit=limit)
 
 
 __all__ = ["router"]

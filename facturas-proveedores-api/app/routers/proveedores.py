@@ -64,11 +64,11 @@ def buscar_proveedores(
     Soft-deleted suppliers are excluded.
     """
     svc = ProveedorService(session)
-    results = svc.buscar_por_nombre(current_user.id, nombre)
+    results = svc.buscar_por_nombre(current_user.negocio_id, nombre)
     # For search results, saldo is not requested — return 0 as a fast response.
     # If saldo is needed for search results, get_saldo_por_proveedor can be added.
     # For MVP, the search is for linkage purposes (RN-VINC) so saldo is optional.
-    saldos = svc._repo.get_saldo_por_proveedor(current_user.id) if results else {}
+    saldos = svc._repo.get_saldo_por_proveedor(current_user.negocio_id) if results else {}
     return [
         ProveedorResponse(
             id=p.id,
@@ -110,7 +110,7 @@ def get_cuenta_corriente(
     The endpoint is read-only; no session.commit() is issued.
     """
     svc = ProveedorService(session)
-    result = svc.get_cuenta_corriente(current_user.id, proveedor_id)
+    result = svc.get_cuenta_corriente(current_user.negocio_id, proveedor_id)
     return CuentaCorrienteResponse.model_validate(result)
 
 
@@ -147,7 +147,7 @@ def list_proveedores(
     Balances are computed in a single aggregate query (no N+1).
     """
     svc = ProveedorService(session)
-    results = svc.listar(current_user.id, page=page, order_by=order_by)
+    results = svc.listar(current_user.negocio_id, page=page, order_by=order_by)
     return [
         ProveedorListItem(
             id=r.id,
@@ -183,13 +183,15 @@ def create_proveedor(
     """
     Create a supplier for the authenticated user.
 
-    usuario_id is taken from the session — the payload cannot override it.
+    negocio_id is taken from the session — the payload cannot override it.
     Returns 201 with saldo=0.00 (no movements yet).
     """
     from decimal import Decimal
 
     svc = ProveedorService(session)
-    proveedor = svc.crear(current_user.id, body)
+    proveedor = svc.crear(
+        current_user.negocio_id, body, creado_por_usuario_id=current_user.id
+    )
     session.commit()
     session.refresh(proveedor)
 
@@ -224,7 +226,7 @@ def get_proveedor(
     Returns 404 if the supplier belongs to another user or is soft-deleted.
     """
     svc = ProveedorService(session)
-    result = svc.get(current_user.id, proveedor_id)
+    result = svc.get(current_user.negocio_id, proveedor_id)
     return ProveedorResponse(
         id=result.id,
         nombre=result.nombre,
@@ -257,7 +259,7 @@ def update_proveedor(
     Returns 404 if the supplier belongs to another user or is soft-deleted.
     """
     svc = ProveedorService(session)
-    result = svc.actualizar(current_user.id, proveedor_id, body)
+    result = svc.actualizar(current_user.negocio_id, proveedor_id, body)
     session.commit()
     return ProveedorResponse(
         id=result.id,
@@ -294,7 +296,7 @@ def delete_proveedor(
     Returns 404 if the supplier belongs to another user or is already deleted.
     """
     svc = ProveedorService(session)
-    result = svc.eliminar(current_user.id, proveedor_id)
+    result = svc.eliminar(current_user.negocio_id, proveedor_id)
     session.commit()
     return ProveedorDeleteResponse(
         id=result["id"],

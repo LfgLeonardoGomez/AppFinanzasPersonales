@@ -18,6 +18,8 @@ from sqlalchemy import create_engine, inspect, text
 from sqlmodel import Session, SQLModel
 from testcontainers.postgres import PostgresContainer
 
+from tests.conftest import crear_negocio
+
 
 # ── Fixture: isolated Postgres for migration testing ─────────────────────────
 
@@ -140,6 +142,7 @@ def db_session(model_engine):
 def _make_usuario(session: Session) -> "Usuario":  # type: ignore[name-defined]
     from app.models.usuario import Usuario
     u = Usuario(
+        negocio_id=crear_negocio(session).id,
         email=f"rt_{uuid.uuid4().hex[:6]}@test.com",
         nombre="Test User",
         password_hash="$argon2id$v=19$m=65536,t=3,p=4$fakehash",

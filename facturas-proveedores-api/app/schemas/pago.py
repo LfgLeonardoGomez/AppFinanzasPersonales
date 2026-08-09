@@ -15,7 +15,7 @@ Design decisions (C-10 design.md):
 
 HARD RULES:
 - NEVER declare a 'factura_id' field here (RN-PAG-01).
-- usuario_id is NOT accepted in PagoCreate/Update — taken from session.
+- negocio_id is NOT accepted in PagoCreate/Update — taken from session.
 - origen is NOT accepted — the service stamps it as MANUAL (RN-PAG-04).
 """
 
@@ -46,7 +46,7 @@ class PagoCreate(BaseModel):
     - comprobante_url: optional HTTPS URL. For the MVP we accept any
       non-empty string (Q-PAG-02). Cloudinary validation is for avatar
       uploads only (C-05).
-    - usuario_id, origen, id: NOT here. usuario_id is taken from the
+    - negocio_id, origen, id: NOT here. negocio_id is taken from the
       session; origen is stamped by the service (MANUAL).
     - factura_id: NOT here. RN-PAG-01.
     """
@@ -71,7 +71,7 @@ class PagoUpdate(BaseModel):
     - All fields optional; only provided (non-None) fields are applied.
     - proveedor_id is NOT declared — D7: cannot re-link a payment to a
       different supplier (would corrupt the FIFO pool's history).
-    - usuario_id, origen, id: NOT here — immutable.
+    - negocio_id, origen, id: NOT here — immutable.
     - factura_id: NOT here — RN-PAG-01 (triple enforced).
     """
 
@@ -108,7 +108,7 @@ class PagoResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    usuario_id: uuid.UUID
+    negocio_id: uuid.UUID
     proveedor_id: uuid.UUID
     monto: Decimal
     fecha: date

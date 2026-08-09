@@ -95,7 +95,7 @@ def _register_and_login(client: TestClient) -> str:
     return resp.cookies["access_token"]
 
 
-def _make_factura(engine, usuario_id, proveedor_id, monto: Decimal):
+def _make_factura(engine, negocio_id, proveedor_id, monto: Decimal):
     from app.models.factura import Factura
     from app.core.uuid_utils import new_uuid
     from app.models.enums import OrigenDocumento
@@ -103,7 +103,7 @@ def _make_factura(engine, usuario_id, proveedor_id, monto: Decimal):
     with Session(engine) as s:
         f = Factura(
             id=new_uuid(),
-            usuario_id=usuario_id,
+            negocio_id=negocio_id,
             proveedor_id=proveedor_id,
             fecha_emision=date.today(),
             monto_total=monto,

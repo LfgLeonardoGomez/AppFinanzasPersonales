@@ -98,6 +98,7 @@ def registro(
         email=str(body.email),
         nombre=body.nombre,
         password=body.password,
+        nombre_negocio=body.nombre_negocio,
     )
     session.commit()
     session.refresh(usuario)

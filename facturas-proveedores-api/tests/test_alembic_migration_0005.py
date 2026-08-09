@@ -4,7 +4,7 @@ Tests for Alembic migration 0005 (pago composite index for FIFO pool queries).
 Task 4.1 — TDD RED, then GREEN.
 
 Verifies:
-- upgrade head chains 0001→...→0005 cleanly
+- upgrade 0005 chains 0001→...→0005 cleanly
 - head is '0005' after upgrade
 - composite index (usuario_id, proveedor_id, deleted_at, fecha) exists on pago
 - NO estado, saldo, or factura_id column added to pago (CRITICAL invariants)
@@ -89,8 +89,8 @@ def _alembic_current() -> str:
 
 
 def test_upgrade_chains_to_0005(migration_engine_0005):
-    """Spec: alembic upgrade head from base produces head = 0005."""
-    _run_alembic("upgrade", "head")
+    """Spec: alembic upgrade 0005 from base produces head = 0005."""
+    _run_alembic("upgrade", "0005")
     assert "0005" in _alembic_current(), f"Expected head 0005, got: {_alembic_current()}"
 
 
@@ -148,7 +148,7 @@ def test_downgrade_drops_index(migration_engine_0005):
     pre_indexes = {idx["name"] for idx in inspector.get_indexes("pago")}
     assert "ix_pago_usuario_proveedor_deleted_fecha" in pre_indexes
 
-    _run_alembic("downgrade", "-1")
+    _run_alembic("downgrade", "0004")
 
     inspector2 = inspect(migration_engine_0005)
     post_indexes = {idx["name"] for idx in inspector2.get_indexes("pago")}
@@ -162,8 +162,8 @@ def test_downgrade_drops_index(migration_engine_0005):
 
 
 def test_re_upgrade_restores_index(migration_engine_0005):
-    """Spec: upgrade head after downgrade restores the FIFO pool index (round-trip)."""
-    _run_alembic("upgrade", "head")
+    """Spec: upgrade 0005 after downgrade restores the FIFO pool index (round-trip)."""
+    _run_alembic("upgrade", "0005")
 
     inspector = inspect(migration_engine_0005)
     indexes = {idx["name"] for idx in inspector.get_indexes("pago")}

@@ -22,6 +22,8 @@ from fastapi import HTTPException
 
 import app.models  # noqa: F401
 
+from tests.conftest import crear_negocio
+
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -48,6 +50,7 @@ def _make_usuario(session: Session):
     from app.core.uuid_utils import new_uuid
 
     u = Usuario(
+        negocio_id=crear_negocio(session).id,
         id=new_uuid(),
         email=f"svc_{uuid.uuid4().hex[:8]}@test.com",
         nombre="Service Test",
@@ -58,14 +61,14 @@ def _make_usuario(session: Session):
     return u
 
 
-def _make_factura(session: Session, usuario_id, proveedor_id, monto: Decimal):
+def _make_factura(session: Session, negocio_id, proveedor_id, monto: Decimal):
     from app.models.factura import Factura
     from app.core.uuid_utils import new_uuid
     from app.models.enums import OrigenDocumento
 
     f = Factura(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         proveedor_id=proveedor_id,
         fecha_emision=date.today(),
         monto_total=monto,
@@ -76,14 +79,14 @@ def _make_factura(session: Session, usuario_id, proveedor_id, monto: Decimal):
     return f
 
 
-def _make_pago(session: Session, usuario_id, proveedor_id, monto: Decimal):
+def _make_pago(session: Session, negocio_id, proveedor_id, monto: Decimal):
     from app.models.pago import Pago
     from app.core.uuid_utils import new_uuid
     from app.models.enums import MetodoPago, OrigenDocumento
 
     p = Pago(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         proveedor_id=proveedor_id,
         monto=monto,
         fecha=date.today(),
@@ -108,10 +111,10 @@ class TestListar:
         session.commit()
 
         svc = ProveedorService(session)
-        svc.crear(user.id, ProveedorCreate(nombre="Proveedor Listar"))
+        svc.crear(user.negocio_id, ProveedorCreate(nombre="Proveedor Listar"))
         session.commit()
 
-        results = svc.listar(user.id)
+        results = svc.listar(user.negocio_id)
         names = {r.nombre for r in results}
         assert "Proveedor Listar" in names
 
@@ -124,13 +127,13 @@ class TestListar:
         session.commit()
 
         svc = ProveedorService(session)
-        prov = svc.crear(user.id, ProveedorCreate(nombre="ToBeDeleted"))
+        prov = svc.crear(user.negocio_id, ProveedorCreate(nombre="ToBeDeleted"))
         session.commit()
 
-        svc.eliminar(user.id, prov.id)
+        svc.eliminar(user.negocio_id, prov.id)
         session.commit()
 
-        results = svc.listar(user.id)
+        results = svc.listar(user.negocio_id)
         names = {r.nombre for r in results}
         assert "ToBeDeleted" not in names
 
@@ -143,14 +146,14 @@ class TestListar:
         session.commit()
 
         svc = ProveedorService(session)
-        prov = svc.crear(user.id, ProveedorCreate(nombre="SaldoTest"))
+        prov = svc.crear(user.negocio_id, ProveedorCreate(nombre="SaldoTest"))
         session.commit()
 
-        _make_factura(session, user.id, prov.id, Decimal("300.00"))
-        _make_pago(session, user.id, prov.id, Decimal("100.00"))
+        _make_factura(session, user.negocio_id, prov.id, Decimal("300.00"))
+        _make_pago(session, user.negocio_id, prov.id, Decimal("100.00"))
         session.commit()
 
-        results = svc.listar(user.id)
+        results = svc.listar(user.negocio_id)
         r = next(r for r in results if r.nombre == "SaldoTest")
         assert r.saldo == Decimal("200.00")
 
@@ -168,10 +171,10 @@ class TestCrear:
         session.commit()
 
         svc = ProveedorService(session)
-        prov = svc.crear(user.id, ProveedorCreate(nombre="NewSupplier"))
+        prov = svc.crear(user.negocio_id, ProveedorCreate(nombre="NewSupplier"))
         session.commit()
 
-        assert prov.usuario_id == user.id
+        assert prov.negocio_id == user.negocio_id
 
     def test_crear_returns_saldo_zero(self, session: Session):
         """Spec: new supplier has saldo=0.00 (no movements yet)."""
@@ -182,11 +185,11 @@ class TestCrear:
         session.commit()
 
         svc = ProveedorService(session)
-        prov = svc.crear(user.id, ProveedorCreate(nombre="ZeroSaldo"))
+        prov = svc.crear(user.negocio_id, ProveedorCreate(nombre="ZeroSaldo"))
         session.commit()
 
         # After creation, get returns saldo via get_saldo_por_proveedor
-        full = svc.get(user.id, prov.id)
+        full = svc.get(user.negocio_id, prov.id)
         assert full.saldo == Decimal("0.00")
 
     def test_crear_allows_duplicate_nombres(self, session: Session):
@@ -198,8 +201,8 @@ class TestCrear:
         session.commit()
 
         svc = ProveedorService(session)
-        p1 = svc.crear(user.id, ProveedorCreate(nombre="Duplicate"))
-        p2 = svc.crear(user.id, ProveedorCreate(nombre="Duplicate"))
+        p1 = svc.crear(user.negocio_id, ProveedorCreate(nombre="Duplicate"))
+        p2 = svc.crear(user.negocio_id, ProveedorCreate(nombre="Duplicate"))
         session.commit()
 
         assert p1.id != p2.id
@@ -218,10 +221,10 @@ class TestGet:
         session.commit()
 
         svc = ProveedorService(session)
-        prov = svc.crear(user.id, ProveedorCreate(nombre="MySupplier"))
+        prov = svc.crear(user.negocio_id, ProveedorCreate(nombre="MySupplier"))
         session.commit()
 
-        result = svc.get(user.id, prov.id)
+        result = svc.get(user.negocio_id, prov.id)
         assert result.id == prov.id
 
     def test_get_foreign_supplier_returns_404(self, session: Session):
@@ -234,11 +237,11 @@ class TestGet:
         session.commit()
 
         svc = ProveedorService(session)
-        prov2 = svc.crear(user2.id, ProveedorCreate(nombre="User2Supplier"))
+        prov2 = svc.crear(user2.negocio_id, ProveedorCreate(nombre="User2Supplier"))
         session.commit()
 
         with pytest.raises(HTTPException) as exc_info:
-            svc.get(user1.id, prov2.id)
+            svc.get(user1.negocio_id, prov2.id)
         assert exc_info.value.status_code == 404
 
     def test_get_soft_deleted_returns_404(self, session: Session):
@@ -250,13 +253,13 @@ class TestGet:
         session.commit()
 
         svc = ProveedorService(session)
-        prov = svc.crear(user.id, ProveedorCreate(nombre="DeletedGet"))
+        prov = svc.crear(user.negocio_id, ProveedorCreate(nombre="DeletedGet"))
         session.commit()
-        svc.eliminar(user.id, prov.id)
+        svc.eliminar(user.negocio_id, prov.id)
         session.commit()
 
         with pytest.raises(HTTPException) as exc_info:
-            svc.get(user.id, prov.id)
+            svc.get(user.negocio_id, prov.id)
         assert exc_info.value.status_code == 404
 
 
@@ -273,10 +276,10 @@ class TestActualizar:
         session.commit()
 
         svc = ProveedorService(session)
-        prov = svc.crear(user.id, ProveedorCreate(nombre="Original"))
+        prov = svc.crear(user.negocio_id, ProveedorCreate(nombre="Original"))
         session.commit()
 
-        updated = svc.actualizar(user.id, prov.id, ProveedorUpdate(nombre="Updated"))
+        updated = svc.actualizar(user.negocio_id, prov.id, ProveedorUpdate(nombre="Updated"))
         session.commit()
 
         assert updated.nombre == "Updated"
@@ -291,11 +294,11 @@ class TestActualizar:
         session.commit()
 
         svc = ProveedorService(session)
-        prov2 = svc.crear(user2.id, ProveedorCreate(nombre="User2Edit"))
+        prov2 = svc.crear(user2.negocio_id, ProveedorCreate(nombre="User2Edit"))
         session.commit()
 
         with pytest.raises(HTTPException) as exc_info:
-            svc.actualizar(user1.id, prov2.id, ProveedorUpdate(nombre="Hacked"))
+            svc.actualizar(user1.negocio_id, prov2.id, ProveedorUpdate(nombre="Hacked"))
         assert exc_info.value.status_code == 404
 
 
@@ -313,10 +316,10 @@ class TestEliminar:
         session.commit()
 
         svc = ProveedorService(session)
-        prov = svc.crear(user.id, ProveedorCreate(nombre="SoftDeleteMe"))
+        prov = svc.crear(user.negocio_id, ProveedorCreate(nombre="SoftDeleteMe"))
         session.commit()
 
-        svc.eliminar(user.id, prov.id)
+        svc.eliminar(user.negocio_id, prov.id)
         session.commit()
 
         # Row still exists in DB
@@ -334,13 +337,13 @@ class TestEliminar:
         session.commit()
 
         svc = ProveedorService(session)
-        prov = svc.crear(user.id, ProveedorCreate(nombre="WithDeps"))
+        prov = svc.crear(user.negocio_id, ProveedorCreate(nombre="WithDeps"))
         session.commit()
 
-        _make_factura(session, user.id, prov.id, Decimal("100.00"))
+        _make_factura(session, user.negocio_id, prov.id, Decimal("100.00"))
         session.commit()
 
-        result = svc.eliminar(user.id, prov.id)
+        result = svc.eliminar(user.negocio_id, prov.id)
         session.commit()
 
         assert result["tiene_dependencias"] is True
@@ -354,10 +357,10 @@ class TestEliminar:
         session.commit()
 
         svc = ProveedorService(session)
-        prov = svc.crear(user.id, ProveedorCreate(nombre="NoDeps"))
+        prov = svc.crear(user.negocio_id, ProveedorCreate(nombre="NoDeps"))
         session.commit()
 
-        result = svc.eliminar(user.id, prov.id)
+        result = svc.eliminar(user.negocio_id, prov.id)
         session.commit()
 
         assert result["tiene_dependencias"] is False
@@ -373,13 +376,13 @@ class TestEliminar:
         session.commit()
 
         svc = ProveedorService(session)
-        prov = svc.crear(user.id, ProveedorCreate(nombre="FKPreserve"))
+        prov = svc.crear(user.negocio_id, ProveedorCreate(nombre="FKPreserve"))
         session.commit()
 
-        factura = _make_factura(session, user.id, prov.id, Decimal("200.00"))
+        factura = _make_factura(session, user.negocio_id, prov.id, Decimal("200.00"))
         session.commit()
 
-        svc.eliminar(user.id, prov.id)
+        svc.eliminar(user.negocio_id, prov.id)
         session.commit()
 
         # The factura must still exist with the proveedor_id pointing to our supplier
@@ -397,11 +400,11 @@ class TestEliminar:
         session.commit()
 
         svc = ProveedorService(session)
-        prov2 = svc.crear(user2.id, ProveedorCreate(nombre="User2Del"))
+        prov2 = svc.crear(user2.negocio_id, ProveedorCreate(nombre="User2Del"))
         session.commit()
 
         with pytest.raises(HTTPException) as exc_info:
-            svc.eliminar(user1.id, prov2.id)
+            svc.eliminar(user1.negocio_id, prov2.id)
         assert exc_info.value.status_code == 404
 
 
@@ -418,11 +421,11 @@ class TestBuscarPorNombre:
         session.commit()
 
         svc = ProveedorService(session)
-        svc.crear(user.id, ProveedorCreate(nombre="Electricidad del Sur"))
-        svc.crear(user.id, ProveedorCreate(nombre="GAS NATURAL"))
+        svc.crear(user.negocio_id, ProveedorCreate(nombre="Electricidad del Sur"))
+        svc.crear(user.negocio_id, ProveedorCreate(nombre="GAS NATURAL"))
         session.commit()
 
-        results = svc.buscar_por_nombre(user.id, "ELECTRICIDAD")
+        results = svc.buscar_por_nombre(user.negocio_id, "ELECTRICIDAD")
         names = {r.nombre for r in results}
         assert "Electricidad del Sur" in names
         assert "GAS NATURAL" not in names
@@ -436,11 +439,11 @@ class TestBuscarPorNombre:
         session.commit()
 
         svc = ProveedorService(session)
-        prov = svc.crear(user.id, ProveedorCreate(nombre="SearchAndDelete"))
+        prov = svc.crear(user.negocio_id, ProveedorCreate(nombre="SearchAndDelete"))
         session.commit()
-        svc.eliminar(user.id, prov.id)
+        svc.eliminar(user.negocio_id, prov.id)
         session.commit()
 
-        results = svc.buscar_por_nombre(user.id, "searchanddelete")
+        results = svc.buscar_por_nombre(user.negocio_id, "searchanddelete")
         names = {r.nombre for r in results}
         assert "SearchAndDelete" not in names

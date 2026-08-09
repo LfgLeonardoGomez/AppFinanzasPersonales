@@ -166,7 +166,7 @@ class TestCreatePago:
         assert data["origen"] == "MANUAL"
         assert data["comprobante_url"] is None
         assert data["metodo"] == "EFECTIVO"
-        assert data["usuario_id"] == user.usuario_id
+        assert data["negocio_id"] == user.negocio_id
         assert data["proveedor_id"] == prov["id"]
 
     def test_create_with_comprobante_url(self, user: TestClient):
@@ -340,7 +340,7 @@ class TestListPagos:
         client_b = make_user_client(pago_app, prefix="pago_b")
         prov_a = _create_proveedor(client_a)
         pago_a = _create_pago(client_a, prov_a["id"])
-        assert pago_a["usuario_id"] == client_a.usuario_id
+        assert pago_a["negocio_id"] == client_a.negocio_id
 
         resp = client_b.get("/api/pagos/")
         assert resp.status_code == 200
@@ -372,7 +372,7 @@ class TestGetPago:
         client_b = make_user_client(pago_app, prefix="pago_b")
         prov_a = _create_proveedor(client_a)
         pago_a = _create_pago(client_a, prov_a["id"])
-        assert pago_a["usuario_id"] == client_a.usuario_id
+        assert pago_a["negocio_id"] == client_a.negocio_id
 
         resp = client_b.get(f"/api/pagos/{pago_a['id']}")
         assert resp.status_code == 404
@@ -447,7 +447,7 @@ class TestUpdatePago:
         client_b = make_user_client(pago_app, prefix="pago_b")
         prov_a = _create_proveedor(client_a)
         pago_a = _create_pago(client_a, prov_a["id"])
-        assert pago_a["usuario_id"] == client_a.usuario_id
+        assert pago_a["negocio_id"] == client_a.negocio_id
 
         resp = client_b.patch(
             f"/api/pagos/{pago_a['id']}",
@@ -483,7 +483,7 @@ class TestDeletePago:
         client_b = make_user_client(pago_app, prefix="pago_b")
         prov_a = _create_proveedor(client_a)
         pago_a = _create_pago(client_a, prov_a["id"])
-        assert pago_a["usuario_id"] == client_a.usuario_id
+        assert pago_a["negocio_id"] == client_a.negocio_id
 
         resp = client_b.delete(f"/api/pagos/{pago_a['id']}")
         assert resp.status_code == 404

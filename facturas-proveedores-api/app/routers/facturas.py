@@ -77,7 +77,7 @@ def _to_response(
     """
     return FacturaResponse(
         id=result.id,
-        usuario_id=result.usuario_id,
+        negocio_id=result.negocio_id,
         proveedor_id=result.proveedor_id,
         numero=result.numero,
         fecha_emision=result.fecha_emision,
@@ -151,7 +151,7 @@ def list_facturas(
     """
     svc = FacturaService(session)
     results = svc.listar(
-        current_user.id,
+        current_user.negocio_id,
         proveedor_id=proveedor_id,
         estado_filtro=estado,
         fecha_desde=fecha_desde,
@@ -193,12 +193,14 @@ def create_factura(
     """
     Create an invoice for a supplier owned by the authenticated user.
 
-    usuario_id is taken from the session — the payload cannot override it.
+    negocio_id is taken from the session — the payload cannot override it.
     origen is set to MANUAL automatically (RN-FAC-08).
     Returns 404 if the proveedor belongs to another user.
     """
     svc = FacturaService(session)
-    result = svc.crear(current_user.id, body)
+    result = svc.crear(
+        current_user.negocio_id, body, creado_por_usuario_id=current_user.id
+    )
     session.commit()
     # c-26 (D1): populate proveedor_nombre for the response.
     proveedor_nombre = _resolve_proveedor_nombre(session, result.proveedor_id)
@@ -274,7 +276,7 @@ def get_factura(
     Returns 404 if the invoice belongs to another user or is soft-deleted.
     """
     svc = FacturaService(session)
-    result = svc.get(current_user.id, factura_id)
+    result = svc.get(current_user.negocio_id, factura_id)
     # c-26 (D1): populate proveedor_nombre for the response.
     proveedor_nombre = _resolve_proveedor_nombre(session, result.proveedor_id)
     return _to_response(result, proveedor_nombre=proveedor_nombre)
@@ -301,7 +303,7 @@ def update_factura(
     Returns 404 if the invoice belongs to another user or is soft-deleted.
     """
     svc = FacturaService(session)
-    result = svc.actualizar(current_user.id, factura_id, body)
+    result = svc.actualizar(current_user.negocio_id, factura_id, body)
     session.commit()
     # c-26 (D1): populate proveedor_nombre for the response.
     proveedor_nombre = _resolve_proveedor_nombre(session, result.proveedor_id)
@@ -329,7 +331,7 @@ def delete_factura(
     Returns 404 if the invoice belongs to another user or is already deleted.
     """
     svc = FacturaService(session)
-    svc.eliminar(current_user.id, factura_id)
+    svc.eliminar(current_user.negocio_id, factura_id)
     session.commit()
 
 

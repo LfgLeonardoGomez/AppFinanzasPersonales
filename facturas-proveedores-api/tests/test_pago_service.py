@@ -26,6 +26,8 @@ from sqlmodel import Session, SQLModel
 
 import app.models  # noqa: F401 — register all SQLModel tables
 
+from tests.conftest import crear_negocio
+
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -52,6 +54,7 @@ def _make_usuario(session: Session):
     from app.core.uuid_utils import new_uuid
 
     u = Usuario(
+        negocio_id=crear_negocio(session).id,
         id=new_uuid(),
         email=f"svc_pago_{uuid.uuid4().hex[:8]}@test.com",
         nombre="Service Pago Test",
@@ -62,7 +65,7 @@ def _make_usuario(session: Session):
     return u
 
 
-def _make_proveedor(session: Session, usuario_id: uuid.UUID, deleted: bool = False):
+def _make_proveedor(session: Session, negocio_id: uuid.UUID, deleted: bool = False):
     from app.models.proveedor import Proveedor
     from app.core.uuid_utils import new_uuid
     from app.models.enums import CategoriaProveedor
@@ -70,7 +73,7 @@ def _make_proveedor(session: Session, usuario_id: uuid.UUID, deleted: bool = Fal
 
     p = Proveedor(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         nombre=f"Prov {uuid.uuid4().hex[:6]}",
         categoria=CategoriaProveedor.OTRO,
     )
@@ -83,7 +86,7 @@ def _make_proveedor(session: Session, usuario_id: uuid.UUID, deleted: bool = Fal
 
 def _make_pago_db(
     session: Session,
-    usuario_id: uuid.UUID,
+    negocio_id: uuid.UUID,
     proveedor_id: uuid.UUID,
     monto: Decimal = Decimal("100.00"),
     deleted: bool = False,
@@ -95,7 +98,7 @@ def _make_pago_db(
 
     p = Pago(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         proveedor_id=proveedor_id,
         monto=monto,
         fecha=date.today(),
@@ -119,11 +122,10 @@ class TestCrear:
         from app.models.enums import OrigenDocumento
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         svc = PagoService(session)
-        result = svc.crear(
-            u.id,
+        result = svc.crear(u.negocio_id,
             PagoCreate(
                 proveedor_id=p.id,
                 monto=Decimal("500.00"),
@@ -133,7 +135,7 @@ class TestCrear:
         )
         session.commit()
 
-        assert result.usuario_id == u.id
+        assert result.negocio_id == u.negocio_id
         assert result.proveedor_id == p.id
         assert result.monto == Decimal("500.00")
         assert result.origen == OrigenDocumento.MANUAL
@@ -149,11 +151,10 @@ class TestCrear:
         from app.models.enums import OrigenDocumento
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         svc = PagoService(session)
-        result = svc.crear(
-            u.id,
+        result = svc.crear(u.negocio_id,
             PagoCreate(
                 proveedor_id=p.id,
                 monto=Decimal("500.00"),
@@ -176,11 +177,10 @@ class TestCrear:
         from app.models.enums import OrigenDocumento
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         svc = PagoService(session)
-        result = svc.crear(
-            u.id,
+        result = svc.crear(u.negocio_id,
             PagoCreate(
                 proveedor_id=p.id,
                 monto=Decimal("500.00"),
@@ -197,11 +197,10 @@ class TestCrear:
         from app.schemas.pago import PagoCreate
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         svc = PagoService(session)
-        result = svc.crear(
-            u.id,
+        result = svc.crear(u.negocio_id,
             PagoCreate(
                 proveedor_id=p.id,
                 monto=Decimal("100.00"),
@@ -220,12 +219,11 @@ class TestCrear:
 
         u_a = _make_usuario(session)
         u_b = _make_usuario(session)
-        p_b = _make_proveedor(session, u_b.id)
+        p_b = _make_proveedor(session, u_b.negocio_id)
 
         svc = PagoService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.crear(
-                u_a.id,
+            svc.crear(u_a.negocio_id,
                 PagoCreate(
                     proveedor_id=p_b.id,
                     monto=Decimal("100.00"),
@@ -240,12 +238,11 @@ class TestCrear:
         from app.schemas.pago import PagoCreate
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id, deleted=True)
+        p = _make_proveedor(session, u.negocio_id, deleted=True)
 
         svc = PagoService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.crear(
-                u.id,
+            svc.crear(u.negocio_id,
                 PagoCreate(
                     proveedor_id=p.id,
                     monto=Decimal("100.00"),
@@ -262,12 +259,11 @@ class TestCrear:
         from app.schemas.pago import PagoCreate
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         svc = PagoService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.crear(
-                u.id,
+            svc.crear(u.negocio_id,
                 PagoCreate(
                     proveedor_id=p.id,
                     monto=Decimal("100.00"),
@@ -286,8 +282,7 @@ class TestCrear:
 
         svc = PagoService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.crear(
-                u.id,
+            svc.crear(u.negocio_id,
                 PagoCreate(
                     proveedor_id=uuid.uuid4(),
                     monto=Decimal("100.00"),
@@ -306,13 +301,13 @@ class TestListar:
         from app.services.pago_service import PagoService
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        _make_pago_db(session, u.id, p.id, Decimal("100.00"))
-        _make_pago_db(session, u.id, p.id, Decimal("200.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"))
+        _make_pago_db(session, u.negocio_id, p.id, Decimal("200.00"))
         session.commit()
 
         svc = PagoService(session)
-        items, total = svc.listar(u.id)
+        items, total = svc.listar(u.negocio_id)
 
         assert total == 2
         assert len(items) == 2
@@ -321,13 +316,13 @@ class TestListar:
         from app.services.pago_service import PagoService
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        _make_pago_db(session, u.id, p.id, Decimal("100.00"))
-        _make_pago_db(session, u.id, p.id, Decimal("200.00"), deleted=True)
+        p = _make_proveedor(session, u.negocio_id)
+        _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"))
+        _make_pago_db(session, u.negocio_id, p.id, Decimal("200.00"), deleted=True)
         session.commit()
 
         svc = PagoService(session)
-        items, total = svc.listar(u.id)
+        items, total = svc.listar(u.negocio_id)
 
         assert total == 1
         assert len(items) == 1
@@ -336,14 +331,14 @@ class TestListar:
         from app.services.pago_service import PagoService
 
         u = _make_usuario(session)
-        p1 = _make_proveedor(session, u.id)
-        p2 = _make_proveedor(session, u.id)
-        _make_pago_db(session, u.id, p1.id, Decimal("100.00"))
-        _make_pago_db(session, u.id, p2.id, Decimal("200.00"))
+        p1 = _make_proveedor(session, u.negocio_id)
+        p2 = _make_proveedor(session, u.negocio_id)
+        _make_pago_db(session, u.negocio_id, p1.id, Decimal("100.00"))
+        _make_pago_db(session, u.negocio_id, p2.id, Decimal("200.00"))
         session.commit()
 
         svc = PagoService(session)
-        items, total = svc.listar(u.id, proveedor_id=p1.id)
+        items, total = svc.listar(u.negocio_id, proveedor_id=p1.id)
 
         assert total == 1
         assert items[0].proveedor_id == p1.id
@@ -352,19 +347,19 @@ class TestListar:
         from app.services.pago_service import PagoService
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
         for i in range(5):
             _make_pago_db(
                 session,
-                u.id,
+                u.negocio_id,
                 p.id,
                 Decimal(f"{(i+1)*100}.00"),
             )
         session.commit()
 
         svc = PagoService(session)
-        page1, total = svc.listar(u.id, page=1, page_size=2)
-        page2, _ = svc.listar(u.id, page=2, page_size=2)
+        page1, total = svc.listar(u.negocio_id, page=1, page_size=2)
+        page2, _ = svc.listar(u.negocio_id, page=2, page_size=2)
 
         assert total == 5
         assert len(page1) == 2
@@ -375,12 +370,12 @@ class TestListar:
 
         u_a = _make_usuario(session)
         u_b = _make_usuario(session)
-        p_a = _make_proveedor(session, u_a.id)
-        _make_pago_db(session, u_a.id, p_a.id, Decimal("100.00"))
+        p_a = _make_proveedor(session, u_a.negocio_id)
+        _make_pago_db(session, u_a.negocio_id, p_a.id, Decimal("100.00"))
         session.commit()
 
         svc = PagoService(session)
-        items_b, total_b = svc.listar(u_b.id)
+        items_b, total_b = svc.listar(u_b.negocio_id)
 
         assert total_b == 0
         assert items_b == []
@@ -394,41 +389,41 @@ class TestGet:
         from app.services.pago_service import PagoService
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        pago = _make_pago_db(session, u.id, p.id, Decimal("100.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        pago = _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
 
         svc = PagoService(session)
-        result = svc.get(u.id, pago.id)
+        result = svc.get(u.negocio_id, pago.id)
 
         assert result.id == pago.id
-        assert result.usuario_id == u.id
+        assert result.negocio_id == u.negocio_id
 
     def test_foreign_pago_raises_404(self, session: Session):
         from app.services.pago_service import PagoService
 
         u_a = _make_usuario(session)
         u_b = _make_usuario(session)
-        p_a = _make_proveedor(session, u_a.id)
-        pago_a = _make_pago_db(session, u_a.id, p_a.id, Decimal("100.00"))
+        p_a = _make_proveedor(session, u_a.negocio_id)
+        pago_a = _make_pago_db(session, u_a.negocio_id, p_a.id, Decimal("100.00"))
         session.commit()
 
         svc = PagoService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.get(u_b.id, pago_a.id)
+            svc.get(u_b.negocio_id, pago_a.id)
         assert exc_info.value.status_code == 404
 
     def test_soft_deleted_pago_raises_404(self, session: Session):
         from app.services.pago_service import PagoService
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        pago = _make_pago_db(session, u.id, p.id, Decimal("100.00"), deleted=True)
+        p = _make_proveedor(session, u.negocio_id)
+        pago = _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"), deleted=True)
         session.commit()
 
         svc = PagoService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.get(u.id, pago.id)
+            svc.get(u.negocio_id, pago.id)
         assert exc_info.value.status_code == 404
 
     def test_nonexistent_pago_raises_404(self, session: Session):
@@ -437,7 +432,7 @@ class TestGet:
         u = _make_usuario(session)
         svc = PagoService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.get(u.id, uuid.uuid4())
+            svc.get(u.negocio_id, uuid.uuid4())
         assert exc_info.value.status_code == 404
 
 
@@ -450,13 +445,12 @@ class TestActualizar:
         from app.schemas.pago import PagoUpdate
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        pago = _make_pago_db(session, u.id, p.id, Decimal("100.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        pago = _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
 
         svc = PagoService(session)
-        updated = svc.actualizar(
-            u.id,
+        updated = svc.actualizar(u.negocio_id,
             pago.id,
             PagoUpdate(monto=Decimal("500.00")),
         )
@@ -470,14 +464,13 @@ class TestActualizar:
         from app.schemas.pago import PagoUpdate
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        pago = _make_pago_db(session, u.id, p.id, Decimal("100.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        pago = _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
 
         new_date = date.today() - timedelta(days=2)
         svc = PagoService(session)
-        updated = svc.actualizar(
-            u.id,
+        updated = svc.actualizar(u.negocio_id,
             pago.id,
             PagoUpdate(fecha=new_date),
         )
@@ -491,13 +484,12 @@ class TestActualizar:
         from app.models.enums import MetodoPago
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        pago = _make_pago_db(session, u.id, p.id, Decimal("100.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        pago = _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
 
         svc = PagoService(session)
-        updated = svc.actualizar(
-            u.id,
+        updated = svc.actualizar(u.negocio_id,
             pago.id,
             PagoUpdate(metodo=MetodoPago.TRANSFERENCIA),
         )
@@ -510,12 +502,12 @@ class TestActualizar:
         from app.schemas.pago import PagoUpdate
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        pago = _make_pago_db(session, u.id, p.id, Decimal("100.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        pago = _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
 
         svc = PagoService(session)
-        updated = svc.actualizar(u.id, pago.id, PagoUpdate())
+        updated = svc.actualizar(u.negocio_id, pago.id, PagoUpdate())
         session.commit()
 
         # No field was changed
@@ -527,14 +519,13 @@ class TestActualizar:
 
         u_a = _make_usuario(session)
         u_b = _make_usuario(session)
-        p_a = _make_proveedor(session, u_a.id)
-        pago_a = _make_pago_db(session, u_a.id, p_a.id, Decimal("100.00"))
+        p_a = _make_proveedor(session, u_a.negocio_id)
+        pago_a = _make_pago_db(session, u_a.negocio_id, p_a.id, Decimal("100.00"))
         session.commit()
 
         svc = PagoService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.actualizar(
-                u_b.id,
+            svc.actualizar(u_b.negocio_id,
                 pago_a.id,
                 PagoUpdate(monto=Decimal("999.00")),
             )
@@ -545,14 +536,13 @@ class TestActualizar:
         from app.schemas.pago import PagoUpdate
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        pago = _make_pago_db(session, u.id, p.id, Decimal("100.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        pago = _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
 
         svc = PagoService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.actualizar(
-                u.id,
+            svc.actualizar(u.negocio_id,
                 pago.id,
                 PagoUpdate(fecha=date.today() + timedelta(days=1)),
             )
@@ -571,16 +561,15 @@ class TestActualizar:
         from app.schemas.pago import PagoUpdate
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        pago = _make_pago_db(session, u.id, p.id, Decimal("100.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        pago = _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
 
         svc = PagoService(session)
         # Try monto=0 first — Pydantic will reject this at construction time
         # with ValidationError. That's the schema-level defense.
         with pytest.raises((ValidationError, HTTPException)) as exc_info:
-            svc.actualizar(
-                u.id,
+            svc.actualizar(u.negocio_id,
                 pago.id,
                 PagoUpdate(monto=Decimal("0")),
             )
@@ -597,17 +586,17 @@ class TestEliminar:
         from app.services.pago_service import PagoService
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        pago = _make_pago_db(session, u.id, p.id, Decimal("100.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        pago = _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
 
         svc = PagoService(session)
-        svc.eliminar(u.id, pago.id)
+        svc.eliminar(u.negocio_id, pago.id)
         session.commit()
 
         # Soft-deleted: get raises 404
         with pytest.raises(HTTPException) as exc_info:
-            svc.get(u.id, pago.id)
+            svc.get(u.negocio_id, pago.id)
         assert exc_info.value.status_code == 404
 
     def test_foreign_pago_raises_404_on_delete(self, session: Session):
@@ -615,30 +604,30 @@ class TestEliminar:
 
         u_a = _make_usuario(session)
         u_b = _make_usuario(session)
-        p_a = _make_proveedor(session, u_a.id)
-        pago_a = _make_pago_db(session, u_a.id, p_a.id, Decimal("100.00"))
+        p_a = _make_proveedor(session, u_a.negocio_id)
+        pago_a = _make_pago_db(session, u_a.negocio_id, p_a.id, Decimal("100.00"))
         session.commit()
 
         svc = PagoService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.eliminar(u_b.id, pago_a.id)
+            svc.eliminar(u_b.negocio_id, pago_a.id)
         assert exc_info.value.status_code == 404
 
     def test_already_deleted_pago_raises_404(self, session: Session):
         from app.services.pago_service import PagoService
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        pago = _make_pago_db(session, u.id, p.id, Decimal("100.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        pago = _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
 
         svc = PagoService(session)
-        svc.eliminar(u.id, pago.id)
+        svc.eliminar(u.negocio_id, pago.id)
         session.commit()
 
         # Try to delete again
         with pytest.raises(HTTPException) as exc_info:
-            svc.eliminar(u.id, pago.id)
+            svc.eliminar(u.negocio_id, pago.id)
         assert exc_info.value.status_code == 404
 
     def test_nonexistent_pago_raises_404(self, session: Session):
@@ -647,7 +636,7 @@ class TestEliminar:
         u = _make_usuario(session)
         svc = PagoService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.eliminar(u.id, uuid.uuid4())
+            svc.eliminar(u.negocio_id, uuid.uuid4())
         assert exc_info.value.status_code == 404
 
 
@@ -668,14 +657,13 @@ class TestFifoPoolIntegration:
         from app.models.enums import EstadoFactura
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
         session.commit()
 
         pago_svc = PagoService(session)
 
         # Pay the full invoice
-        pago = pago_svc.crear(
-            u.id,
+        pago = pago_svc.crear(u.negocio_id,
             PagoCreate(
                 proveedor_id=p.id,
                 monto=Decimal("100.00"),
@@ -687,8 +675,7 @@ class TestFifoPoolIntegration:
 
         # Create an invoice (PAGADA because pool = 100 covers monto = 100)
         fac_svc = FacturaService(session)
-        factura = fac_svc.crear(
-            u.id,
+        factura = fac_svc.crear(u.negocio_id,
             FacturaCreate(
                 proveedor_id=p.id,
                 fecha_emision=date.today(),
@@ -700,11 +687,11 @@ class TestFifoPoolIntegration:
         assert factura.estado == EstadoFactura.PAGADA
 
         # Soft-delete the pago
-        pago_svc.eliminar(u.id, pago.id)
+        pago_svc.eliminar(u.negocio_id, pago.id)
         session.commit()
 
         # Re-aggregate: invoice should now be PENDIENTE (pool = 0)
-        listar = fac_svc.listar(u.id, proveedor_id=p.id)
+        listar = fac_svc.listar(u.negocio_id, proveedor_id=p.id)
         estado_by_id = {r.id: r.estado for r in listar}
         assert estado_by_id[factura.id] == EstadoFactura.PENDIENTE
 
@@ -717,12 +704,11 @@ class TestFifoPoolIntegration:
         from app.models.enums import EstadoFactura
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
         session.commit()
 
         pago_svc = PagoService(session)
-        pago = pago_svc.crear(
-            u.id,
+        pago = pago_svc.crear(u.negocio_id,
             PagoCreate(
                 proveedor_id=p.id,
                 monto=Decimal("100.00"),
@@ -733,8 +719,7 @@ class TestFifoPoolIntegration:
         session.commit()
 
         fac_svc = FacturaService(session)
-        factura = fac_svc.crear(
-            u.id,
+        factura = fac_svc.crear(u.negocio_id,
             FacturaCreate(
                 proveedor_id=p.id,
                 fecha_emision=date.today(),
@@ -744,19 +729,18 @@ class TestFifoPoolIntegration:
         session.commit()
 
         # Initially pool=100 vs invoice=1000 → PARCIAL
-        listar = fac_svc.listar(u.id, proveedor_id=p.id)
+        listar = fac_svc.listar(u.negocio_id, proveedor_id=p.id)
         estado_by_id = {r.id: r.estado for r in listar}
         assert estado_by_id[factura.id] == EstadoFactura.PARCIAL
 
         # Edit pago to 1000 → now PAGADA
-        pago_svc.actualizar(
-            u.id,
+        pago_svc.actualizar(u.negocio_id,
             pago.id,
             PagoUpdate(monto=Decimal("1000.00")),
         )
         session.commit()
 
-        listar = fac_svc.listar(u.id, proveedor_id=p.id)
+        listar = fac_svc.listar(u.negocio_id, proveedor_id=p.id)
         estado_by_id = {r.id: r.estado for r in listar}
         assert estado_by_id[factura.id] == EstadoFactura.PAGADA
 
@@ -766,12 +750,11 @@ class TestFifoPoolIntegration:
 
         u_a = _make_usuario(session)
         u_b = _make_usuario(session)
-        p_a = _make_proveedor(session, u_a.id)
+        p_a = _make_proveedor(session, u_a.negocio_id)
         session.commit()
 
         pago_svc = PagoService(session)
-        pago_a = pago_svc.crear(
-            u_a.id,
+        pago_a = pago_svc.crear(u_a.negocio_id,
             PagoCreate(
                 proveedor_id=p_a.id,
                 monto=Decimal("100.00"),
@@ -783,5 +766,5 @@ class TestFifoPoolIntegration:
 
         # User B tries to get → 404
         with pytest.raises(HTTPException) as exc_info:
-            pago_svc.get(u_b.id, pago_a.id)
+            pago_svc.get(u_b.negocio_id, pago_a.id)
         assert exc_info.value.status_code == 404

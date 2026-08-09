@@ -25,6 +25,7 @@ from sqlmodel import Session, SQLModel
 import app.models  # noqa: F401
 
 
+
 @pytest.fixture(scope="module")
 def engine(db_url: str):
     eng = create_engine(db_url, echo=False)
@@ -141,8 +142,11 @@ class TestNoMutationsOnRead:
         from app.core.uuid_utils import new_uuid
         from app.models.enums import CategoriaProveedor
 
+        from tests.conftest import crear_negocio
+
         with Session(engine) as session:
             u = Usuario(
+                negocio_id=crear_negocio(session).id,
                 id=new_uuid(),
                 email=f"np_{uuid.uuid4().hex[:8]}@test.com",
                 nombre="No Persist",
@@ -153,7 +157,7 @@ class TestNoMutationsOnRead:
 
             p = Proveedor(
                 id=new_uuid(),
-                usuario_id=u.id,
+                negocio_id=u.negocio_id,
                 nombre="Prov",
                 categoria=CategoriaProveedor.OTRO,
             )
@@ -165,7 +169,7 @@ class TestNoMutationsOnRead:
             mutation_capture.clear()
 
             svc = ProveedorService(session)
-            result = svc.get_cuenta_corriente(u.id, p.id)
+            result = svc.get_cuenta_corriente(u.negocio_id, p.id)
             assert result.saldo == 0
             session.rollback()  # discard any implicit state
 

@@ -4,7 +4,7 @@ Tests for Alembic migration 0004 (factura composite index for FIFO queries).
 Task 5.1 — TDD RED, then GREEN.
 
 Verifies:
-- upgrade head chains 0001→...→0004 cleanly
+- upgrade 0004 chains 0001→...→0004 cleanly
 - head is '0004' after upgrade
 - composite index (usuario_id, proveedor_id, deleted_at, fecha_emision) exists on factura
 - NO estado or saldo column added to factura (critical invariant, D-01)
@@ -76,12 +76,11 @@ def _run_alembic(*args: str) -> None:
 
 def test_upgrade_chains_to_0004(migration_engine_0004):
     """
-    Spec: alembic upgrade head chains through 0004 cleanly.
-    (After C-10's migration 0005, the head is 0005 — this test verifies
-    that 0004 is still part of the chain, NOT the final head. The C-10
-    dedicated test_alembic_migration_0005.py asserts head=0005.)
+    Spec: alembic upgrade 0004 chains through 0004 cleanly.
+    (0004 is part of the chain, not the final head. The dedicated
+    test_alembic_migration_0005.py and _0006.py assert their own revisions.)
     """
-    _run_alembic("upgrade", "head")
+    _run_alembic("upgrade", "0004")
 
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "current"],
@@ -90,9 +89,11 @@ def test_upgrade_chains_to_0004(migration_engine_0004):
         text=True,
         env=os.environ,
     )
-    # 0004 is part of the chain; the final head is 0005 (C-10).
-    assert "0005" in result.stdout or "0005" in result.stderr, (
-        f"Expected head 0005 (chain includes 0004), got: {result.stdout} {result.stderr}"
+    # C-28 (D-21): pinned to the revision this test actually drives to, so it
+    # stays correct as the chain grows (0005, 0006, ...). That 0004 is not the
+    # final head is asserted by the dedicated 0005 and 0006 migration tests.
+    assert "0004" in result.stdout or "0004" in result.stderr, (
+        f"Expected current 0004, got: {result.stdout} {result.stderr}"
     )
 
 
@@ -153,8 +154,8 @@ def test_downgrade_drops_index(migration_engine_0004):
 
 
 def test_re_upgrade_restores_index(migration_engine_0004):
-    """Spec: upgrade head after downgrade restores the FIFO index (round-trip)."""
-    _run_alembic("upgrade", "head")
+    """Spec: upgrade 0004 after downgrade restores the FIFO index (round-trip)."""
+    _run_alembic("upgrade", "0004")
 
     inspector = inspect(migration_engine_0004)
     indexes = {idx["name"] for idx in inspector.get_indexes("factura")}

@@ -84,13 +84,19 @@ def get_current_user(
         2. decode_token: validates JWT signature, expiry, and type="access" (D-C03-6).
         3. Extract 'sub' (= usuario_id).
         4. Fetch the Usuario by ID (one SELECT — acceptable per design).
+        5. Reject deactivated users (D-32).
+
+    This single SELECT is also why `negocio_id` is NOT a token claim (C-28, D1):
+    the row is already here, so the scoping key costs nothing extra, and the
+    session reflects the user's current state rather than the state at issue time.
 
     Returns:
-        The authenticated Usuario instance.
+        The authenticated Usuario instance, carrying the `negocio_id` used by
+        the service layer for scoping (RN-NEG-01).
 
     Raises:
         HTTPException(401) if the cookie is missing, the token is invalid or
-        expired, or the user no longer exists in the database.
+        expired, the user no longer exists, or the user is deactivated.
     """
     if access_token is None:
         raise _UNAUTHORIZED
@@ -113,6 +119,12 @@ def get_current_user(
     repo = UsuarioRepository(session)
     usuario = repo.get_by_id(user_id)
     if usuario is None:
+        raise _UNAUTHORIZED
+
+    # D-32 / RN-NEG-07: access revocation is checked here, on the row, not on a
+    # token claim. A deactivated member loses access on their very next request
+    # instead of surviving until their access token expires.
+    if usuario.desactivado:
         raise _UNAUTHORIZED
 
     return usuario

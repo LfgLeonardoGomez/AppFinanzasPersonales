@@ -23,6 +23,7 @@ import pytest
 from fastapi import HTTPException
 
 
+
 @pytest.fixture(autouse=True)
 def clean_ia_rate_limit():
     """Reset the in-memory store before and after each test."""
@@ -59,6 +60,7 @@ def _user():
     from app.models.usuario import Usuario
 
     return Usuario(
+        negocio_id=uuid.uuid4(),
         id=uuid.uuid4(),
         email=f"u_{uuid.uuid4().hex[:8]}@test.com",
         nombre="Test",

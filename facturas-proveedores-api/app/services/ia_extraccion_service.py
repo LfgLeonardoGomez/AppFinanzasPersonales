@@ -15,7 +15,7 @@ Architectural rules (RN-IA-01..06):
 - Extractors NEVER raise. Any exception (SDK, network, JSON parse,
   Pydantic validation) is encapsulated into `error=True` + `error_message`.
 - Extractors NEVER log raw image bytes or raw model responses. They
-  log a minimal `usuario_id, endpoint, provider, latency_ms, success,
+  log a minimal `negocio_id, endpoint, provider, latency_ms, success,
   error_class` envelope.
 - Extractors NEVER match the supplier name against the user's
   `Proveedor` table — that is the frontend's job (RN-IA-06).
@@ -248,7 +248,7 @@ def _normalize_metodo(value: Any) -> Optional[MetodoPago]:
 
 def _log_ia_call(
     *,
-    usuario_id: Optional[Any],
+    negocio_id: Optional[Any],
     endpoint: str,
     provider: str,
     latency_ms: int,
@@ -260,13 +260,13 @@ def _log_ia_call(
     (privacy + cost). Fields follow the security baseline in the KB.
     """
     try:
-        user_repr = str(usuario_id) if usuario_id is not None else "anonymous"
+        user_repr = str(negocio_id) if negocio_id is not None else "anonymous"
     except Exception:
         user_repr = "<unrepr>"
     logger.info(
         "ia_call",
         extra={
-            "usuario_id": user_repr,
+            "negocio_id": user_repr,
             "endpoint": endpoint,
             "provider": provider,
             "latency_ms": latency_ms,
@@ -354,7 +354,7 @@ class ClaudeVisionExtractor:
         except Exception as exc:  # noqa: BLE001 — RN-IA-05: never propagate
             latency_ms = int((time.monotonic() - start) * 1000)
             _log_ia_call(
-                usuario_id=None,
+                negocio_id=None,
                 endpoint=f"/api/{documento}s/extraer-ia",
                 provider=self.PROVIDER,
                 latency_ms=latency_ms,
@@ -372,7 +372,7 @@ class ClaudeVisionExtractor:
         except (json.JSONDecodeError, ValueError) as exc:
             latency_ms = int((time.monotonic() - start) * 1000)
             _log_ia_call(
-                usuario_id=None,
+                negocio_id=None,
                 endpoint=f"/api/{documento}s/extraer-ia",
                 provider=self.PROVIDER,
                 latency_ms=latency_ms,
@@ -404,7 +404,7 @@ class ClaudeVisionExtractor:
         except Exception as exc:  # noqa: BLE001 — RN-IA-05: never propagate
             latency_ms = int((time.monotonic() - start) * 1000)
             _log_ia_call(
-                usuario_id=None,
+                negocio_id=None,
                 endpoint=f"/api/{documento}s/extraer-ia",
                 provider=self.PROVIDER,
                 latency_ms=latency_ms,
@@ -418,7 +418,7 @@ class ClaudeVisionExtractor:
 
         latency_ms = int((time.monotonic() - start) * 1000)
         _log_ia_call(
-            usuario_id=None,
+            negocio_id=None,
             endpoint=f"/api/{documento}s/extraer-ia",
             provider=self.PROVIDER,
             latency_ms=latency_ms,
@@ -508,7 +508,7 @@ class OpenAIVisionExtractor:
         except Exception as exc:  # noqa: BLE001 — RN-IA-05: never propagate
             latency_ms = int((time.monotonic() - start) * 1000)
             _log_ia_call(
-                usuario_id=None,
+                negocio_id=None,
                 endpoint=f"/api/{documento}s/extraer-ia",
                 provider=self.PROVIDER,
                 latency_ms=latency_ms,
@@ -526,7 +526,7 @@ class OpenAIVisionExtractor:
         except (json.JSONDecodeError, ValueError) as exc:
             latency_ms = int((time.monotonic() - start) * 1000)
             _log_ia_call(
-                usuario_id=None,
+                negocio_id=None,
                 endpoint=f"/api/{documento}s/extraer-ia",
                 provider=self.PROVIDER,
                 latency_ms=latency_ms,
@@ -557,7 +557,7 @@ class OpenAIVisionExtractor:
         except Exception as exc:  # noqa: BLE001 — RN-IA-05: never propagate
             latency_ms = int((time.monotonic() - start) * 1000)
             _log_ia_call(
-                usuario_id=None,
+                negocio_id=None,
                 endpoint=f"/api/{documento}s/extraer-ia",
                 provider=self.PROVIDER,
                 latency_ms=latency_ms,
@@ -571,7 +571,7 @@ class OpenAIVisionExtractor:
 
         latency_ms = int((time.monotonic() - start) * 1000)
         _log_ia_call(
-            usuario_id=None,
+            negocio_id=None,
             endpoint=f"/api/{documento}s/extraer-ia",
             provider=self.PROVIDER,
             latency_ms=latency_ms,

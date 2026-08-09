@@ -233,7 +233,7 @@ class TestTenantIsolationBaseline:
             },
         ).json()
 
-        assert pago["usuario_id"] == client_a.usuario_id
+        assert pago["negocio_id"] == client_a.negocio_id
 
         assert client_b.get(f"/api/pagos/{pago['id']}").status_code == 404
         assert client_b.patch(

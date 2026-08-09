@@ -2,7 +2,7 @@
 Tests for FacturaRepository and FacturaItemRepository (Task 2.1 — TDD RED, then GREEN).
 
 Covers:
-- list_by_usuario: returns active facturas, FIFO order, scoped to user
+- list_by_negocio: returns active facturas, FIFO order, scoped to user
 - get_with_items: returns factura with its items
 - create_with_items: atomic create of factura + items
 - update_with_items: replaces items atomically
@@ -20,6 +20,8 @@ from sqlalchemy import create_engine
 from sqlmodel import Session, SQLModel
 
 import app.models  # noqa: F401 — ensures all SQLModel tables are registered
+
+from tests.conftest import crear_negocio
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -47,6 +49,7 @@ def _make_usuario(session: Session):
     from app.core.uuid_utils import new_uuid
 
     u = Usuario(
+        negocio_id=crear_negocio(session).id,
         id=new_uuid(),
         email=f"repo_fac_{uuid.uuid4().hex[:8]}@test.com",
         nombre="Repo Factura Test",
@@ -57,14 +60,14 @@ def _make_usuario(session: Session):
     return u
 
 
-def _make_proveedor(session: Session, usuario_id: uuid.UUID):
+def _make_proveedor(session: Session, negocio_id: uuid.UUID):
     from app.models.proveedor import Proveedor
     from app.core.uuid_utils import new_uuid
     from app.models.enums import CategoriaProveedor
 
     p = Proveedor(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         nombre=f"Prov {uuid.uuid4().hex[:6]}",
         categoria=CategoriaProveedor.OTRO,
     )
@@ -75,7 +78,7 @@ def _make_proveedor(session: Session, usuario_id: uuid.UUID):
 
 def _make_factura(
     session: Session,
-    usuario_id: uuid.UUID,
+    negocio_id: uuid.UUID,
     proveedor_id: uuid.UUID,
     monto_total: Decimal = Decimal("100.00"),
     fecha_emision: date | None = None,
@@ -86,7 +89,7 @@ def _make_factura(
 
     f = Factura(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         proveedor_id=proveedor_id,
         fecha_emision=fecha_emision or date.today(),
         monto_total=monto_total,
@@ -97,7 +100,7 @@ def _make_factura(
     return f
 
 
-# ── list_by_usuario ───────────────────────────────────────────────────────────
+# ── list_by_negocio ───────────────────────────────────────────────────────────
 
 
 class TestListByUsuario:
@@ -105,13 +108,13 @@ class TestListByUsuario:
         from app.repositories.factura_repository import FacturaRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        f1 = _make_factura(session, u.id, p.id, Decimal("100.00"))
-        f2 = _make_factura(session, u.id, p.id, Decimal("200.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        f1 = _make_factura(session, u.negocio_id, p.id, Decimal("100.00"))
+        f2 = _make_factura(session, u.negocio_id, p.id, Decimal("200.00"))
         session.commit()
 
         repo = FacturaRepository(session)
-        results = repo.list_by_usuario(u.id)
+        results = repo.list_by_negocio(u.negocio_id)
         ids = [r.id for r in results]
 
         assert f1.id in ids
@@ -122,15 +125,15 @@ class TestListByUsuario:
         from datetime import datetime, timezone
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        f_active = _make_factura(session, u.id, p.id, Decimal("100.00"))
-        f_deleted = _make_factura(session, u.id, p.id, Decimal("200.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        f_active = _make_factura(session, u.negocio_id, p.id, Decimal("100.00"))
+        f_deleted = _make_factura(session, u.negocio_id, p.id, Decimal("200.00"))
         f_deleted.deleted_at = datetime.now(timezone.utc)
         session.add(f_deleted)
         session.commit()
 
         repo = FacturaRepository(session)
-        results = repo.list_by_usuario(u.id)
+        results = repo.list_by_negocio(u.negocio_id)
         ids = [r.id for r in results]
 
         assert f_active.id in ids
@@ -142,12 +145,12 @@ class TestListByUsuario:
 
         u_a = _make_usuario(session)
         u_b = _make_usuario(session)
-        p_a = _make_proveedor(session, u_a.id)
-        f_a = _make_factura(session, u_a.id, p_a.id)
+        p_a = _make_proveedor(session, u_a.negocio_id)
+        f_a = _make_factura(session, u_a.negocio_id, p_a.id)
         session.commit()
 
         repo = FacturaRepository(session)
-        results_b = repo.list_by_usuario(u_b.id)
+        results_b = repo.list_by_negocio(u_b.negocio_id)
 
         assert f_a.id not in [r.id for r in results_b]
 
@@ -155,14 +158,14 @@ class TestListByUsuario:
         from app.repositories.factura_repository import FacturaRepository
 
         u = _make_usuario(session)
-        p1 = _make_proveedor(session, u.id)
-        p2 = _make_proveedor(session, u.id)
-        f1 = _make_factura(session, u.id, p1.id, Decimal("100.00"))
-        f2 = _make_factura(session, u.id, p2.id, Decimal("200.00"))
+        p1 = _make_proveedor(session, u.negocio_id)
+        p2 = _make_proveedor(session, u.negocio_id)
+        f1 = _make_factura(session, u.negocio_id, p1.id, Decimal("100.00"))
+        f2 = _make_factura(session, u.negocio_id, p2.id, Decimal("200.00"))
         session.commit()
 
         repo = FacturaRepository(session)
-        results = repo.list_by_usuario(u.id, proveedor_id=p1.id)
+        results = repo.list_by_negocio(u.negocio_id, proveedor_id=p1.id)
         ids = [r.id for r in results]
 
         assert f1.id in ids
@@ -173,17 +176,17 @@ class TestListByUsuario:
         from app.repositories.factura_repository import FacturaRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         today = date.today()
         yesterday = today - timedelta(days=1)
 
-        f_today = _make_factura(session, u.id, p.id, Decimal("100.00"), fecha_emision=today)
-        f_yesterday = _make_factura(session, u.id, p.id, Decimal("200.00"), fecha_emision=yesterday)
+        f_today = _make_factura(session, u.negocio_id, p.id, Decimal("100.00"), fecha_emision=today)
+        f_yesterday = _make_factura(session, u.negocio_id, p.id, Decimal("200.00"), fecha_emision=yesterday)
         session.commit()
 
         repo = FacturaRepository(session)
-        results = repo.list_by_usuario(u.id, proveedor_id=p.id)
+        results = repo.list_by_negocio(u.negocio_id, proveedor_id=p.id)
 
         # Yesterday should come first (FIFO: oldest first)
         ids = [r.id for r in results]
@@ -200,8 +203,8 @@ class TestGetWithItems:
         from app.core.uuid_utils import new_uuid
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        f = _make_factura(session, u.id, p.id, Decimal("300.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        f = _make_factura(session, u.negocio_id, p.id, Decimal("300.00"))
 
         item = FacturaItem(
             id=new_uuid(),
@@ -238,7 +241,7 @@ class TestCreateWithItems:
         from app.models.enums import OrigenDocumento
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         repo = FacturaRepository(session)
         item_data = [
@@ -246,7 +249,7 @@ class TestCreateWithItems:
         ]
 
         factura = repo.create_with_items(
-            usuario_id=u.id,
+            negocio_id=u.negocio_id,
             proveedor_id=p.id,
             fecha_emision=date.today(),
             monto_total=Decimal("100.00"),
@@ -270,11 +273,11 @@ class TestCreateWithItems:
         from app.models.enums import OrigenDocumento
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         repo = FacturaRepository(session)
         factura = repo.create_with_items(
-            usuario_id=u.id,
+            negocio_id=u.negocio_id,
             proveedor_id=p.id,
             fecha_emision=date.today(),
             monto_total=Decimal("500.00"),
@@ -295,11 +298,11 @@ class TestUpdateWithItems:
         from app.models.enums import OrigenDocumento
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         repo = FacturaRepository(session)
         factura = repo.create_with_items(
-            usuario_id=u.id,
+            negocio_id=u.negocio_id,
             proveedor_id=p.id,
             fecha_emision=date.today(),
             monto_total=Decimal("100.00"),
@@ -341,11 +344,11 @@ class TestSoftDelete:
         from app.models.enums import OrigenDocumento
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         repo = FacturaRepository(session)
         factura = repo.create_with_items(
-            usuario_id=u.id,
+            negocio_id=u.negocio_id,
             proveedor_id=p.id,
             fecha_emision=date.today(),
             monto_total=Decimal("100.00"),
@@ -369,11 +372,11 @@ class TestSoftDelete:
         from app.models.enums import OrigenDocumento
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         repo = FacturaRepository(session)
         factura = repo.create_with_items(
-            usuario_id=u.id,
+            negocio_id=u.negocio_id,
             proveedor_id=p.id,
             fecha_emision=date.today(),
             monto_total=Decimal("100.00"),

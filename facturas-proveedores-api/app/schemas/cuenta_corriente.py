@@ -37,7 +37,7 @@ class FacturaConEstado(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    usuario_id: uuid.UUID
+    negocio_id: uuid.UUID
     proveedor_id: uuid.UUID
     numero: Optional[str] = None
     fecha_emision: date

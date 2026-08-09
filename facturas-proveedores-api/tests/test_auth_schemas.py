@@ -81,6 +81,7 @@ class TestUsuarioResponse:
 
         resp = UsuarioResponse(
             id=uuid.uuid4(),
+            negocio_id=uuid.uuid4(),
             email="user@example.com",
             nombre="User",
             created_at=datetime.now(timezone.utc),
@@ -98,6 +99,7 @@ class TestUsuarioResponse:
         uid = uuid.uuid4()
         resp = UsuarioResponse(
             id=uid,
+            negocio_id=uuid.uuid4(),
             email="user@example.com",
             nombre="User",
             created_at=datetime.now(timezone.utc),

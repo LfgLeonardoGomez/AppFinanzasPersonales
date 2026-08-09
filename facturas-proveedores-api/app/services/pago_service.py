@@ -2,7 +2,7 @@
 PagoService — business logic for payment management.
 
 Design decisions (C-10 design.md):
-- D3: _get_owned_pago(usuario_id, pago_id) → Pago raises 404 on missing,
+- D3: _get_owned_pago(negocio_id, pago_id) → Pago raises 404 on missing,
   foreign, or soft-deleted. Single place that reads a Pago by id from the
   service layer.
 - D4: Defense-in-depth validation beyond Pydantic — monto > 0, fecha
@@ -17,7 +17,7 @@ Design decisions (C-10 design.md):
   filters deleted_at IS NULL by default).
 
 Hard rules enforced here:
-- usuario_id is ALWAYS taken from the service arg, never from the payload.
+- negocio_id is ALWAYS taken from the service arg, never from the payload.
 - All authorization lives HERE; router just wires Depends(get_current_user).
 - Raises HTTPException(404) on foreign/missing/deleted resource.
 - NEVER persists saldo or estado.
@@ -66,7 +66,7 @@ class PagoService:
     """
     Business logic for payment CRUD.
 
-    All public methods take usuario_id as the first argument after self.
+    All public methods take negocio_id as the first argument after self.
     The router passes get_current_user.id here — never from the request body.
     """
 
@@ -78,7 +78,7 @@ class PagoService:
     # ── Private helpers (D3, D4) ───────────────────────────────────────────────
 
     def _get_owned_pago(
-        self, usuario_id: uuid.UUID, pago_id: uuid.UUID
+        self, negocio_id: uuid.UUID, pago_id: uuid.UUID
     ) -> Pago:
         """
         Fetch a pago by id, verifying ownership and active status.
@@ -92,13 +92,13 @@ class PagoService:
         if (
             entity is None
             or entity.deleted_at is not None
-            or entity.usuario_id != usuario_id
+            or entity.negocio_id != negocio_id
         ):
             raise _NOT_FOUND
         return entity
 
     def _get_owned_proveedor(
-        self, usuario_id: uuid.UUID, proveedor_id: uuid.UUID
+        self, negocio_id: uuid.UUID, proveedor_id: uuid.UUID
     ) -> Proveedor:
         """
         Fetch a proveedor by id, verifying ownership and active status.
@@ -110,7 +110,7 @@ class PagoService:
         if (
             entity is None
             or entity.deleted_at is not None
-            or entity.usuario_id != usuario_id
+            or entity.negocio_id != negocio_id
         ):
             raise _PROVEEDOR_NOT_FOUND
         return entity
@@ -141,26 +141,28 @@ class PagoService:
 
     def crear(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         datos: PagoCreate,
+        creado_por_usuario_id: uuid.UUID | None = None,
     ) -> Pago:
         """
-        Create a new payment for a supplier owned by usuario_id.
+        Create a new payment for a supplier owned by negocio_id.
 
         Validates (in order):
-        - proveedor exists, is active, and belongs to usuario_id (D3, D7).
+        - proveedor exists, is active, and belongs to negocio_id (D3, D7).
         - fecha not in the future (UTC-3 wall clock, D5, RN-PAG-03).
         - monto > 0 (defense in depth, RN-PAG-02).
 
-        Stamps origen=MANUAL automatically (D5, RN-PAG-04). usuario_id is
+        Stamps origen=MANUAL automatically (D5, RN-PAG-04). negocio_id is
         taken from the arg — never from the payload.
         """
-        proveedor = self._get_owned_proveedor(usuario_id, datos.proveedor_id)
+        proveedor = self._get_owned_proveedor(negocio_id, datos.proveedor_id)
         self._validate_fecha_not_future(datos.fecha)
         self._validate_monto_positive(datos.monto)
 
         pago = self._repo.create(
-            usuario_id=usuario_id,
+            negocio_id=negocio_id,
+            creado_por_usuario_id=creado_por_usuario_id,
             proveedor_id=proveedor.id,
             monto=datos.monto,
             fecha=datos.fecha,
@@ -172,7 +174,7 @@ class PagoService:
 
     def listar(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         proveedor_id: Optional[uuid.UUID] = None,
         page: int = 1,
         page_size: int = 50,
@@ -193,10 +195,10 @@ class PagoService:
             # Validate the proveedor belongs to the user (returns 404 on
             # foreign — same pattern as crear). Avoids leaking a foreign
             # proveedor's existence via the listing.
-            self._get_owned_proveedor(usuario_id, proveedor_id)
+            self._get_owned_proveedor(negocio_id, proveedor_id)
 
-        return self._repo.list_by_usuario(
-            usuario_id,
+        return self._repo.list_by_negocio(
+            negocio_id,
             page=page,
             page_size=page_size,
             proveedor_id=proveedor_id,
@@ -204,32 +206,32 @@ class PagoService:
 
     def get(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         pago_id: uuid.UUID,
     ) -> Pago:
         """
-        Return a single payment owned by usuario_id (D3).
+        Return a single payment owned by negocio_id (D3).
 
         Raises HTTPException(404) if missing, soft-deleted, or foreign.
         """
-        return self._get_owned_pago(usuario_id, pago_id)
+        return self._get_owned_pago(negocio_id, pago_id)
 
     def actualizar(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         pago_id: uuid.UUID,
         datos: PagoUpdate,
     ) -> Pago:
         """
-        Partially update a payment owned by usuario_id (D7).
+        Partially update a payment owned by negocio_id (D7).
 
         Only fields explicitly set (non-None) are applied. proveedor_id
         is NOT changeable via this method (would corrupt the FIFO pool's
-        history). usuario_id and origen are immutable.
+        history). negocio_id and origen are immutable.
 
         Re-validates monto > 0 and fecha ≤ today(UTC-3) when provided.
         """
-        pago = self._get_owned_pago(usuario_id, pago_id)
+        pago = self._get_owned_pago(negocio_id, pago_id)
 
         update_data = datos.model_dump(exclude_unset=True)
         if not update_data:
@@ -247,11 +249,11 @@ class PagoService:
 
     def eliminar(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         pago_id: uuid.UUID,
     ) -> dict:
         """
-        Soft-delete a payment owned by usuario_id (D8).
+        Soft-delete a payment owned by negocio_id (D8).
 
         Raises HTTPException(404) if the payment is missing, soft-deleted,
         or foreign. The row is preserved in the DB (FK integrity). After
@@ -259,7 +261,7 @@ class PagoService:
         the C-08 `FacturaService` FIFO pool) automatically excludes it.
         """
         # Use _get_owned_pago so soft-deleted pagos → 404 (D8).
-        self._get_owned_pago(usuario_id, pago_id)
+        self._get_owned_pago(negocio_id, pago_id)
         self._repo.soft_delete(pago_id)
         return {"id": pago_id}
 

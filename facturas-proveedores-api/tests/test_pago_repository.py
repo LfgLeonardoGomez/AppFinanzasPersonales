@@ -4,7 +4,7 @@ Tests for PagoRepository (Task 2.1 — TDD RED, then GREEN).
 Covers:
 - list_by_proveedor: filters deleted_at IS NULL by default; FIFO-order list
   consumed by FacturaService (C-08 contract — MUST NOT regress).
-- list_by_usuario: paginated, ordered fecha DESC / created_at DESC / id DESC;
+- list_by_negocio: paginated, ordered fecha DESC / created_at DESC / id DESC;
   optional proveedor_id filter; excludes soft-deleted.
 - get: returns row regardless of deleted_at.
 - create: persists with all fields including origen=MANUAL.
@@ -23,6 +23,8 @@ from sqlalchemy import create_engine
 from sqlmodel import Session, SQLModel
 
 import app.models  # noqa: F401 — register all SQLModel tables
+
+from tests.conftest import crear_negocio
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -50,6 +52,7 @@ def _make_usuario(session: Session):
     from app.core.uuid_utils import new_uuid
 
     u = Usuario(
+        negocio_id=crear_negocio(session).id,
         id=new_uuid(),
         email=f"repo_pago_{uuid.uuid4().hex[:8]}@test.com",
         nombre="Repo Pago Test",
@@ -60,14 +63,14 @@ def _make_usuario(session: Session):
     return u
 
 
-def _make_proveedor(session: Session, usuario_id: uuid.UUID):
+def _make_proveedor(session: Session, negocio_id: uuid.UUID):
     from app.models.proveedor import Proveedor
     from app.core.uuid_utils import new_uuid
     from app.models.enums import CategoriaProveedor
 
     p = Proveedor(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         nombre=f"Prov {uuid.uuid4().hex[:6]}",
         categoria=CategoriaProveedor.OTRO,
     )
@@ -78,7 +81,7 @@ def _make_proveedor(session: Session, usuario_id: uuid.UUID):
 
 def _make_pago(
     session: Session,
-    usuario_id: uuid.UUID,
+    negocio_id: uuid.UUID,
     proveedor_id: uuid.UUID,
     monto: Decimal = Decimal("100.00"),
     fecha: date | None = None,
@@ -90,7 +93,7 @@ def _make_pago(
 
     p = Pago(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         proveedor_id=proveedor_id,
         monto=monto,
         fecha=fecha or date.today(),
@@ -115,16 +118,16 @@ class TestListByProveedor:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         today = date.today()
         yesterday = today - timedelta(days=1)
-        _make_pago(session, u.id, p.id, Decimal("100.00"), fecha=yesterday)
-        _make_pago(session, u.id, p.id, Decimal("200.00"), fecha=today)
+        _make_pago(session, u.negocio_id, p.id, Decimal("100.00"), fecha=yesterday)
+        _make_pago(session, u.negocio_id, p.id, Decimal("200.00"), fecha=today)
         session.commit()
 
         repo = PagoRepository(session)
-        results = repo.list_by_proveedor(u.id, p.id)
+        results = repo.list_by_proveedor(u.negocio_id, p.id)
 
         assert len(results) == 2
         # fecha ASC: yesterday comes first
@@ -136,14 +139,14 @@ class TestListByProveedor:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
-        active = _make_pago(session, u.id, p.id, Decimal("100.00"))
-        deleted = _make_pago(session, u.id, p.id, Decimal("200.00"), deleted=True)
+        active = _make_pago(session, u.negocio_id, p.id, Decimal("100.00"))
+        deleted = _make_pago(session, u.negocio_id, p.id, Decimal("200.00"), deleted=True)
         session.commit()
 
         repo = PagoRepository(session)
-        results = repo.list_by_proveedor(u.id, p.id)
+        results = repo.list_by_proveedor(u.negocio_id, p.id)
 
         ids = [r.id for r in results]
         assert active.id in ids
@@ -153,14 +156,14 @@ class TestListByProveedor:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
-        active = _make_pago(session, u.id, p.id, Decimal("100.00"))
-        deleted = _make_pago(session, u.id, p.id, Decimal("200.00"), deleted=True)
+        active = _make_pago(session, u.negocio_id, p.id, Decimal("100.00"))
+        deleted = _make_pago(session, u.negocio_id, p.id, Decimal("200.00"), deleted=True)
         session.commit()
 
         repo = PagoRepository(session)
-        results = repo.list_by_proveedor(u.id, p.id, include_deleted=True)
+        results = repo.list_by_proveedor(u.negocio_id, p.id, include_deleted=True)
 
         ids = [r.id for r in results]
         assert active.id in ids
@@ -171,22 +174,22 @@ class TestListByProveedor:
 
         u_a = _make_usuario(session)
         u_b = _make_usuario(session)
-        p_a = _make_proveedor(session, u_a.id)
-        p_b = _make_proveedor(session, u_b.id)
+        p_a = _make_proveedor(session, u_a.negocio_id)
+        p_b = _make_proveedor(session, u_b.negocio_id)
 
-        pago_a = _make_pago(session, u_a.id, p_a.id, Decimal("100.00"))
-        pago_b = _make_pago(session, u_b.id, p_b.id, Decimal("200.00"))
+        pago_a = _make_pago(session, u_a.negocio_id, p_a.id, Decimal("100.00"))
+        pago_b = _make_pago(session, u_b.negocio_id, p_b.id, Decimal("200.00"))
         session.commit()
 
         repo = PagoRepository(session)
         # User A asks for their proveedor — should only get pago_a
-        results_a = repo.list_by_proveedor(u_a.id, p_a.id)
+        results_a = repo.list_by_proveedor(u_a.negocio_id, p_a.id)
         ids_a = [r.id for r in results_a]
         assert pago_a.id in ids_a
         assert pago_b.id not in ids_a
 
 
-# ── list_by_usuario (new in C-10) ─────────────────────────────────────────────
+# ── list_by_negocio (new in C-10) ─────────────────────────────────────────────
 
 
 class TestListByUsuario:
@@ -194,14 +197,14 @@ class TestListByUsuario:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         for i in range(3):
-            _make_pago(session, u.id, p.id, Decimal(f"{(i+1)*100}.00"))
+            _make_pago(session, u.negocio_id, p.id, Decimal(f"{(i+1)*100}.00"))
         session.commit()
 
         repo = PagoRepository(session)
-        items, total = repo.list_by_usuario(u.id, page=1, page_size=10)
+        items, total = repo.list_by_negocio(u.negocio_id, page=1, page_size=10)
 
         assert total == 3
         assert len(items) == 3
@@ -210,14 +213,14 @@ class TestListByUsuario:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
-        active = _make_pago(session, u.id, p.id, Decimal("100.00"))
-        deleted = _make_pago(session, u.id, p.id, Decimal("200.00"), deleted=True)
+        active = _make_pago(session, u.negocio_id, p.id, Decimal("100.00"))
+        deleted = _make_pago(session, u.negocio_id, p.id, Decimal("200.00"), deleted=True)
         session.commit()
 
         repo = PagoRepository(session)
-        items, total = repo.list_by_usuario(u.id)
+        items, total = repo.list_by_negocio(u.negocio_id)
 
         ids = [r.id for r in items]
         assert active.id in ids
@@ -228,14 +231,14 @@ class TestListByUsuario:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
-        old = _make_pago(session, u.id, p.id, Decimal("100.00"), fecha=date(2024, 1, 1))
-        new = _make_pago(session, u.id, p.id, Decimal("200.00"), fecha=date(2024, 12, 1))
+        old = _make_pago(session, u.negocio_id, p.id, Decimal("100.00"), fecha=date(2024, 1, 1))
+        new = _make_pago(session, u.negocio_id, p.id, Decimal("200.00"), fecha=date(2024, 12, 1))
         session.commit()
 
         repo = PagoRepository(session)
-        items, _ = repo.list_by_usuario(u.id)
+        items, _ = repo.list_by_negocio(u.negocio_id)
 
         ids = [r.id for r in items]
         assert ids.index(new.id) < ids.index(old.id)
@@ -244,15 +247,15 @@ class TestListByUsuario:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p1 = _make_proveedor(session, u.id)
-        p2 = _make_proveedor(session, u.id)
+        p1 = _make_proveedor(session, u.negocio_id)
+        p2 = _make_proveedor(session, u.negocio_id)
 
-        pago_p1 = _make_pago(session, u.id, p1.id, Decimal("100.00"))
-        pago_p2 = _make_pago(session, u.id, p2.id, Decimal("200.00"))
+        pago_p1 = _make_pago(session, u.negocio_id, p1.id, Decimal("100.00"))
+        pago_p2 = _make_pago(session, u.negocio_id, p2.id, Decimal("200.00"))
         session.commit()
 
         repo = PagoRepository(session)
-        items, total = repo.list_by_usuario(u.id, proveedor_id=p1.id)
+        items, total = repo.list_by_negocio(u.negocio_id, proveedor_id=p1.id)
 
         ids = [r.id for r in items]
         assert pago_p1.id in ids
@@ -263,12 +266,12 @@ class TestListByUsuario:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         for i in range(5):
             _make_pago(
                 session,
-                u.id,
+                u.negocio_id,
                 p.id,
                 Decimal(f"{(i+1)*100}.00"),
                 fecha=date(2024, 1, i + 1),
@@ -276,8 +279,8 @@ class TestListByUsuario:
         session.commit()
 
         repo = PagoRepository(session)
-        page1, total = repo.list_by_usuario(u.id, page=1, page_size=2)
-        page2, _ = repo.list_by_usuario(u.id, page=2, page_size=2)
+        page1, total = repo.list_by_negocio(u.negocio_id, page=1, page_size=2)
+        page2, _ = repo.list_by_negocio(u.negocio_id, page=2, page_size=2)
 
         assert total == 5
         assert len(page1) == 2
@@ -292,15 +295,15 @@ class TestListByUsuario:
 
         u_a = _make_usuario(session)
         u_b = _make_usuario(session)
-        p_a = _make_proveedor(session, u_a.id)
-        p_b = _make_proveedor(session, u_b.id)
+        p_a = _make_proveedor(session, u_a.negocio_id)
+        p_b = _make_proveedor(session, u_b.negocio_id)
 
-        pago_a = _make_pago(session, u_a.id, p_a.id, Decimal("100.00"))
-        pago_b = _make_pago(session, u_b.id, p_b.id, Decimal("200.00"))
+        pago_a = _make_pago(session, u_a.negocio_id, p_a.id, Decimal("100.00"))
+        pago_b = _make_pago(session, u_b.negocio_id, p_b.id, Decimal("200.00"))
         session.commit()
 
         repo = PagoRepository(session)
-        items_b, total_b = repo.list_by_usuario(u_b.id)
+        items_b, total_b = repo.list_by_negocio(u_b.negocio_id)
 
         ids_b = [r.id for r in items_b]
         assert pago_a.id not in ids_b
@@ -317,8 +320,8 @@ class TestGet:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        deleted = _make_pago(session, u.id, p.id, Decimal("100.00"), deleted=True)
+        p = _make_proveedor(session, u.negocio_id)
+        deleted = _make_pago(session, u.negocio_id, p.id, Decimal("100.00"), deleted=True)
         session.commit()
 
         repo = PagoRepository(session)
@@ -344,11 +347,11 @@ class TestCreate:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         repo = PagoRepository(session)
         pago = repo.create(
-            usuario_id=u.id,
+            negocio_id=u.negocio_id,
             proveedor_id=p.id,
             monto=Decimal("500.00"),
             fecha=date(2024, 6, 15),
@@ -359,7 +362,7 @@ class TestCreate:
         session.commit()
 
         assert pago.id is not None
-        assert pago.usuario_id == u.id
+        assert pago.negocio_id == u.negocio_id
         assert pago.proveedor_id == p.id
         assert pago.monto == Decimal("500.00")
         assert pago.metodo.value == "TRANSFERENCIA"
@@ -370,11 +373,11 @@ class TestCreate:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         repo = PagoRepository(session)
         pago = repo.create(
-            usuario_id=u.id,
+            negocio_id=u.negocio_id,
             proveedor_id=p.id,
             monto=Decimal("100.00"),
             fecha=date.today(),
@@ -394,8 +397,8 @@ class TestUpdate:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        pago = _make_pago(session, u.id, p.id, Decimal("100.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        pago = _make_pago(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
 
         repo = PagoRepository(session)
@@ -421,8 +424,8 @@ class TestSoftDelete:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        pago = _make_pago(session, u.id, p.id, Decimal("100.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        pago = _make_pago(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
 
         repo = PagoRepository(session)
@@ -437,8 +440,8 @@ class TestSoftDelete:
         from app.repositories.pago_repository import PagoRepository
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        pago = _make_pago(session, u.id, p.id, Decimal("100.00"))
+        p = _make_proveedor(session, u.negocio_id)
+        pago = _make_pago(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
 
         repo = PagoRepository(session)

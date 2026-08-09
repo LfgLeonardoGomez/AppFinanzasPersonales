@@ -3,7 +3,7 @@ Pydantic schemas for Proveedor (supplier) endpoints.
 
 Design decisions (D7, C-06 design.md):
 - ProveedorCreate: nombre required/non-empty; cuit optional with regex validator.
-  No usuario_id — taken from the session, never from the payload.
+  No negocio_id — taken from the session, never from the payload.
 - ProveedorUpdate: all fields optional (PATCH semantics), same cuit validator.
 - ProveedorResponse: full supplier + saldo: Decimal (never float). from_attributes=True.
 - ProveedorListItem: lean list row with saldo.
@@ -49,7 +49,7 @@ class ProveedorCreate(BaseModel):
 
     - nombre: required, non-empty string.
     - cuit: optional; validated against ^\\d{2}-\\d{8}-\\d{1}$.
-    - usuario_id is NOT accepted here — the service sets it from the session.
+    - negocio_id is NOT accepted here — the service sets it from the session.
     """
 
     nombre: str
@@ -75,7 +75,7 @@ class ProveedorUpdate(BaseModel):
     """
     Payload for partial update of a supplier (PATCH semantics).
 
-    All fields optional. Same CUIT validator. No usuario_id.
+    All fields optional. Same CUIT validator. No negocio_id.
     """
 
     nombre: Optional[str] = None

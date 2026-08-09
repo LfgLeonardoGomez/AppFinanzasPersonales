@@ -17,6 +17,9 @@ from sqlalchemy.exc import IntegrityError
 # Import all models so SQLModel registers their metadata
 import app.models  # noqa: F401 — triggers __init__.py which registers all tables
 
+from tests.conftest import crear_negocio
+
+
 
 # ── Engine / Session fixtures ──────────────────────────────────────────────────
 
@@ -39,25 +42,28 @@ def session(engine):
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def make_usuario(suffix: str = "") -> "app.models.Usuario":
+def make_usuario(session, suffix: str = "") -> "app.models.Usuario":
     from app.models.usuario import Usuario
+    from tests.conftest import crear_negocio
+
     return Usuario(
+        negocio_id=crear_negocio(session).id,
         email=f"test{suffix}@example.com",
         nombre=f"Test User {suffix}",
         password_hash="hashed_pw",
     )
 
 
-def make_proveedor(usuario_id: uuid.UUID, nombre: str = "Acme") -> "app.models.Proveedor":
+def make_proveedor(negocio_id: uuid.UUID, nombre: str = "Acme") -> "app.models.Proveedor":
     from app.models.proveedor import Proveedor
-    return Proveedor(usuario_id=usuario_id, nombre=nombre)
+    return Proveedor(negocio_id=negocio_id, nombre=nombre)
 
 
-def make_factura(usuario_id: uuid.UUID, proveedor_id: uuid.UUID) -> "app.models.Factura":
+def make_factura(negocio_id: uuid.UUID, proveedor_id: uuid.UUID) -> "app.models.Factura":
     from app.models.factura import Factura
     from app.models.enums import OrigenDocumento
     return Factura(
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         proveedor_id=proveedor_id,
         fecha_emision=date(2024, 1, 15),
         monto_total=Decimal("1500.50"),
@@ -71,8 +77,8 @@ def test_usuario_email_unique_constraint(session: Session):
     """Spec: second Usuario with same email must be rejected by DB uniqueness."""
     from app.models.usuario import Usuario
 
-    u1 = Usuario(email="dup@test.com", nombre="First", password_hash="h1")
-    u2 = Usuario(email="dup@test.com", nombre="Second", password_hash="h2")
+    u1 = Usuario(negocio_id=crear_negocio(session).id, email="dup@test.com", nombre="First", password_hash="h1")
+    u2 = Usuario(negocio_id=crear_negocio(session).id, email="dup@test.com", nombre="Second", password_hash="h2")
     session.add(u1)
     session.flush()  # send to DB without commit
 
@@ -85,7 +91,7 @@ def test_usuario_optional_fields_accept_null(session: Session):
     """Spec: telefono, avatar_url, nombre_negocio can be null."""
     from app.models.usuario import Usuario
 
-    u = Usuario(email="nulls@test.com", nombre="Nulls", password_hash="h")
+    u = Usuario(negocio_id=crear_negocio(session).id, email="nulls@test.com", nombre="Nulls", password_hash="h")
     session.add(u)
     session.commit()
     session.refresh(u)
@@ -100,7 +106,7 @@ def test_usuario_tema_preferido_defaults_to_claro(session: Session):
     from app.models.usuario import Usuario
     from app.models.enums import TemaPreferido
 
-    u = Usuario(email="tema@test.com", nombre="Tema User", password_hash="h")
+    u = Usuario(negocio_id=crear_negocio(session).id, email="tema@test.com", nombre="Tema User", password_hash="h")
     session.add(u)
     session.commit()
     session.refresh(u)
@@ -109,23 +115,33 @@ def test_usuario_tema_preferido_defaults_to_claro(session: Session):
 
 
 def test_usuario_has_no_deleted_at():
-    """Spec: Usuario must NOT have deleted_at (D-C02-2)."""
+    """Spec: Usuario must NOT have deleted_at.
+
+    C-28 (D-32) keeps this true and adds `desactivado` instead: revoking access
+    is not deleting the row. In-memory only — no tenant row needed.
+    """
     from app.models.usuario import Usuario
 
-    u = Usuario(email="nodelete@test.com", nombre="NoDelete", password_hash="h")
+    u = Usuario(
+        negocio_id=uuid.uuid4(),
+        email="nodelete@test.com",
+        nombre="NoDelete",
+        password_hash="h",
+    )
     assert not hasattr(u, "deleted_at")
+    assert u.desactivado is False
 
 
 # ── Task 3.2: Proveedor ───────────────────────────────────────────────────────
 
 def test_proveedor_nombre_not_unique(session: Session):
     """Spec: two suppliers with same nombre for same user must be accepted."""
-    u = make_usuario("prv1")
+    u = make_usuario(session, "prv1")
     session.add(u)
     session.flush()
 
-    p1 = make_proveedor(u.id, nombre="Duplicate Name")
-    p2 = make_proveedor(u.id, nombre="Duplicate Name")
+    p1 = make_proveedor(u.negocio_id, nombre="Duplicate Name")
+    p2 = make_proveedor(u.negocio_id, nombre="Duplicate Name")
     session.add(p1)
     session.add(p2)
     session.commit()  # must NOT raise IntegrityError
@@ -137,11 +153,11 @@ def test_proveedor_categoria_defaults_to_otro(session: Session):
     """Spec: categoria defaults to OTRO when not specified."""
     from app.models.enums import CategoriaProveedor
 
-    u = make_usuario("prv2")
+    u = make_usuario(session, "prv2")
     session.add(u)
     session.flush()
 
-    p = make_proveedor(u.id)
+    p = make_proveedor(u.negocio_id)
     session.add(p)
     session.commit()
     session.refresh(p)
@@ -151,11 +167,11 @@ def test_proveedor_categoria_defaults_to_otro(session: Session):
 
 def test_proveedor_deleted_at_is_null_by_default(session: Session):
     """Spec: Proveedor starts with deleted_at = null (active)."""
-    u = make_usuario("prv3")
+    u = make_usuario(session, "prv3")
     session.add(u)
     session.flush()
 
-    p = make_proveedor(u.id)
+    p = make_proveedor(u.negocio_id)
     session.add(p)
     session.commit()
     session.refresh(p)
@@ -169,19 +185,19 @@ def test_factura_has_usuario_id_and_proveedor_id(session: Session):
     """Spec: Factura has both usuario_id (denormalized) and proveedor_id."""
     from app.models.factura import Factura
 
-    u = make_usuario("fac1")
+    u = make_usuario(session, "fac1")
     session.add(u)
     session.flush()
-    p = make_proveedor(u.id)
+    p = make_proveedor(u.negocio_id)
     session.add(p)
     session.flush()
 
-    f = make_factura(u.id, p.id)
+    f = make_factura(u.negocio_id, p.id)
     session.add(f)
     session.commit()
     session.refresh(f)
 
-    assert f.usuario_id == u.id
+    assert f.negocio_id == u.negocio_id
     assert f.proveedor_id == p.id
 
 
@@ -197,17 +213,17 @@ def test_factura_schema_has_no_estado_column():
 
 def test_factura_monto_total_preserves_two_decimals(session: Session):
     """Spec: monto_total stored as numeric(12,2) preserving two decimal places."""
-    u = make_usuario("fac2")
+    u = make_usuario(session, "fac2")
     session.add(u)
     session.flush()
-    p = make_proveedor(u.id)
+    p = make_proveedor(u.negocio_id)
     session.add(p)
     session.flush()
 
     from app.models.factura import Factura
     from app.models.enums import OrigenDocumento
     f = Factura(
-        usuario_id=u.id,
+        negocio_id=u.negocio_id,
         proveedor_id=p.id,
         fecha_emision=date(2024, 3, 1),
         monto_total=Decimal("999.99"),
@@ -222,14 +238,14 @@ def test_factura_monto_total_preserves_two_decimals(session: Session):
 
 def test_factura_item_cantidad_admits_decimals(session: Session):
     """Spec: FacturaItem.cantidad must support decimal values (e.g. 2.5)."""
-    u = make_usuario("fac3")
+    u = make_usuario(session, "fac3")
     session.add(u)
     session.flush()
-    p = make_proveedor(u.id)
+    p = make_proveedor(u.negocio_id)
     session.add(p)
     session.flush()
 
-    f = make_factura(u.id, p.id)
+    f = make_factura(u.negocio_id, p.id)
     session.add(f)
     session.flush()
 
@@ -272,15 +288,15 @@ def test_pago_persisted_linked_only_to_proveedor(session: Session):
     from app.models.pago import Pago
     from app.models.enums import MetodoPago, OrigenDocumento
 
-    u = make_usuario("pag1")
+    u = make_usuario(session, "pag1")
     session.add(u)
     session.flush()
-    p = make_proveedor(u.id)
+    p = make_proveedor(u.negocio_id)
     session.add(p)
     session.flush()
 
     pago = Pago(
-        usuario_id=u.id,
+        negocio_id=u.negocio_id,
         proveedor_id=p.id,
         monto=Decimal("500.00"),
         fecha=date(2024, 2, 10),
@@ -292,7 +308,7 @@ def test_pago_persisted_linked_only_to_proveedor(session: Session):
     session.refresh(pago)
 
     assert pago.id is not None
-    assert pago.usuario_id == u.id
+    assert pago.negocio_id == u.negocio_id
     assert pago.proveedor_id == p.id
     assert not hasattr(pago, "factura_id") or "factura_id" not in {c.name for c in Pago.__table__.columns}
 
@@ -302,15 +318,15 @@ def test_pago_monto_is_decimal_numeric(session: Session):
     from app.models.pago import Pago
     from app.models.enums import MetodoPago, OrigenDocumento
 
-    u = make_usuario("pag2")
+    u = make_usuario(session, "pag2")
     session.add(u)
     session.flush()
-    p = make_proveedor(u.id)
+    p = make_proveedor(u.negocio_id)
     session.add(p)
     session.flush()
 
     pago = Pago(
-        usuario_id=u.id,
+        negocio_id=u.negocio_id,
         proveedor_id=p.id,
         monto=Decimal("1234.56"),
         fecha=date(2024, 5, 20),

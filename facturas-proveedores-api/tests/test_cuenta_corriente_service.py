@@ -33,6 +33,8 @@ from sqlmodel import Session, SQLModel
 
 import app.models  # noqa: F401 — register all SQLModel tables
 
+from tests.conftest import crear_negocio
+
 
 # ── Fixtures & helpers ───────────────────────────────────────────────────────
 
@@ -56,6 +58,7 @@ def _make_usuario(session: Session) -> "Usuario":
     from app.core.uuid_utils import new_uuid
 
     u = Usuario(
+        negocio_id=crear_negocio(session).id,
         id=new_uuid(),
         email=f"cc_{uuid.uuid4().hex[:8]}@test.com",
         nombre="Cuenta Corriente Test",
@@ -68,7 +71,7 @@ def _make_usuario(session: Session) -> "Usuario":
 
 def _make_proveedor(
     session: Session,
-    usuario_id: uuid.UUID,
+    negocio_id: uuid.UUID,
     deleted: bool = False,
 ) -> "Proveedor":
     from app.models.proveedor import Proveedor
@@ -77,7 +80,7 @@ def _make_proveedor(
 
     p = Proveedor(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         nombre=f"Prov {uuid.uuid4().hex[:6]}",
         categoria=CategoriaProveedor.OTRO,
     )
@@ -90,7 +93,7 @@ def _make_proveedor(
 
 def _make_factura_db(
     session: Session,
-    usuario_id: uuid.UUID,
+    negocio_id: uuid.UUID,
     proveedor_id: uuid.UUID,
     monto_total: Decimal,
     fecha_emision: date,
@@ -102,7 +105,7 @@ def _make_factura_db(
 
     f = Factura(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         proveedor_id=proveedor_id,
         fecha_emision=fecha_emision,
         monto_total=monto_total,
@@ -116,7 +119,7 @@ def _make_factura_db(
 
 def _make_pago_db(
     session: Session,
-    usuario_id: uuid.UUID,
+    negocio_id: uuid.UUID,
     proveedor_id: uuid.UUID,
     monto: Decimal,
     fecha: date,
@@ -128,7 +131,7 @@ def _make_pago_db(
 
     p = Pago(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         proveedor_id=proveedor_id,
         monto=monto,
         fecha=fecha,
@@ -149,11 +152,11 @@ class TestEmpty:
         from app.services.proveedor_service import ProveedorService
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
         session.commit()
 
         svc = ProveedorService(session)
-        result = svc.get_cuenta_corriente(u.id, p.id)
+        result = svc.get_cuenta_corriente(u.negocio_id, p.id)
 
         assert result.proveedor_id == p.id
         assert result.saldo == Decimal("0.00")
@@ -168,19 +171,19 @@ class TestArchivoUrlThreading:
         from app.services.proveedor_service import ProveedorService
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
         f = _make_factura_db(
-            session, u.id, p.id, Decimal("1000.00"), date.today(),
+            session, u.negocio_id, p.id, Decimal("1000.00"), date.today(),
             archivo_url="https://res.cloudinary.com/demo/facturas/f.pdf",
         )
         pago = _make_pago_db(
-            session, u.id, p.id, Decimal("200.00"), date.today(),
+            session, u.negocio_id, p.id, Decimal("200.00"), date.today(),
             comprobante_url="https://res.cloudinary.com/demo/comprobantes/p.jpg",
         )
         session.commit()
 
         svc = ProveedorService(session)
-        result = svc.get_cuenta_corriente(u.id, p.id)
+        result = svc.get_cuenta_corriente(u.negocio_id, p.id)
 
         by_id = {h["id"]: h for h in result.historial}
         assert by_id[f.id]["archivo_url"] == "https://res.cloudinary.com/demo/facturas/f.pdf"
@@ -190,12 +193,12 @@ class TestArchivoUrlThreading:
         from app.services.proveedor_service import ProveedorService
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        _make_factura_db(session, u.id, p.id, Decimal("100.00"), date.today())
+        p = _make_proveedor(session, u.negocio_id)
+        _make_factura_db(session, u.negocio_id, p.id, Decimal("100.00"), date.today())
         session.commit()
 
         svc = ProveedorService(session)
-        result = svc.get_cuenta_corriente(u.id, p.id)
+        result = svc.get_cuenta_corriente(u.negocio_id, p.id)
 
         assert result.historial[0]["archivo_url"] is None
 
@@ -206,12 +209,12 @@ class TestSingleFactura:
         from app.models.enums import EstadoFactura
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        _make_factura_db(session, u.id, p.id, Decimal("1500.00"), date.today())
+        p = _make_proveedor(session, u.negocio_id)
+        _make_factura_db(session, u.negocio_id, p.id, Decimal("1500.00"), date.today())
         session.commit()
 
         svc = ProveedorService(session)
-        result = svc.get_cuenta_corriente(u.id, p.id)
+        result = svc.get_cuenta_corriente(u.negocio_id, p.id)
 
         assert result.saldo == Decimal("1500.00")
         assert len(result.facturas_con_estado) == 1
@@ -236,13 +239,13 @@ class TestPoolCoverage:
         from app.models.enums import EstadoFactura
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        _make_factura_db(session, u.id, p.id, Decimal("1000.00"), date.today())
-        _make_pago_db(session, u.id, p.id, Decimal("300.00"), date.today())
+        p = _make_proveedor(session, u.negocio_id)
+        _make_factura_db(session, u.negocio_id, p.id, Decimal("1000.00"), date.today())
+        _make_pago_db(session, u.negocio_id, p.id, Decimal("300.00"), date.today())
         session.commit()
 
         svc = ProveedorService(session)
-        result = svc.get_cuenta_corriente(u.id, p.id)
+        result = svc.get_cuenta_corriente(u.negocio_id, p.id)
 
         assert result.saldo == Decimal("700.00")
         assert result.facturas_con_estado[0].estado == EstadoFactura.PARCIAL
@@ -258,13 +261,13 @@ class TestPoolCoverage:
         from app.models.enums import EstadoFactura
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        _make_factura_db(session, u.id, p.id, Decimal("1000.00"), date.today())
-        _make_pago_db(session, u.id, p.id, Decimal("1500.00"), date.today())
+        p = _make_proveedor(session, u.negocio_id)
+        _make_factura_db(session, u.negocio_id, p.id, Decimal("1000.00"), date.today())
+        _make_pago_db(session, u.negocio_id, p.id, Decimal("1500.00"), date.today())
         session.commit()
 
         svc = ProveedorService(session)
-        result = svc.get_cuenta_corriente(u.id, p.id)
+        result = svc.get_cuenta_corriente(u.negocio_id, p.id)
 
         assert result.saldo == Decimal("-500.00")
         assert result.facturas_con_estado[0].estado == EstadoFactura.PAGADA
@@ -278,13 +281,13 @@ class TestPoolCoverage:
         from app.models.enums import EstadoFactura
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        _make_factura_db(session, u.id, p.id, Decimal("1000.00"), date.today())
-        _make_pago_db(session, u.id, p.id, Decimal("1000.00"), date.today())
+        p = _make_proveedor(session, u.negocio_id)
+        _make_factura_db(session, u.negocio_id, p.id, Decimal("1000.00"), date.today())
+        _make_pago_db(session, u.negocio_id, p.id, Decimal("1000.00"), date.today())
         session.commit()
 
         svc = ProveedorService(session)
-        result = svc.get_cuenta_corriente(u.id, p.id)
+        result = svc.get_cuenta_corriente(u.negocio_id, p.id)
 
         assert result.saldo == Decimal("0.00")
         assert result.facturas_con_estado[0].estado == EstadoFactura.PAGADA
@@ -303,17 +306,17 @@ class TestFifoWaterfall:
         from datetime import timedelta
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
         day1 = date.today() - timedelta(days=1)
         day2 = date.today()
 
-        f1 = _make_factura_db(session, u.id, p.id, Decimal("600.00"), day1)
-        f2 = _make_factura_db(session, u.id, p.id, Decimal("400.00"), day2)
-        _make_pago_db(session, u.id, p.id, Decimal("700.00"), day2)
+        f1 = _make_factura_db(session, u.negocio_id, p.id, Decimal("600.00"), day1)
+        f2 = _make_factura_db(session, u.negocio_id, p.id, Decimal("400.00"), day2)
+        _make_pago_db(session, u.negocio_id, p.id, Decimal("700.00"), day2)
         session.commit()
 
         svc = ProveedorService(session)
-        result = svc.get_cuenta_corriente(u.id, p.id)
+        result = svc.get_cuenta_corriente(u.negocio_id, p.id)
 
         assert result.saldo == Decimal("300.00")
         estado_by_id = {fc._factura.id: fc.estado for fc in result.facturas_con_estado}
@@ -334,24 +337,24 @@ class TestAuthorization:
 
         u_a = _make_usuario(session)
         u_b = _make_usuario(session)
-        p_b = _make_proveedor(session, u_b.id)
+        p_b = _make_proveedor(session, u_b.negocio_id)
         session.commit()
 
         svc = ProveedorService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.get_cuenta_corriente(u_a.id, p_b.id)
+            svc.get_cuenta_corriente(u_a.negocio_id, p_b.id)
         assert exc_info.value.status_code == 404
 
     def test_soft_deleted_supplier_raises_404(self, session: Session):
         from app.services.proveedor_service import ProveedorService
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id, deleted=True)
+        p = _make_proveedor(session, u.negocio_id, deleted=True)
         session.commit()
 
         svc = ProveedorService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.get_cuenta_corriente(u.id, p.id)
+            svc.get_cuenta_corriente(u.negocio_id, p.id)
         assert exc_info.value.status_code == 404
 
     def test_missing_supplier_raises_404(self, session: Session):
@@ -362,7 +365,7 @@ class TestAuthorization:
 
         svc = ProveedorService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.get_cuenta_corriente(u.id, uuid.uuid4())
+            svc.get_cuenta_corriente(u.negocio_id, uuid.uuid4())
         assert exc_info.value.status_code == 404
 
 
@@ -375,17 +378,17 @@ class TestDeterminism:
         from app.services.proveedor_service import ProveedorService
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
 
         same_day = date.today()
-        f1 = _make_factura_db(session, u.id, p.id, Decimal("100.00"), same_day)
-        f2 = _make_factura_db(session, u.id, p.id, Decimal("200.00"), same_day)
-        f3 = _make_factura_db(session, u.id, p.id, Decimal("300.00"), same_day)
+        f1 = _make_factura_db(session, u.negocio_id, p.id, Decimal("100.00"), same_day)
+        f2 = _make_factura_db(session, u.negocio_id, p.id, Decimal("200.00"), same_day)
+        f3 = _make_factura_db(session, u.negocio_id, p.id, Decimal("300.00"), same_day)
         session.commit()
 
         svc = ProveedorService(session)
-        r1 = svc.get_cuenta_corriente(u.id, p.id)
-        r2 = svc.get_cuenta_corriente(u.id, p.id)
+        r1 = svc.get_cuenta_corriente(u.negocio_id, p.id)
+        r2 = svc.get_cuenta_corriente(u.negocio_id, p.id)
 
         # Insertion order is f1, f2, f3 → UUIDv7 time-ordering means
         # later inserts have larger created_at, so they appear last
@@ -408,19 +411,19 @@ class TestMoreEdgeCases:
         from datetime import timedelta
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
+        p = _make_proveedor(session, u.negocio_id)
         day1 = date.today() - timedelta(days=3)
         day2 = date.today() - timedelta(days=2)
         day3 = date.today() - timedelta(days=1)
 
-        f1 = _make_factura_db(session, u.id, p.id, Decimal("1000.00"), day1)
-        f2 = _make_factura_db(session, u.id, p.id, Decimal("1000.00"), day2)
-        f3 = _make_factura_db(session, u.id, p.id, Decimal("1000.00"), day3)
-        _make_pago_db(session, u.id, p.id, Decimal("1500.00"), day3)
+        f1 = _make_factura_db(session, u.negocio_id, p.id, Decimal("1000.00"), day1)
+        f2 = _make_factura_db(session, u.negocio_id, p.id, Decimal("1000.00"), day2)
+        f3 = _make_factura_db(session, u.negocio_id, p.id, Decimal("1000.00"), day3)
+        _make_pago_db(session, u.negocio_id, p.id, Decimal("1500.00"), day3)
         session.commit()
 
         svc = ProveedorService(session)
-        result = svc.get_cuenta_corriente(u.id, p.id)
+        result = svc.get_cuenta_corriente(u.negocio_id, p.id)
 
         estado_by_id = {fc._factura.id: fc.estado for fc in result.facturas_con_estado}
         assert estado_by_id[f1.id] == EstadoFactura.PAGADA
@@ -436,13 +439,13 @@ class TestMoreEdgeCases:
         from app.models.enums import EstadoFactura
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        _make_factura_db(session, u.id, p.id, Decimal("100.00"), date.today())
-        _make_pago_db(session, u.id, p.id, Decimal("10000.00"), date.today())
+        p = _make_proveedor(session, u.negocio_id)
+        _make_factura_db(session, u.negocio_id, p.id, Decimal("100.00"), date.today())
+        _make_pago_db(session, u.negocio_id, p.id, Decimal("10000.00"), date.today())
         session.commit()
 
         svc = ProveedorService(session)
-        result = svc.get_cuenta_corriente(u.id, p.id)
+        result = svc.get_cuenta_corriente(u.negocio_id, p.id)
 
         assert result.saldo == Decimal("-9900.00")
         assert result.facturas_con_estado[0].estado == EstadoFactura.PAGADA
@@ -455,14 +458,14 @@ class TestMoreEdgeCases:
         from app.models.enums import EstadoFactura
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        f_active = _make_factura_db(session, u.id, p.id, Decimal("500.00"), date.today())
-        f_deleted = _make_factura_db(session, u.id, p.id, Decimal("9999.00"), date.today())
+        p = _make_proveedor(session, u.negocio_id)
+        f_active = _make_factura_db(session, u.negocio_id, p.id, Decimal("500.00"), date.today())
+        f_deleted = _make_factura_db(session, u.negocio_id, p.id, Decimal("9999.00"), date.today())
         f_deleted.deleted_at = datetime.now(timezone.utc)
         session.commit()
 
         svc = ProveedorService(session)
-        result = svc.get_cuenta_corriente(u.id, p.id)
+        result = svc.get_cuenta_corriente(u.negocio_id, p.id)
 
         assert len(result.facturas_con_estado) == 1
         assert result.facturas_con_estado[0]._factura.id == f_active.id
@@ -476,15 +479,15 @@ class TestMoreEdgeCases:
         from app.models.enums import EstadoFactura
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id)
-        f = _make_factura_db(session, u.id, p.id, Decimal("100.00"), date.today())
-        p_active = _make_pago_db(session, u.id, p.id, Decimal("50.00"), date.today())
-        p_deleted = _make_pago_db(session, u.id, p.id, Decimal("9999.00"), date.today())
+        p = _make_proveedor(session, u.negocio_id)
+        f = _make_factura_db(session, u.negocio_id, p.id, Decimal("100.00"), date.today())
+        p_active = _make_pago_db(session, u.negocio_id, p.id, Decimal("50.00"), date.today())
+        p_deleted = _make_pago_db(session, u.negocio_id, p.id, Decimal("9999.00"), date.today())
         p_deleted.deleted_at = datetime.now(timezone.utc)
         session.commit()
 
         svc = ProveedorService(session)
-        result = svc.get_cuenta_corriente(u.id, p.id)
+        result = svc.get_cuenta_corriente(u.negocio_id, p.id)
 
         # Only the active pago contributes to the pool
         assert result.saldo == Decimal("50.00")
@@ -502,12 +505,12 @@ class TestMoreEdgeCases:
 
         u_a = _make_usuario(session)
         u_b = _make_usuario(session)
-        p_b = _make_proveedor(session, u_b.id)
-        _make_factura_db(session, u_b.id, p_b.id, Decimal("100.00"), date.today())
-        _make_pago_db(session, u_b.id, p_b.id, Decimal("50.00"), date.today())
+        p_b = _make_proveedor(session, u_b.negocio_id)
+        _make_factura_db(session, u_b.negocio_id, p_b.id, Decimal("100.00"), date.today())
+        _make_pago_db(session, u_b.negocio_id, p_b.id, Decimal("50.00"), date.today())
         session.commit()
 
         svc = ProveedorService(session)
         with pytest.raises(HTTPException) as exc_info:
-            svc.get_cuenta_corriente(u_a.id, p_b.id)
+            svc.get_cuenta_corriente(u_a.negocio_id, p_b.id)
         assert exc_info.value.status_code == 404

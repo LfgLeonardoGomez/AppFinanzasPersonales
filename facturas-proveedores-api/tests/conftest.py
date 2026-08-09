@@ -127,6 +127,21 @@ def client(env_vars) -> TestClient:
 #
 # Rule: one client per identity, session only in that client's own jar.
 
+def crear_negocio(session, nombre: str = "Negocio de Test"):
+    """Persist a Negocio and return it.
+
+    C-28: `usuario.negocio_id` is NOT NULL, so every test that builds a Usuario
+    by hand needs a tenant first. This keeps that one line out of ~15 local
+    factories.
+    """
+    from app.models.negocio import Negocio
+
+    negocio = Negocio(nombre=nombre)
+    session.add(negocio)
+    session.flush()
+    return negocio
+
+
 def unique_test_email(prefix: str = "user") -> str:
     """Collision-free email so parallel users never clash in the DB."""
     return f"{prefix}_{uuid.uuid4().hex[:10]}@test.com"
@@ -160,7 +175,13 @@ def make_user_client(app, *, prefix: str = "user", password: str = "testpass123"
     made through it need no auth argument — that is the point: identity cannot
     be forgotten, mistyped, or silently overridden.
 
-    The client is annotated with `usuario_id` and `email` for assertions.
+    The client is annotated with `usuario_id`, `negocio_id` and `email` for
+    assertions.
+
+    C-28: registration now also creates the user's own Negocio, so two calls to
+    this helper produce two SEPARATE tenants — which is what cross-tenant
+    isolation tests need. For two users inside the SAME negocio use
+    `make_teammate_client`.
     """
     client = TestClient(app, raise_server_exceptions=True)
     email = unique_test_email(prefix)
@@ -184,5 +205,36 @@ def make_user_client(app, *, prefix: str = "user", password: str = "testpass123"
     assert me.status_code == 200, f"/api/me failed right after login: {me.text}"
 
     client.usuario_id = me.json()["id"]
+    client.negocio_id = me.json()["negocio_id"]
     client.email = email
+    return client
+
+
+def make_teammate_client(app, engine, colega, *, password: str = "testpass123"):
+    """Register a second user INSIDE `colega`'s negocio and return their client.
+
+    C-29 will provide the real path for this (a single-use invite code). Until
+    then the membership is set directly in the database: this harness exists to
+    prove that two members of one shop share their data, and that assertion is
+    worth having before the invite endpoints are built.
+
+    The teammate is a plain member — `es_admin` stays false.
+    """
+    import uuid as _uuid
+
+    from sqlalchemy import text as _text
+
+    client = make_user_client(app, prefix="mate", password=password)
+
+    with engine.begin() as conn:
+        conn.execute(
+            _text("UPDATE usuario SET negocio_id = :negocio WHERE id = :id"),
+            {"negocio": _uuid.UUID(colega.negocio_id), "id": _uuid.UUID(client.usuario_id)},
+        )
+
+    me = client.get("/api/me")
+    assert me.status_code == 200, f"/api/me failed after joining negocio: {me.text}"
+    assert me.json()["negocio_id"] == colega.negocio_id
+
+    client.negocio_id = colega.negocio_id
     return client

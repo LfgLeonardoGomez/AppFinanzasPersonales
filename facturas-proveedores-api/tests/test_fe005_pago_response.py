@@ -17,6 +17,8 @@ from sqlmodel import Session, SQLModel
 
 import app.models  # noqa: F401 — register all SQLModel tables
 
+from tests.conftest import crear_negocio
+
 
 @pytest.fixture(scope="module")
 def engine(db_url: str):
@@ -37,6 +39,7 @@ def _make_usuario(session: Session):
     from app.core.uuid_utils import new_uuid
 
     u = Usuario(
+        negocio_id=crear_negocio(session).id,
         id=new_uuid(),
         email=f"fe005_{uuid.uuid4().hex[:8]}@test.com",
         nombre="FE-005 test",
@@ -47,14 +50,14 @@ def _make_usuario(session: Session):
     return u
 
 
-def _make_proveedor(session: Session, usuario_id: uuid.UUID, nombre: str = "YPF S.A."):
+def _make_proveedor(session: Session, negocio_id: uuid.UUID, nombre: str = "YPF S.A."):
     from app.models.proveedor import Proveedor
     from app.core.uuid_utils import new_uuid
     from app.models.enums import CategoriaProveedor
 
     p = Proveedor(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         nombre=nombre,
         categoria=CategoriaProveedor.OTRO,
     )
@@ -65,7 +68,7 @@ def _make_proveedor(session: Session, usuario_id: uuid.UUID, nombre: str = "YPF 
 
 def _make_pago_db(
     session: Session,
-    usuario_id: uuid.UUID,
+    negocio_id: uuid.UUID,
     proveedor_id: uuid.UUID,
     monto: Decimal = Decimal("100.00"),
 ):
@@ -75,7 +78,7 @@ def _make_pago_db(
 
     p = Pago(
         id=new_uuid(),
-        usuario_id=usuario_id,
+        negocio_id=negocio_id,
         proveedor_id=proveedor_id,
         monto=monto,
         fecha=date.today(),
@@ -107,7 +110,7 @@ class TestPagoResponseSchema:
 
         r = PagoResponse(
             id=uuid.uuid4(),
-            usuario_id=uuid.uuid4(),
+            negocio_id=uuid.uuid4(),
             proveedor_id=uuid.uuid4(),
             monto=Decimal("100.00"),
             fecha=date.today(),
@@ -132,12 +135,12 @@ class TestServicePopulatesProveedorNombre:
         from app.routers.pagos import _to_response, _resolve_proveedor_nombre
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id, nombre="YPF S.A.")
-        pago = _make_pago_db(session, u.id, p.id, Decimal("100.00"))
+        p = _make_proveedor(session, u.negocio_id, nombre="YPF S.A.")
+        pago = _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
 
         svc = PagoService(session)
-        result = svc.get(u.id, pago.id)
+        result = svc.get(u.negocio_id, pago.id)
         proveedor_nombre = _resolve_proveedor_nombre(session, result.proveedor_id)
         response = _to_response(result, proveedor_nombre=proveedor_nombre)
 
@@ -153,18 +156,18 @@ class TestServicePopulatesProveedorNombre:
         from app.routers.pagos import _to_response, _resolve_proveedor_nombre
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id, nombre="YPF S.A.")
+        p = _make_proveedor(session, u.negocio_id, nombre="YPF S.A.")
         # Soft-delete the supplier AFTER the pago exists (the order is
         # important: the pago references the supplier, then the
         # supplier is soft-deleted).
-        pago = _make_pago_db(session, u.id, p.id, Decimal("100.00"))
+        pago = _make_pago_db(session, u.negocio_id, p.id, Decimal("100.00"))
         session.commit()
         p.deleted_at = datetime.now(timezone.utc)
         session.commit()
         session.refresh(p)
 
         svc = PagoService(session)
-        result = svc.get(u.id, pago.id)
+        result = svc.get(u.negocio_id, pago.id)
         proveedor_nombre = _resolve_proveedor_nombre(session, result.proveedor_id)
         response = _to_response(result, proveedor_nombre=proveedor_nombre)
 
@@ -185,12 +188,11 @@ class TestServicePopulatesProveedorNombre:
         from app.routers.pagos import _to_response, _resolve_proveedor_nombre
 
         u = _make_usuario(session)
-        p = _make_proveedor(session, u.id, nombre="Petrobras Argentina")
+        p = _make_proveedor(session, u.negocio_id, nombre="Petrobras Argentina")
         session.commit()
 
         svc = PagoService(session)
-        pago = svc.crear(
-            u.id,
+        pago = svc.crear(u.negocio_id,
             PagoCreate(
                 proveedor_id=p.id,
                 monto=Decimal("200.00"),

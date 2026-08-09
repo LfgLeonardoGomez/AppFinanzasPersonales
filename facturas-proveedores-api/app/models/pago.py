@@ -25,17 +25,22 @@ class Pago(SoftDeleteMixin, TimestampUUIDMixin, SQLModel, table=True):
     """
     Payment entity.
 
-    - usuario_id denormalized (D-C02-4): enables direct user-scoping without
-      JOIN to proveedor.
+    - negocio_id denormalized (D-27, supersedes D-05): enables direct
+      tenant-scoping without JOIN to proveedor.
     - NO factura_id: payments are associated to suppliers, not invoices
       (RN-PAG-01). The FIFO algorithm in the service layer derives assignment.
     """
 
     __tablename__ = "pago"
 
-    # Multi-tenant scoping (denormalized, D-C02-4)
-    usuario_id: uuid.UUID = Field(foreign_key="usuario.id", nullable=False)
+    # Multi-tenant scoping (denormalized, D-27)
+    negocio_id: uuid.UUID = Field(foreign_key="negocio.id", nullable=False, index=True)
     proveedor_id: uuid.UUID = Field(foreign_key="proveedor.id", nullable=False)
+
+    # Authorship, NOT authorization (D4). Never filter access with this.
+    creado_por_usuario_id: Optional[uuid.UUID] = Field(
+        default=None, foreign_key="usuario.id", nullable=True
+    )
 
     # Amount — numeric(12,2) ARS; never float
     monto: Decimal = Field(

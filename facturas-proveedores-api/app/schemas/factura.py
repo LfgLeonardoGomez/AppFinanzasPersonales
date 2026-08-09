@@ -4,7 +4,7 @@ Pydantic schemas for Factura (invoice) endpoints.
 Design decisions (C-08 design.md):
 - FacturaCreate: proveedor_id required; monto_total > 0; fecha_emision not future
   (validated in Pydantic for quick feedback; service re-validates in UTC-3).
-  No usuario_id — taken from the session, never from the payload.
+  No negocio_id — taken from the session, never from the payload.
 - FacturaUpdate: all fields optional (PATCH semantics), same validators.
 - FacturaResponse: includes estado (derived by FIFO, never persisted) and items.
   items_sum_mismatch=True signals non-blocking warning (RN-FAC-04).
@@ -13,7 +13,7 @@ Design decisions (C-08 design.md):
 
 HARD RULES:
 - NEVER include 'estado' as a DB column — it is always computed on-demand.
-- usuario_id is NOT accepted in FacturaCreate/Update — taken from session.
+- negocio_id is NOT accepted in FacturaCreate/Update — taken from session.
 """
 
 import uuid
@@ -64,7 +64,7 @@ class FacturaCreate(BaseModel):
       in Pydantic using local date; service re-validates against UTC-3 wall clock).
     - monto_total: required, must be > 0. Source of truth for the invoice amount.
     - items: optional list. Sum mismatch vs monto_total is a warning, not a block.
-    - usuario_id is NOT here — always taken from the authenticated session.
+    - negocio_id is NOT here — always taken from the authenticated session.
     """
 
     proveedor_id: uuid.UUID
@@ -148,7 +148,7 @@ class FacturaResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    usuario_id: uuid.UUID
+    negocio_id: uuid.UUID
     proveedor_id: uuid.UUID
     numero: Optional[str] = None
     fecha_emision: date

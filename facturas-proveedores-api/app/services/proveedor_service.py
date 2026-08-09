@@ -4,7 +4,7 @@ ProveedorService — business logic for supplier management.
 Design decisions implemented (C-06 design.md):
 - D5: Ownership check in the SERVICE layer only — never in router or repo.
   Foreign resource is indistinguishable from non-existent (returns 404, never 403).
-- D1/D2/D3: Paginated listing delegates to ProveedorRepository.list_by_usuario
+- D1/D2/D3: Paginated listing delegates to ProveedorRepository.list_by_negocio
   (single aggregate query — no N+1).
 - D6: eliminar soft-deletes and returns tiene_dependencias (never blocks on deps).
 - D7: CUIT re-validated in the service layer (in addition to Pydantic schema).
@@ -19,7 +19,7 @@ C-12 additions:
   saldo_acumulado. No DB access; tested in isolation.
 
 Hard rules enforced here:
-- usuario_id is ALWAYS taken from the service arg, never from the payload.
+- negocio_id is ALWAYS taken from the service arg, never from the payload.
 - All authorization lives HERE; router just wires Depends(get_current_user).
 - Raises HTTPException(404) on foreign or missing resource.
 - NEVER persists saldo or estado.
@@ -74,7 +74,7 @@ class ProveedorService:
     """
     Business logic for supplier CRUD.
 
-    All public methods take usuario_id as the first argument after self.
+    All public methods take negocio_id as the first argument after self.
     The router passes get_current_user.id here — never from the request body.
     """
 
@@ -86,7 +86,7 @@ class ProveedorService:
 
     # ── Private helpers ────────────────────────────────────────────────────────
 
-    def _get_owned(self, usuario_id: uuid.UUID, proveedor_id: uuid.UUID) -> Proveedor:
+    def _get_owned(self, negocio_id: uuid.UUID, proveedor_id: uuid.UUID) -> Proveedor:
         """
         Fetch a supplier by id, verifying ownership and active status.
 
@@ -99,12 +99,12 @@ class ProveedorService:
         if (
             entity is None
             or entity.deleted_at is not None
-            or entity.usuario_id != usuario_id
+            or entity.negocio_id != negocio_id
         ):
             raise _NOT_FOUND
         return entity
 
-    def _get_saldo_for(self, usuario_id: uuid.UUID, proveedor_id: uuid.UUID) -> Decimal:
+    def _get_saldo_for(self, negocio_id: uuid.UUID, proveedor_id: uuid.UUID) -> Decimal:
         """
         Get the on-demand saldo for a single supplier.
 
@@ -112,7 +112,7 @@ class ProveedorService:
         Normalizes the result to 2 decimal places so the JSON wire format
         is always `0.00` (not `0`) for consistency with numeric(12,2).
         """
-        saldos = self._repo.get_saldo_por_proveedor(usuario_id)
+        saldos = self._repo.get_saldo_por_proveedor(negocio_id)
         value = saldos.get(proveedor_id, Decimal("0.00"))
         return value.quantize(Decimal("0.01"))
 
@@ -129,7 +129,7 @@ class ProveedorService:
 
     def listar(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         page: int = 1,
         order_by: str = "nombre",
     ) -> list[ProveedorConSaldo]:
@@ -138,24 +138,26 @@ class ProveedorService:
 
         Delegates entirely to the repository's single-aggregate query (D1/D2).
         """
-        return self._repo.list_by_usuario(usuario_id, page=page, order_by=order_by)
+        return self._repo.list_by_negocio(negocio_id, page=page, order_by=order_by)
 
     def crear(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         datos: ProveedorCreate,
+        creado_por_usuario_id: uuid.UUID | None = None,
     ) -> Proveedor:
         """
-        Create a new supplier owned by usuario_id.
+        Create a new supplier owned by negocio_id.
 
-        Hard rule: usuario_id is ALWAYS taken from the arg, never from datos.
+        Hard rule: negocio_id is ALWAYS taken from the arg, never from datos.
         CUIT re-validated in the service layer (D7).
         Returns the persisted Proveedor entity (not yet committed — caller commits).
         """
         self._validate_cuit(datos.cuit)
 
         proveedor = self._repo.create(
-            usuario_id=usuario_id,
+            negocio_id=negocio_id,
+            creado_por_usuario_id=creado_por_usuario_id,
             nombre=datos.nombre,
             cuit=datos.cuit,
             telefono=datos.telefono,
@@ -166,31 +168,31 @@ class ProveedorService:
 
     def get(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         proveedor_id: uuid.UUID,
     ) -> ProveedorConSaldoResponse:
         """
         Return a single supplier with its on-demand saldo.
 
-        Raises 404 if the supplier does not belong to usuario_id or is deleted.
+        Raises 404 if the supplier does not belong to negocio_id or is deleted.
         """
-        entity = self._get_owned(usuario_id, proveedor_id)
-        saldo = self._get_saldo_for(usuario_id, proveedor_id)
+        entity = self._get_owned(negocio_id, proveedor_id)
+        saldo = self._get_saldo_for(negocio_id, proveedor_id)
         return ProveedorConSaldoResponse(entity, saldo)
 
     def actualizar(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         proveedor_id: uuid.UUID,
         datos: ProveedorUpdate,
     ) -> ProveedorConSaldoResponse:
         """
-        Partially update a supplier owned by usuario_id.
+        Partially update a supplier owned by negocio_id.
 
         Only provided (non-None) fields are applied (PATCH semantics).
         Raises 404 on foreign or missing supplier.
         """
-        entity = self._get_owned(usuario_id, proveedor_id)
+        entity = self._get_owned(negocio_id, proveedor_id)
 
         # Build the dict of fields to update (skip None values for PATCH)
         update_data = datos.model_dump(exclude_unset=True)
@@ -198,16 +200,16 @@ class ProveedorService:
             self._validate_cuit(update_data["cuit"])
 
         updated = self._repo.update(entity, **update_data)
-        saldo = self._get_saldo_for(usuario_id, proveedor_id)
+        saldo = self._get_saldo_for(negocio_id, proveedor_id)
         return ProveedorConSaldoResponse(updated, saldo)
 
     def eliminar(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         proveedor_id: uuid.UUID,
     ) -> dict:
         """
-        Soft-delete a supplier owned by usuario_id.
+        Soft-delete a supplier owned by negocio_id.
 
         - Checks ownership first (raises 404 on foreign/missing/deleted).
         - Checks tiene_dependencias BEFORE soft-delete (active rows).
@@ -216,7 +218,7 @@ class ProveedorService:
 
         Returns: {"id": proveedor_id, "tiene_dependencias": bool}
         """
-        entity = self._get_owned(usuario_id, proveedor_id)
+        entity = self._get_owned(negocio_id, proveedor_id)
 
         # Check dependencies against ACTIVE rows (before deleting the supplier)
         tiene_deps = self._repo.tiene_dependencias(proveedor_id)
@@ -227,7 +229,7 @@ class ProveedorService:
 
     def buscar_por_nombre(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         nombre: str,
     ) -> list[Proveedor]:
         """
@@ -237,7 +239,7 @@ class ProveedorService:
         Returns all matching active suppliers for the caller only.
         """
         normalized = nombre.lower().strip()
-        return self._repo.search_by_nombre(usuario_id, normalized)
+        return self._repo.search_by_nombre(negocio_id, normalized)
 
 
 # ── C-12 — Cuenta corriente composition ─────────────────────────────────────
@@ -329,7 +331,7 @@ def _build_historial(
 # the helper can be defined after the class block above).
 def _get_cuenta_corriente_impl(
     self,
-    usuario_id: uuid.UUID,
+    negocio_id: uuid.UUID,
     proveedor_id: uuid.UUID,
 ) -> _CuentaCorrienteResult:
     """
@@ -356,14 +358,14 @@ def _get_cuenta_corriente_impl(
     )
     from app.models.enums import EstadoFactura
 
-    proveedor = self._get_owned(usuario_id, proveedor_id)
+    proveedor = self._get_owned(negocio_id, proveedor_id)
 
     # 1. Saldo — single aggregate (no N+1)
-    saldo = self._get_saldo_for(usuario_id, proveedor.id)
+    saldo = self._get_saldo_for(negocio_id, proveedor.id)
 
     # 2. Active facturas + active pagos (already in deterministic order)
-    facturas = self._factura_repo.list_by_proveedor(usuario_id, proveedor.id)
-    pagos = self._pago_repo.list_by_proveedor(usuario_id, proveedor.id)
+    facturas = self._factura_repo.list_by_proveedor(negocio_id, proveedor.id)
+    pagos = self._pago_repo.list_by_proveedor(negocio_id, proveedor.id)
 
     # 3. Pool = sum of all active pagos (RN-FIFO-02)
     pool = sum((p.monto for p in pagos), Decimal("0"))

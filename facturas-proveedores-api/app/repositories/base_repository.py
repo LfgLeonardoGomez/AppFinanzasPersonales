@@ -49,7 +49,7 @@ class BaseRepository(Generic[T]):
 
         By default filters out soft-deleted entities (deleted_at IS NULL)
         if the model has that column. Additional filters are passed as
-        equality conditions (e.g., usuario_id=<uuid>).
+        equality conditions (e.g., negocio_id=<uuid> — the tenancy axis, D-27).
         """
         statement = select(self.model)
 

@@ -6,8 +6,8 @@ Design (Home redesign backend addition):
 - Merges the user's most recent active facturas and pagos into a single
   most-recent-first feed, WITHOUT introducing any factura<->pago link
   (RN-PAG-01 stays intact — the merge is purely a display-layer concern).
-- usuario_id scoping happens in the repository queries (Factura/Pago rows
-  are always filtered by usuario_id); this is the service-layer contract
+- negocio_id scoping happens in the repository queries (Factura/Pago rows
+  are always filtered by negocio_id); this is the service-layer contract
   the project's hard rules require (auth/scoping enforced above router,
   never trusted from the payload).
 - No N+1: fetches at most `limit` facturas + `limit` pagos (two queries),
@@ -35,18 +35,18 @@ class ActividadService:
 
     def listar_reciente(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         limit: int = 8,
     ) -> list[ActividadRecienteItem]:
         """
-        Return the `limit` most recent facturas+pagos for usuario_id, merged.
+        Return the `limit` most recent facturas+pagos for negocio_id, merged.
 
         Ordering: fecha DESC, tiebreak created_at DESC. Only the caller's
         own data is ever considered — both repo queries filter by
-        usuario_id (RN: never trust a resource without scoping it).
+        negocio_id (RN: never trust a resource without scoping it).
         """
-        facturas = self._factura_repo.list_recientes(usuario_id, limit)
-        pagos = self._pago_repo.list_recientes(usuario_id, limit)
+        facturas = self._factura_repo.list_recientes(negocio_id, limit)
+        pagos = self._pago_repo.list_recientes(negocio_id, limit)
 
         proveedor_ids = {f.proveedor_id for f in facturas} | {
             p.proveedor_id for p in pagos

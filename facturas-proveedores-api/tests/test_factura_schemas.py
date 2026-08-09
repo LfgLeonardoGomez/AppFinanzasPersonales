@@ -253,7 +253,7 @@ class TestFacturaResponse:
 
         response = FacturaResponse(
             id=uuid.uuid4(),
-            usuario_id=uuid.uuid4(),
+            negocio_id=uuid.uuid4(),
             proveedor_id=uuid.uuid4(),
             numero="F-001",
             fecha_emision=date.today(),
@@ -277,7 +277,7 @@ class TestFacturaResponse:
 
         response = FacturaResponse(
             id=uuid.uuid4(),
-            usuario_id=uuid.uuid4(),
+            negocio_id=uuid.uuid4(),
             proveedor_id=uuid.uuid4(),
             numero=None,
             fecha_emision=date.today(),

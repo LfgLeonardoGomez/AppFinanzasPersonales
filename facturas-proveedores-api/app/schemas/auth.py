@@ -15,11 +15,16 @@ from pydantic import BaseModel, EmailStr, field_validator
 
 
 class RegistroRequest(BaseModel):
-    """Payload for POST /api/auth/registro."""
+    """Payload for POST /api/auth/registro.
+
+    `nombre_negocio` is optional (C-28, D-30): registration creates the Negocio
+    alongside the user, and an omitted name is derived from the user's own.
+    """
 
     email: EmailStr
     nombre: str
     password: str
+    nombre_negocio: Optional[str] = None
 
     @field_validator("password")
     @classmethod
@@ -52,6 +57,10 @@ class UsuarioResponse(BaseModel):
     """
 
     id: uuid.UUID
+    # Additive (C-28): the client needs to know which shop the session belongs
+    # to. Never accepted as input — it is always derived from the session.
+    negocio_id: uuid.UUID
+    es_admin: bool = False
     email: str
     nombre: str
     telefono: Optional[str] = None

@@ -50,8 +50,11 @@ def _make_usuario(
     from app.models.usuario import Usuario
     from app.core.uuid_utils import new_uuid
 
+    from tests.conftest import crear_negocio
+
     u = Usuario(
         id=new_uuid(),
+        negocio_id=crear_negocio(session).id,
         email=email or f"u_{uuid.uuid4().hex[:8]}@test.com",
         nombre=nombre,
         password_hash="$argon2id$v=19$m=65536,t=3,p=4$fakehashforperfil",

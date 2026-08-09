@@ -159,19 +159,25 @@ class TestPagoCreate:
             )
         assert "hacker_field" in str(exc_info.value).lower()
 
-    def test_usuario_id_rejected(self):
-        """Schema must not accept usuario_id — taken from the session, not the payload."""
+    @pytest.mark.parametrize("campo", ["usuario_id", "negocio_id"])
+    def test_tenant_fields_rejected(self, campo):
+        """Neither tenant key may come from the payload — both come from the session.
+
+        C-28 moved the axis to `negocio_id`, so the schema now has to refuse the
+        new field as well. Refusing only the old one would leave the door open
+        on the field that actually decides ownership today.
+        """
         from app.schemas.pago import PagoCreate
 
         with pytest.raises(ValidationError) as exc_info:
             PagoCreate(
-                usuario_id=uuid.uuid4(),
+                **{campo: uuid.uuid4()},
                 proveedor_id=uuid.uuid4(),
                 monto=Decimal("100.00"),
                 fecha=date.today(),
                 metodo=MetodoPago.EFECTIVO,
             )
-        assert "usuario_id" in str(exc_info.value).lower()
+        assert campo in str(exc_info.value).lower()
 
     def test_origen_rejected(self):
         """c-15a-origen-ia-backend: PagoCreate now ACCEPTS an optional `origen`
@@ -324,12 +330,14 @@ class TestPagoUpdate:
             PagoUpdate(proveedor_id=uuid.uuid4())
         assert "proveedor_id" in str(exc_info.value).lower()
 
-    def test_usuario_id_rejected_in_update(self):
+    @pytest.mark.parametrize("campo", ["usuario_id", "negocio_id"])
+    def test_tenant_fields_rejected_in_update(self, campo):
+        """PATCH must not be able to move a pago to another tenant either."""
         from app.schemas.pago import PagoUpdate
 
         with pytest.raises(ValidationError) as exc_info:
-            PagoUpdate(usuario_id=uuid.uuid4())
-        assert "usuario_id" in str(exc_info.value).lower()
+            PagoUpdate(**{campo: uuid.uuid4()})
+        assert campo in str(exc_info.value).lower()
 
     def test_origen_rejected_in_update(self):
         from app.schemas.pago import PagoUpdate
@@ -355,7 +363,7 @@ class TestPagoResponse:
 
         response = PagoResponse(
             id=uuid.uuid4(),
-            usuario_id=uuid.uuid4(),
+            negocio_id=uuid.uuid4(),
             proveedor_id=uuid.uuid4(),
             monto=Decimal("500.00"),
             fecha=date(2024, 6, 15),
@@ -383,7 +391,7 @@ class TestPagoResponse:
         rid = uuid.uuid4()
         response = PagoResponse(
             id=rid,
-            usuario_id=uid,
+            negocio_id=uid,
             proveedor_id=pid,
             monto=Decimal("123.45"),
             fecha=date(2024, 6, 15),
@@ -397,7 +405,7 @@ class TestPagoResponse:
         dumped = response.model_dump(mode="json")
         assert dumped["monto"] == "123.45"
         assert dumped["id"] == str(rid)
-        assert dumped["usuario_id"] == str(uid)
+        assert dumped["negocio_id"] == str(uid)
         assert dumped["proveedor_id"] == str(pid)
 
 

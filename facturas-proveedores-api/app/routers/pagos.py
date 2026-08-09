@@ -16,7 +16,7 @@ Design decisions (C-10 design.md):
 Compatibility with C-08:
 - The POST response shape (same fields, same order) is preserved so the
   C-08 integration test in test_factura_integration.py still passes.
-- usuario_id comes from the session (get_current_user), never from the
+- negocio_id comes from the session (get_current_user), never from the
   payload.
 - origen is stamped MANUAL by the service — the schema has no such field.
 """
@@ -93,7 +93,7 @@ def _to_response(
     """
     return PagoResponse(
         id=pago.id,
-        usuario_id=pago.usuario_id,
+        negocio_id=pago.negocio_id,
         proveedor_id=pago.proveedor_id,
         monto=pago.monto,
         fecha=pago.fecha,
@@ -189,7 +189,7 @@ def list_pagos(
     """
     svc = PagoService(session)
     items, total = svc.listar(
-        current_user.id,
+        current_user.negocio_id,
         proveedor_id=proveedor_id,
         page=page,
         page_size=page_size,
@@ -225,7 +225,7 @@ def create_pago(
     """
     Create a payment for a supplier owned by the authenticated user.
 
-    - usuario_id is taken from the session — the payload cannot override it.
+    - negocio_id is taken from the session — the payload cannot override it.
     - origen is set to MANUAL automatically by the service.
     - NO factura_id is accepted — RN-PAG-01 is enforced at three levels:
       1) the Pago SQLModel has no such column,
@@ -236,7 +236,9 @@ def create_pago(
     - Returns 422 if fecha is in the future (UTC-3) or monto <= 0.
     """
     svc = PagoService(session)
-    pago = svc.crear(current_user.id, body)
+    pago = svc.crear(
+        current_user.negocio_id, body, creado_por_usuario_id=current_user.id
+    )
     session.commit()
     session.refresh(pago)
     # C-18 (FE-005): populate proveedor_nombre for the response.
@@ -314,7 +316,7 @@ def get_pago(
     (never 403 — foreign and missing are indistinguishable).
     """
     svc = PagoService(session)
-    pago = svc.get(current_user.id, pago_id)
+    pago = svc.get(current_user.negocio_id, pago_id)
     # C-18 (FE-005): populate proveedor_nombre for the response.
     proveedor_nombre = _resolve_proveedor_nombre(session, pago.proveedor_id)
     return _to_response(pago, proveedor_nombre=proveedor_nombre)
@@ -341,12 +343,12 @@ def update_pago(
     - re-link the payment to a different supplier (D7 — would corrupt
       the FIFO pool's history);
     - set the `origen` field (immutable — MANUAL is automatic);
-    - set the `usuario_id` (immutable — taken from the session).
+    - set the `negocio_id` (immutable — taken from the session).
     Returns 404 if the payment belongs to another user or is soft-deleted.
     Returns 422 if monto <= 0 or fecha is in the future (UTC-3).
     """
     svc = PagoService(session)
-    pago = svc.actualizar(current_user.id, pago_id, body)
+    pago = svc.actualizar(current_user.negocio_id, pago_id, body)
     session.commit()
     session.refresh(pago)
     # C-18 (FE-005): populate proveedor_nombre for the response.
@@ -376,7 +378,7 @@ def delete_pago(
     payment is missing, foreign, or already soft-deleted.
     """
     svc = PagoService(session)
-    svc.eliminar(current_user.id, pago_id)
+    svc.eliminar(current_user.negocio_id, pago_id)
     session.commit()
 
 

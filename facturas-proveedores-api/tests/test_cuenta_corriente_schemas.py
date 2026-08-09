@@ -35,7 +35,7 @@ def _make_factura_obj(
 
     f = Factura(
         id=id or uuid.uuid4(),
-        usuario_id=uuid.uuid4(),
+        negocio_id=uuid.uuid4(),
         proveedor_id=uuid.uuid4(),
         fecha_emision=fecha_emision or date(2026, 6, 15),
         monto_total=monto_total or Decimal("1500.00"),
@@ -58,7 +58,7 @@ class TestFacturaConEstado:
         obj = FacturaConEstado.model_validate(
             {
                 "id": f.id,
-                "usuario_id": f.usuario_id,
+                "negocio_id": f.negocio_id,
                 "proveedor_id": f.proveedor_id,
                 "fecha_emision": f.fecha_emision,
                 "monto_total": f.monto_total,
@@ -84,7 +84,7 @@ class TestFacturaConEstado:
             obj = FacturaConEstado.model_validate(
                 {
                     "id": f.id,
-                    "usuario_id": f.usuario_id,
+                    "negocio_id": f.negocio_id,
                     "proveedor_id": f.proveedor_id,
                     "fecha_emision": f.fecha_emision,
                     "monto_total": f.monto_total,
@@ -107,7 +107,7 @@ class TestFacturaConEstado:
         from app.schemas.cuenta_corriente import FacturaConEstado
 
         required = {
-            "id", "usuario_id", "proveedor_id", "fecha_emision", "monto_total",
+            "id", "negocio_id", "proveedor_id", "fecha_emision", "monto_total",
             "origen", "estado", "created_at", "updated_at",
         }
         assert required.issubset(set(FacturaConEstado.model_fields.keys()))
@@ -121,7 +121,7 @@ class TestFacturaConEstado:
         obj = FacturaConEstado.model_validate(
             {
                 "id": f.id,
-                "usuario_id": f.usuario_id,
+                "negocio_id": f.negocio_id,
                 "proveedor_id": f.proveedor_id,
                 "fecha_emision": f.fecha_emision,
                 "monto_total": f.monto_total,
@@ -307,7 +307,7 @@ class TestCuentaCorrienteResponse:
             "facturas_con_estado": [
                 {
                     "id": f_id,
-                    "usuario_id": uuid.uuid4(),
+                    "negocio_id": uuid.uuid4(),
                     "proveedor_id": proveedor_id,
                     "fecha_emision": date(2026, 6, 15),
                     "monto_total": Decimal("1500.00"),
@@ -452,7 +452,7 @@ class TestBoundaryValues:
         obj = FacturaConEstado.model_validate(
             {
                 "id": f.id,
-                "usuario_id": f.usuario_id,
+                "negocio_id": f.negocio_id,
                 "proveedor_id": f.proveedor_id,
                 "numero": "001-1234",
                 "fecha_emision": f.fecha_emision,

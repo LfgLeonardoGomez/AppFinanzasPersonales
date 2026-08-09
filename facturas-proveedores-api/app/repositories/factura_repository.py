@@ -3,7 +3,7 @@ FacturaRepository and FacturaItemRepository — data access for Factura entities
 
 Design decisions (C-08 design.md):
 - D1: FIFO state derivation is NOT here — pure data access only.
-- D3: list_by_usuario fetches all user's facturas (or scoped to one proveedor)
+- D3: list_by_negocio fetches all user's facturas (or scoped to one proveedor)
   ordered by (fecha_emision ASC, created_at ASC, id ASC) for FIFO allocation.
 - D4: Items replaced atomically via update_with_items (hard-delete old, insert new).
 
@@ -33,9 +33,9 @@ class FacturaRepository(BaseRepository[Factura]):
 
     # ── Listing ───────────────────────────────────────────────────────────────
 
-    def list_by_usuario(
+    def list_by_negocio(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         proveedor_id: Optional[uuid.UUID] = None,
     ) -> list[Factura]:
         """
@@ -49,7 +49,7 @@ class FacturaRepository(BaseRepository[Factura]):
         """
         statement = (
             select(Factura)
-            .where(Factura.usuario_id == usuario_id)
+            .where(Factura.negocio_id == negocio_id)
             .where(Factura.deleted_at == None)  # noqa: E711
         )
         if proveedor_id is not None:
@@ -65,7 +65,7 @@ class FacturaRepository(BaseRepository[Factura]):
 
     def list_by_proveedor(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         proveedor_id: uuid.UUID,
         include_deleted: bool = False,
     ) -> list[Factura]:
@@ -77,7 +77,7 @@ class FacturaRepository(BaseRepository[Factura]):
         """
         statement = (
             select(Factura)
-            .where(Factura.usuario_id == usuario_id)
+            .where(Factura.negocio_id == negocio_id)
             .where(Factura.proveedor_id == proveedor_id)
         )
         if not include_deleted:
@@ -90,7 +90,7 @@ class FacturaRepository(BaseRepository[Factura]):
         )
         return list(self.session.exec(statement).all())
 
-    def list_recientes(self, usuario_id: uuid.UUID, limit: int) -> list[Factura]:
+    def list_recientes(self, negocio_id: uuid.UUID, limit: int) -> list[Factura]:
         """
         Return the `limit` most recent active facturas for a user.
 
@@ -103,7 +103,7 @@ class FacturaRepository(BaseRepository[Factura]):
         """
         statement = (
             select(Factura)
-            .where(Factura.usuario_id == usuario_id)
+            .where(Factura.negocio_id == negocio_id)
             .where(Factura.deleted_at == None)  # noqa: E711
             .order_by(
                 Factura.fecha_emision.desc(),
@@ -135,7 +135,7 @@ class FacturaRepository(BaseRepository[Factura]):
 
     def create_with_items(
         self,
-        usuario_id: uuid.UUID,
+        negocio_id: uuid.UUID,
         proveedor_id: uuid.UUID,
         fecha_emision: date,
         monto_total: Decimal,
@@ -144,15 +144,18 @@ class FacturaRepository(BaseRepository[Factura]):
         numero: Optional[str] = None,
         fecha_vencimiento: Optional[date] = None,
         archivo_url: Optional[str] = None,
+        creado_por_usuario_id: Optional[uuid.UUID] = None,
     ) -> Factura:
         """
         Create a Factura and its FacturaItems atomically (same flush).
 
         - items_data: list of dicts with keys: descripcion, cantidad, precio_unitario.
+        - creado_por_usuario_id is authorship only (D4) — never a filter.
         - Caller commits; this method only flushes.
         """
         factura = Factura(
-            usuario_id=usuario_id,
+            negocio_id=negocio_id,
+            creado_por_usuario_id=creado_por_usuario_id,
             proveedor_id=proveedor_id,
             fecha_emision=fecha_emision,
             monto_total=monto_total,

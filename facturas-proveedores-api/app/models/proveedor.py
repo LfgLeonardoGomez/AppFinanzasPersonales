@@ -21,13 +21,21 @@ class Proveedor(SoftDeleteMixin, TimestampUUIDMixin, SQLModel, table=True):
     """
     Supplier entity.
 
-    Belongs to a single user (usuario_id). A user can have many suppliers
-    with the same name — the uniqueness constraint is intentionally absent.
+    Belongs to a single negocio (D-27). Every member of that negocio sees and
+    operates it. A negocio can have many suppliers with the same name — the
+    uniqueness constraint is intentionally absent.
     """
 
     __tablename__ = "proveedor"
 
-    usuario_id: uuid.UUID = Field(foreign_key="usuario.id", nullable=False)
+    # Isolation axis (D-27) — replaces the former usuario_id.
+    negocio_id: uuid.UUID = Field(foreign_key="negocio.id", nullable=False, index=True)
+
+    # Authorship, NOT authorization (D4). Never filter access with this.
+    creado_por_usuario_id: Optional[uuid.UUID] = Field(
+        default=None, foreign_key="usuario.id", nullable=True
+    )
+
     nombre: str = Field(nullable=False, max_length=120)
 
     # Optional fields — format validation in service layer (C-06)

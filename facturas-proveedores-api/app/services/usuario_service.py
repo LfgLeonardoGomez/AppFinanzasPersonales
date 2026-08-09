@@ -34,6 +34,7 @@ from app.core.security import (
     create_refresh_token,
     hash_refresh_token,
 )
+from app.models.negocio import Negocio
 from app.models.usuario import Usuario
 from app.repositories.usuario_repository import UsuarioRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
@@ -43,6 +44,21 @@ _INVALID_CREDENTIALS = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
     detail="Credenciales inválidas",
 )
+
+_NOMBRE_NEGOCIO_MAX = 120
+
+
+def _resolver_nombre_negocio(propuesto: str | None, nombre_usuario: str) -> str:
+    """Pick the shop name, never returning an empty one.
+
+    A blank name would leave the user staring at an unnamed shop with no way to
+    tell it apart, so an omitted or whitespace-only value falls back to the
+    person's own name. Truncated to the column width.
+    """
+    candidato = (propuesto or "").strip()
+    if not candidato:
+        candidato = f"Negocio de {nombre_usuario.strip()}"
+    return candidato[:_NOMBRE_NEGOCIO_MAX]
 
 _USER_NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
@@ -65,14 +81,28 @@ class UsuarioService:
 
     # ── registrar ─────────────────────────────────────────────────────────────
 
-    def registrar(self, email: str, nombre: str, password: str) -> Usuario:
+    def registrar(
+        self,
+        email: str,
+        nombre: str,
+        password: str,
+        nombre_negocio: str | None = None,
+    ) -> Usuario:
         """
-        Register a new user account.
+        Register a new user account together with its Negocio (D-30).
 
         Validates:
             - Email uniqueness (raises 409 if already in use).
-        Persists:
-            - Usuario with argon2id-hashed password.
+        Persists, in the caller's single transaction:
+            - Negocio (named from `nombre_negocio`, or derived from the user's
+              own name when not supplied).
+            - Usuario with argon2id-hashed password, `es_admin=True` — whoever
+              creates the shop administers it.
+
+        The two inserts share one transaction on purpose: a Negocio with no
+        users can never be reached again, and a Usuario with no Negocio cannot
+        exist (negocio_id is NOT NULL). The uniqueness check runs first so the
+        common failure never reaches the Negocio insert.
 
         Returns the created Usuario (not yet committed — caller commits).
         """
@@ -83,11 +113,17 @@ class UsuarioService:
                 detail="El email ya está en uso.",
             )
 
+        negocio = Negocio(nombre=_resolver_nombre_negocio(nombre_negocio, nombre))
+        self._session.add(negocio)
+        self._session.flush()
+
         password_hash = hash_password(password)
         usuario = self._usuario_repo.create(
             email=email,
             nombre=nombre,
             password_hash=password_hash,
+            negocio_id=negocio.id,
+            es_admin=True,
         )
         return usuario
 

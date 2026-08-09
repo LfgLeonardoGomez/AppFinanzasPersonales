@@ -16,6 +16,8 @@ from sqlmodel import Session, SQLModel, create_engine
 
 import app.models  # noqa: F401 — ensure all tables registered including RefreshToken
 
+from tests.conftest import crear_negocio
+
 
 @pytest.fixture(scope="module")
 def engine(db_url: str):
@@ -41,6 +43,7 @@ def _make_usuario(session: Session) -> "Usuario":  # type: ignore[name-defined]
     from app.repositories.usuario_repository import UsuarioRepository
     repo = UsuarioRepository(session)
     u = repo.create(
+        negocio_id=crear_negocio(session).id,
         email=_unique_email(),
         nombre="Test User",
         password_hash="$argon2id$fakehash",
@@ -58,6 +61,7 @@ class TestUsuarioRepository:
         from app.repositories.usuario_repository import UsuarioRepository
         repo = UsuarioRepository(session)
         u = repo.create(
+            negocio_id=crear_negocio(session).id,
             email=_unique_email(),
             nombre="New User",
             password_hash="$argon2id$fakehash",
@@ -71,7 +75,7 @@ class TestUsuarioRepository:
         from app.repositories.usuario_repository import UsuarioRepository
         repo = UsuarioRepository(session)
         email = _unique_email()
-        u = repo.create(email=email, nombre="By ID", password_hash="hash")
+        u = repo.create(negocio_id=crear_negocio(session).id, email=email, nombre="By ID", password_hash="hash")
         session.commit()
 
         fetched = repo.get_by_id(u.id)
@@ -91,7 +95,7 @@ class TestUsuarioRepository:
         from app.repositories.usuario_repository import UsuarioRepository
         repo = UsuarioRepository(session)
         email = _unique_email()
-        u = repo.create(email=email, nombre="By Email", password_hash="hash")
+        u = repo.create(negocio_id=crear_negocio(session).id, email=email, nombre="By Email", password_hash="hash")
         session.commit()
 
         fetched = repo.get_by_email(email)
