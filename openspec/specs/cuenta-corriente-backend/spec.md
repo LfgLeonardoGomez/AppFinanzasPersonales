@@ -3,46 +3,47 @@
 ## Purpose
 
 New capability: read-only HTTP endpoint that returns, per supplier, the on-demand `{ saldo, facturas_con_estado, historial }` triple composing the cuenta corriente. Builds on top of the `FacturaService._compute_estado_fifo` algorithm (C-08), the `PagoRepository.list_by_proveedor` active pago list (C-10 / C-06), and the `ProveedorRepository.get_saldo_por_proveedor` aggregate (C-06). The capability enforces RN-SALDO (sign convention: positive=deuda, zero=al día, negative=a favor), RN-FIFO (PENDIENTE / PARCIAL / PAGADA, deterministic ordering), and RN-HIST (chronological merge of facturas as debe and pagos as haber, with row-by-row `saldo_acumulado`). All computation is on-demand in the service layer; nothing derived is persisted.
+
+> **Actualizado por C-28 (D-27):** el eje de aislamiento de esta capability pasó de `usuario_id` a `negocio_id`. Las referencias a `usuario_id` que quedan arriba describen migraciones históricas (los índices que existieron hasta la revisión 0005) y se conservan como registro; la migración 0006 los reemplazó por sus equivalentes liderados por `negocio_id`. Ver la capability `negocio-scoping`.
 ## Requirements
 ### Requirement: Cuenta-corriente endpoint returns the triple per supplier
 
-The system SHALL expose `GET /api/proveedores/{proveedor_id}/cuenta-corriente` returning a JSON document with three blocks: `saldo` (Decimal, signed: `>0` deuda, `=0` al día, `<0` a favor), `facturas_con_estado` (a list of the supplier's active invoices, each annotated with its FIFO-computed `estado` of `PENDIENTE` / `PARCIAL` / `PAGADA`), and `historial` (a chronologically-merged list of the supplier's active invoices as `FACTURA` rows and active payments as `PAGO` rows, ordered by `(fecha ASC, created_at ASC, id ASC)`, with a `saldo_acumulado` field on every entry reflecting the running balance at that row). The endpoint SHALL require a valid authenticated session. The endpoint SHALL return 404 if the supplier does not exist, is soft-deleted, or belongs to a different user — never 403. The endpoint SHALL NOT persist any derived value. The endpoint SHALL have no request body and no query parameters.
+The system SHALL expose `GET /api/proveedores/{proveedor_id}/cuenta-corriente` returning a JSON document with three blocks: `saldo` (Decimal, signed: `>0` deuda, `=0` al día, `<0` a favor), `facturas_con_estado` (a list of the supplier's active invoices, each annotated with its FIFO-computed `estado` of `PENDIENTE` / `PARCIAL` / `PAGADA`), and `historial` (a chronologically-merged list of the supplier's active invoices as `FACTURA` rows and active payments as `PAGO` rows, ordered by `(fecha ASC, created_at ASC, id ASC)`, with a `saldo_acumulado` field on every entry reflecting the running balance at that row). The endpoint SHALL require a valid authenticated session and SHALL reject deactivated users with 401. The endpoint SHALL return 404 if the supplier does not exist, is soft-deleted, or belongs to a different **negocio** — never 403. The endpoint SHALL NOT persist any derived value. The endpoint SHALL have no request body and no query parameters.
 
-#### Scenario: read a supplier with mixed facturas and pagos
+#### Scenario: supplier with invoices and payments returns the full triple
 
-- **WHEN** an authenticated user requests `GET /api/proveedores/{proveedor_id}/cuenta-corriente` for one of their own suppliers that has both active invoices and active payments
-- **THEN** the response is 200 with the full triple — `saldo` equal to the C-06 aggregate, `facturas_con_estado` listing every active invoice with its FIFO estado, and `historial` listing every active invoice and active payment merged in chronological order with `saldo_acumulado` increasing on facturas and decreasing on pagos
+- **WHEN** an authenticated user requests `GET /api/proveedores/{proveedor_id}/cuenta-corriente` for a supplier of their negocio that has both active invoices and active payments
+- **THEN** the response contains `saldo`, `facturas_con_estado` with a FIFO `estado` per invoice, and `historial` with `saldo_acumulado` on every row
 
-#### Scenario: read a supplier with no movimientos
+#### Scenario: supplier with no movements returns an empty triple
 
-- **WHEN** an authenticated user requests the endpoint for one of their own suppliers that has no active invoices and no active payments
-- **THEN** the response is 200 with `saldo = 0.00`, `facturas_con_estado = []`, and `historial = []`
+- **WHEN** an authenticated user requests the endpoint for a supplier of their negocio that has no active invoices and no active payments
+- **THEN** the response contains `saldo = 0.00` and empty `facturas_con_estado` and `historial` lists
 
 #### Scenario: unauthenticated request rejected
 
-- **WHEN** a request reaches the endpoint without a valid `access_token` cookie
+- **WHEN** the endpoint is reached without a valid session cookie
+- **THEN** the response is 401 Unauthorized
+
+#### Scenario: deactivated user rejected
+
+- **WHEN** the endpoint is reached with a valid token belonging to a user with `desactivado = true`
 - **THEN** the response is 401 Unauthorized
 
 #### Scenario: foreign supplier returns 404
 
-- **WHEN** an authenticated user requests the endpoint for a supplier that belongs to a different user
+- **WHEN** an authenticated user requests the endpoint for a supplier that belongs to a different negocio
 - **THEN** the response is 404 Not Found and no data from the foreign supplier is leaked
 
 #### Scenario: soft-deleted supplier returns 404
 
-- **WHEN** an authenticated user requests the endpoint for one of their own suppliers that has been soft-deleted
+- **WHEN** an authenticated user requests the endpoint for a supplier of their negocio that has been soft-deleted
 - **THEN** the response is 404 Not Found
 
 #### Scenario: missing supplier returns 404
 
 - **WHEN** an authenticated user requests the endpoint for a non-existent supplier id
 - **THEN** the response is 404 Not Found
-
-#### Scenario: endpoint has no body and no query parameters
-
-- **WHEN** the request is `GET /api/proveedores/{proveedor_id}/cuenta-corriente` with no payload and no query string
-- **THEN** the response is computed and returned normally
-
 ### Requirement: Saldo computed on-demand via the supplier aggregate (RN-SALDO)
 
 `saldo` SHALL be computed as `SUM(facturas activas.monto_total) − SUM(pagos activos.monto)` for the requested supplier, in a single aggregate query — never one query per factura or per pago (no N+1). The `saldo` SHALL NOT be read from or written to any persisted column on `proveedor` (or anywhere else). The sign convention SHALL be: positive = deuda (you owe the supplier), zero = al día (settled), negative = saldo a favor (the supplier owes you). The implementation SHALL reuse the existing `ProveedorRepository.get_saldo_por_proveedor` aggregate.
@@ -162,17 +163,22 @@ Every active invoice in `facturas_con_estado` SHALL carry an `estado` field of `
 
 ### Requirement: Service-layer authorization — 404 on foreign supplier
 
-All authorization checks SHALL live exclusively in the service layer (`ProveedorService`). The router SHALL NOT contain ownership logic. When the requested supplier does not belong to the authenticated user, the service SHALL raise HTTP 404 (not 403) — foreign resources are indistinguishable from non-existent ones to prevent enumeration. The same 404 SHALL be returned for missing suppliers and for the caller's own suppliers that have been soft-deleted.
+All authorization checks SHALL live exclusively in the service layer (`ProveedorService`). The router SHALL NOT contain ownership logic. When the requested supplier does not belong to the authenticated caller's **negocio**, the service SHALL raise HTTP 404 (not 403) — foreign resources are indistinguishable from non-existent ones to prevent enumeration. The same 404 SHALL be returned for missing suppliers and for the negocio's own suppliers that have been soft-deleted. A supplier belonging to the caller's negocio SHALL be accessible regardless of which user of that negocio created it.
 
-#### Scenario: cross-user isolation — user B cannot read user A's cuenta-corriente
+#### Scenario: cross-negocio isolation on the cuenta-corriente endpoint
 
-- **WHEN** user B sends a valid session and requests the endpoint for a supplier owned by user A
-- **THEN** the response is 404 Not Found and no data from user A is leaked
+- **WHEN** a user of negocio B requests the cuenta-corriente of a supplier belonging to negocio A
+- **THEN** the response is 404 Not Found and no data from negocio A is leaked
 
-#### Scenario: own soft-deleted supplier is indistinguishable from non-existent
+#### Scenario: soft-deleted supplier of the caller's own negocio returns 404
 
-- **WHEN** the authenticated user requests the endpoint for a supplier they own that has `deleted_at` populated
+- **WHEN** a user requests the cuenta-corriente of a supplier of their negocio that has been soft-deleted
 - **THEN** the response is 404 Not Found
+
+#### Scenario: a teammate's supplier is accessible
+
+- **WHEN** a user requests the cuenta-corriente of a supplier created by another user of the same negocio
+- **THEN** the response is 200 and contains the supplier's `saldo`, `facturas_con_estado` and `historial`
 
 ### Requirement: No derived data is persisted
 

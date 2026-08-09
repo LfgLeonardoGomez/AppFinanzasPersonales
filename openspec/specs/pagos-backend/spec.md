@@ -2,16 +2,18 @@
 
 ## Purpose
 
-Expose the complete HTTP CRUD for `Pago` over `/api/pagos` so the C-08 FIFO estado algorithm and the C-12 cuenta-corriente view can read a real, isolated, user-scoped payment pool instead of the C-06 stub. Shipped by C-10, this capability delivers the full `Pago` lifecycle — `GET /api/pagos?proveedor_id&page` (paginated list, ordered by `fecha DESC, created_at DESC, id DESC`, scoped to the caller's active pagos), `POST /api/pagos` (create), `GET /api/pagos/{id}` (read), `PATCH /api/pagos/{id}` (update), `DELETE /api/pagos/{id}` (soft delete) — backed by `PagoService` in the service layer where all authorization and validation live, and by Pydantic `PagoCreate` / `PagoUpdate` schemas in `app/schemas/pago.py` (replacing the C-08 inline models) that use `model_config = ConfigDict(extra="forbid")` to reject any payload containing `factura_id` at the wire level. The capability enforces RN-PAG-01 through RN-PAG-05: no `factura_id` anywhere — neither in the schema, nor in the model, nor in any payload; `monto > 0`; `fecha <= today(UTC-3)` via `zoneinfo.ZoneInfo("America/Argentina/Buenos_Aires")`; `metodo` constrained to the `MetodoPago` enum; and `proveedor_id` cannot be changed via PATCH (would corrupt the FIFO pool history). Multi-tenant isolation is enforced by the `_get_owned_pago(usuario_id, pago_id)` helper, which raises 404 for foreign, soft-deleted, or non-existent pagos (never 403, to prevent enumeration, mirroring the C-08 pattern). Soft-deleted pagos remain in the table but are excluded from the FIFO pool aggregation in `FacturaService` and from the cuenta-corriente `historial`, and the composite index migration `(usuario_id, proveedor_id, deleted_at, fecha)` on `pago` keeps the FIFO pool queries fast as data grows.
+Expose the complete HTTP CRUD for `Pago` over `/api/pagos` so the C-08 FIFO estado algorithm and the C-12 cuenta-corriente view can read a real, isolated, user-scoped payment pool instead of the C-06 stub. Shipped by C-10, this capability delivers the full `Pago` lifecycle — `GET /api/pagos?proveedor_id&page` (paginated list, ordered by `fecha DESC, created_at DESC, id DESC`, scoped to the caller's active pagos), `POST /api/pagos` (create), `GET /api/pagos/{id}` (read), `PATCH /api/pagos/{id}` (update), `DELETE /api/pagos/{id}` (soft delete) — backed by `PagoService` in the service layer where all authorization and validation live, and by Pydantic `PagoCreate` / `PagoUpdate` schemas in `app/schemas/pago.py` (replacing the C-08 inline models) that use `model_config = ConfigDict(extra="forbid")` to reject any payload containing `factura_id` at the wire level. The capability enforces RN-PAG-01 through RN-PAG-05: no `factura_id` anywhere — neither in the schema, nor in the model, nor in any payload; `monto > 0`; `fecha <= today(UTC-3)` via `zoneinfo.ZoneInfo("America/Argentina/Buenos_Aires")`; `metodo` constrained to the `MetodoPago` enum; and `proveedor_id` cannot be changed via PATCH (would corrupt the FIFO pool history). Multi-tenant isolation is enforced by the `_get_owned_pago(negocio_id, pago_id)` helper, which raises 404 for foreign, soft-deleted, or non-existent pagos (never 403, to prevent enumeration, mirroring the C-08 pattern). Soft-deleted pagos remain in the table but are excluded from the FIFO pool aggregation in `FacturaService` and from the cuenta-corriente `historial`, and the composite index migration `(usuario_id, proveedor_id, deleted_at, fecha)` on `pago` keeps the FIFO pool queries fast as data grows.
+
+> **Actualizado por C-28 (D-27):** el eje de aislamiento de esta capability pasó de `usuario_id` a `negocio_id`. Las referencias a `usuario_id` que quedan arriba describen migraciones históricas (los índices que existieron hasta la revisión 0005) y se conservan como registro; la migración 0006 los reemplazó por sus equivalentes liderados por `negocio_id`. Ver la capability `negocio-scoping`.
 ## Requirements
-### Requirement: Payment listing scoped to the authenticated user
+### Requirement: Payment listing scoped to the authenticated caller's negocio
 
-The system SHALL expose `GET /api/pagos` returning the authenticated user's active payments (where `deleted_at IS NULL`). The endpoint SHALL accept optional query parameters: `proveedor_id` (UUID) and `page` (int, default 1, 1-indexed). The default page size SHALL be 50. The list SHALL be ordered by `fecha DESC, created_at DESC, id DESC` so the most recent payment surfaces first. When `proveedor_id` is provided, the list SHALL be filtered to that supplier. Foreign `proveedor_id` (owned by another user) SHALL return 404, not an empty list.
+The system SHALL expose `GET /api/pagos` returning the authenticated caller's **negocio**'s active payments (where `deleted_at IS NULL`). The endpoint SHALL accept optional query parameters: `proveedor_id` (UUID) and `page` (int, default 1, 1-indexed). The default page size SHALL be 50. The list SHALL be ordered by `fecha DESC, created_at DESC, id DESC` so the most recent payment surfaces first. When `proveedor_id` is provided, the list SHALL be filtered to that supplier. Foreign `proveedor_id` (owned by another negocio) SHALL return 404, not an empty list.
 
-#### Scenario: listing returns only the caller's active payments
+#### Scenario: listing returns only the caller's negocio's active payments
 
 - **WHEN** an authenticated user requests `GET /api/pagos`
-- **THEN** the response contains only that user's non-deleted payments, ordered by `fecha DESC, created_at DESC, id DESC`
+- **THEN** the response contains only that negocio's non-deleted payments, ordered by `fecha DESC, created_at DESC, id DESC`
 
 #### Scenario: soft-deleted payments are excluded from the listing
 
@@ -20,41 +22,46 @@ The system SHALL expose `GET /api/pagos` returning the authenticated user's acti
 
 #### Scenario: listing scoped to a supplier when proveedor_id is provided
 
-- **WHEN** the request supplies `proveedor_id` and that supplier belongs to the authenticated user
+- **WHEN** the request supplies `proveedor_id` and that supplier belongs to the authenticated caller's negocio
 - **THEN** only that supplier's payments are returned, still in the same `fecha DESC` order
 
-#### Scenario: proveedor_id belonging to another user returns 404
+#### Scenario: proveedor_id belonging to another negocio returns 404
 
-- **WHEN** the request supplies a `proveedor_id` that belongs to a different user
+- **WHEN** the request supplies a `proveedor_id` that belongs to a different negocio
 - **THEN** the response is 404 Not Found and no payments from any supplier are leaked
 
 #### Scenario: pagination with page size 50
 
-- **WHEN** the user has more than 50 active payments and requests page 2
+- **WHEN** the negocio has more than 50 active payments and the user requests page 2
 - **THEN** the response contains the next 50 payments, in the same order, and a `total` field reflecting the full active count
+
+#### Scenario: payments loaded by a teammate are listed
+
+- **WHEN** two users of the same negocio each create payments and either of them lists `GET /api/pagos`
+- **THEN** the listing contains the payments created by both
 
 ### Requirement: Create payment (RN-PAG-01, RN-PAG-02, RN-PAG-03, RN-PAG-04)
 
-The system SHALL expose `POST /api/pagos` that creates a payment owned by the authenticated user, associated to one of the user's suppliers. The service SHALL verify that the target `proveedor_id` exists, is not soft-deleted, and belongs to the authenticated user before persisting (foreign proveedor → 404). `monto` SHALL be validated as > 0 by both Pydantic schema and service layer. `fecha` SHALL be validated by the service as not in the future relative to the `America/Argentina/Buenos_Aires` (UTC-3, no DST) wall clock. `metodo` SHALL be a Pydantic enum. `usuario_id` SHALL be taken from the authenticated session — the payload cannot override it. `origen` SHALL be set to `MANUAL` automatically and SHALL NOT be accepted from the payload. The endpoint SHALL return status 201.
+The system SHALL expose `POST /api/pagos` that creates a payment owned by the authenticated caller's **negocio**, associated to one of that negocio's suppliers. The service SHALL verify that the target `proveedor_id` exists, is not soft-deleted, and belongs to the caller's negocio before persisting (foreign proveedor → 404). `monto` SHALL be validated as > 0 by both Pydantic schema and service layer. `fecha` SHALL be validated by the service as not in the future relative to the `America/Argentina/Buenos_Aires` (UTC-3, no DST) wall clock. `metodo` SHALL be a Pydantic enum. `negocio_id` SHALL be taken from the authenticated session — the payload cannot override it — and `creado_por_usuario_id` SHALL be set to the caller's user id. `origen` SHALL default to `MANUAL`, accepting `IA` from the client per D-18. The endpoint SHALL return status 201.
 
 #### Scenario: create a valid payment
 
-- **WHEN** an authenticated user POSTs a valid payload with a `proveedor_id` they own, `monto > 0`, a non-future `fecha`, and a valid `metodo`
-- **THEN** the payment is persisted with the caller's `usuario_id`, `origen = MANUAL`, and the response includes the persisted payment with status 201
+- **WHEN** an authenticated user POSTs a valid payload with a `proveedor_id` owned by their negocio, `monto > 0`, a non-future `fecha`, and a valid `metodo`
+- **THEN** the payment is persisted with the caller's `negocio_id` and `creado_por_usuario_id`, and the response includes the persisted payment with status 201
 
-#### Scenario: usuario_id is taken from the session, not the payload
+#### Scenario: negocio_id is taken from the session, not the payload
 
 - **WHEN** a `PagoCreate` payload is submitted by an authenticated user
-- **THEN** the persisted `usuario_id` equals the authenticated caller's id, regardless of any payload field
+- **THEN** the persisted `negocio_id` equals the authenticated caller's `negocio_id`, regardless of any payload field
 
-#### Scenario: origen is set to MANUAL automatically
+#### Scenario: origen defaults to MANUAL
 
-- **WHEN** a `PagoCreate` payload is submitted
-- **THEN** the persisted `origen` equals `MANUAL` and the service never accepts `origen` from the payload (the schema has no such field)
+- **WHEN** a `PagoCreate` payload is submitted without `origen`
+- **THEN** the persisted `origen` equals `MANUAL`
 
-#### Scenario: proveedor belonging to another user returns 404
+#### Scenario: proveedor belonging to another negocio returns 404
 
-- **WHEN** the submitted `proveedor_id` belongs to a different user
+- **WHEN** the submitted `proveedor_id` belongs to a different negocio
 - **THEN** the response is 404 Not Found and no payment is persisted
 
 #### Scenario: proveedor that is soft-deleted returns 404
@@ -62,38 +69,23 @@ The system SHALL expose `POST /api/pagos` that creates a payment owned by the au
 - **WHEN** the submitted `proveedor_id` has `deleted_at` set
 - **THEN** the response is 404 Not Found and no payment is persisted
 
-#### Scenario: future fecha returns 422
+#### Scenario: factura_id is still rejected at the wire level
 
-- **WHEN** `fecha` is a date in the future relative to the UTC-3 wall clock
-- **THEN** the response is 422 Unprocessable Entity and no payment is persisted
-
-#### Scenario: monto of zero or negative returns 422
-
-- **WHEN** `monto <= 0`
-- **THEN** the response is 422 Unprocessable Entity (validated by Pydantic and re-validated by the service)
-
-#### Scenario: invalid metodo returns 422
-
-- **WHEN** `metodo` is a value outside the `EFECTIVO` / `TRANSFERENCIA` / `TARJETA` / `MERCADOPAGO` / `OTRO` enum
-- **THEN** the response is 422 Unprocessable Entity
-
-#### Scenario: comprobante_url is optional
-
-- **WHEN** the payload omits the `comprobante_url` field
-- **THEN** the payment is created successfully with `comprobante_url = null`
+- **WHEN** a `PagoCreate` payload includes `factura_id`
+- **THEN** the request is rejected by the schema (`extra="forbid"`), preserving RN-PAG-01
 
 ### Requirement: Read a single payment
 
-The system SHALL expose `GET /api/pagos/{id}` returning a single payment only when it belongs to the authenticated user. A foreign or soft-deleted payment SHALL be indistinguishable from a non-existent one (404, never 403).
+The system SHALL expose `GET /api/pagos/{id}` returning a single payment only when it belongs to the caller's negocio. A foreign or soft-deleted payment SHALL be indistinguishable from a non-existent one (404, never 403).
 
 #### Scenario: read own payment
 
 - **WHEN** an authenticated user requests one of their own active payments by id
-- **THEN** the payment is returned with all its fields (id, usuario_id, proveedor_id, monto, fecha, metodo, comprobante_url, origen, created_at, updated_at)
+- **THEN** the payment is returned with all its fields (id, negocio_id, proveedor_id, monto, fecha, metodo, comprobante_url, origen, created_at, updated_at)
 
 #### Scenario: reading a foreign payment returns 404
 
-- **WHEN** an authenticated user requests a payment id that belongs to another user
+- **WHEN** an authenticated user requests a payment id that belongs to another negocio
 - **THEN** the response is 404 Not Found (never 403)
 
 #### Scenario: reading a soft-deleted payment returns 404
@@ -103,7 +95,7 @@ The system SHALL expose `GET /api/pagos/{id}` returning a single payment only wh
 
 ### Requirement: Update payment with ownership check (PATCH semantics)
 
-The system SHALL expose `PATCH /api/pagos/{id}` that updates editable fields (`monto`, `fecha`, `metodo`, `comprobante_url`) of a payment owned by the authenticated user. All fields SHALL be optional; only provided (non-None) fields are applied. `proveedor_id` SHALL NOT be changeable via PATCH (re-linking a payment to a different supplier would corrupt the FIFO pool's history). `usuario_id` SHALL NOT be changeable. `origen` SHALL NOT be changeable. If `monto` is provided, it SHALL be > 0 (Pydantic + service). If `fecha` is provided, it SHALL be ≤ today in UTC-3. The ownership check SHALL be enforced in the service layer (foreign → 404, never 403).
+The system SHALL expose `PATCH /api/pagos/{id}` that updates editable fields (`monto`, `fecha`, `metodo`, `comprobante_url`) of a payment owned by the caller's negocio. All fields SHALL be optional; only provided (non-None) fields are applied. `proveedor_id` SHALL NOT be changeable via PATCH (re-linking a payment to a different supplier would corrupt the FIFO pool's history). `negocio_id` SHALL NOT be changeable. `origen` SHALL NOT be changeable. If `monto` is provided, it SHALL be > 0 (Pydantic + service). If `fecha` is provided, it SHALL be ≤ today in UTC-3. The ownership check SHALL be enforced in the service layer (foreign → 404, never 403).
 
 #### Scenario: update editable fields of own payment
 
@@ -112,7 +104,7 @@ The system SHALL expose `PATCH /api/pagos/{id}` that updates editable fields (`m
 
 #### Scenario: updating a foreign payment returns 404
 
-- **WHEN** an authenticated user PATCHes a payment that belongs to another user
+- **WHEN** an authenticated user PATCHes a payment that belongs to another negocio
 - **THEN** the response is 404 Not Found and the foreign payment is unchanged
 
 #### Scenario: proveedor_id cannot be changed via PATCH
@@ -132,7 +124,7 @@ The system SHALL expose `PATCH /api/pagos/{id}` that updates editable fields (`m
 
 ### Requirement: Soft-delete payment (RN-PAG-05)
 
-The system SHALL expose `DELETE /api/pagos/{id}` that performs a soft delete (sets `deleted_at`) on a payment owned by the authenticated user, preserving the row and its FK references. Deleting a foreign or already-deleted payment SHALL return 404. The endpoint SHALL return 204 No Content on success. Deleting a payment does NOT directly affect any invoice (payments link only to `proveedor_id`, not `factura_id` — RN-PAG-01); the next on-demand re-aggregation of the FIFO pool (C-08 / C-12) automatically excludes the soft-deleted payment.
+The system SHALL expose `DELETE /api/pagos/{id}` that performs a soft delete (sets `deleted_at`) on a payment owned by the caller's negocio, preserving the row and its FK references. Deleting a foreign or already-deleted payment SHALL return 404. The endpoint SHALL return 204 No Content on success. Deleting a payment does NOT directly affect any invoice (payments link only to `proveedor_id`, not `factura_id` — RN-PAG-01); the next on-demand re-aggregation of the FIFO pool (C-08 / C-12) automatically excludes the soft-deleted payment.
 
 #### Scenario: soft delete preserves the row
 
@@ -141,7 +133,7 @@ The system SHALL expose `DELETE /api/pagos/{id}` that performs a soft delete (se
 
 #### Scenario: deleting a foreign payment returns 404
 
-- **WHEN** an authenticated user deletes a payment that belongs to another user
+- **WHEN** an authenticated user deletes a payment that belongs to another negocio
 - **THEN** the response is 404 Not Found and the foreign payment is not modified
 
 #### Scenario: deleting an already-deleted payment returns 404
@@ -161,7 +153,7 @@ The system SHALL expose `DELETE /api/pagos/{id}` that performs a soft delete (se
 
 ### Requirement: All payment endpoints require authentication
 
-Every `/api/pagos` endpoint SHALL require a valid authenticated session (`get_current_user`). Requests without a valid `access_token` cookie SHALL be rejected with 401. All data access SHALL be scoped to the authenticated user's `usuario_id`.
+Every `/api/pagos` endpoint SHALL require a valid authenticated session (`get_current_user`). Requests without a valid `access_token` cookie SHALL be rejected with 401. All data access SHALL be scoped to the authenticated caller's negocio's `negocio_id`.
 
 #### Scenario: unauthenticated request rejected
 
@@ -170,9 +162,9 @@ Every `/api/pagos` endpoint SHALL require a valid authenticated session (`get_cu
 
 ### Requirement: Service-layer authorization — 404 on foreign resource
 
-All authorization checks SHALL live exclusively in the service layer (`PagoService`). The router SHALL NOT contain ownership logic. When a resource does not belong to the authenticated user, the service SHALL raise HTTP 404 (not 403) — foreign resources are indistinguishable from non-existent ones to prevent enumeration. The helper `_get_owned_pago(usuario_id, pago_id)` SHALL raise 404 if the pago is missing, soft-deleted, or owned by a different user.
+All authorization checks SHALL live exclusively in the service layer (`PagoService`). The router SHALL NOT contain ownership logic. When a resource does not belong to the authenticated caller's negocio, the service SHALL raise HTTP 404 (not 403) — foreign resources are indistinguishable from non-existent ones to prevent enumeration. The helper `_get_owned_pago(negocio_id, pago_id)` SHALL raise 404 if the pago is missing, soft-deleted, or owned by a different negocio.
 
-#### Scenario: cross-user isolation — user B cannot access user A's payments
+#### Scenario: cross-negocio isolation — negocio B cannot access negocio A's payments
 
 - **WHEN** user B attempts to GET, PATCH, or DELETE a payment that belongs to user A
 - **THEN** every operation returns 404, and user A's payment is not modified
@@ -198,7 +190,7 @@ The `PagoCreate` and `PagoUpdate` schemas SHALL NOT declare a `factura_id` field
 
 ### Requirement: Schema validation
 
-The `PagoCreate` schema SHALL enforce: `proveedor_id` (UUID, required); `monto` (Decimal, > 0, Pydantic `Field(gt=0)`); `fecha` (date, required); `metodo` (MetodoPago enum, required); `comprobante_url` (Optional[str]). `usuario_id`, `origen`, and any other internal field SHALL NOT appear in the schema. The `PagoUpdate` schema SHALL make `monto`, `fecha`, `metodo`, and `comprobante_url` all optional, applying the same validators to provided values. `proveedor_id`, `usuario_id`, and `origen` SHALL NOT appear in `PagoUpdate`.
+The `PagoCreate` schema SHALL enforce: `proveedor_id` (UUID, required); `monto` (Decimal, > 0, Pydantic `Field(gt=0)`); `fecha` (date, required); `metodo` (MetodoPago enum, required); `comprobante_url` (Optional[str]). `usuario_id`, `negocio_id`, `origen`, and any other internal field SHALL NOT appear in the schema. The `PagoUpdate` schema SHALL make `monto`, `fecha`, `metodo`, and `comprobante_url` all optional, applying the same validators to provided values. `proveedor_id`, `usuario_id`, `negocio_id`, and `origen` SHALL NOT appear in `PagoUpdate`.
 
 #### Scenario: monto must be positive
 
@@ -327,3 +319,11 @@ A redirect is not cosmetic here: HTTP clients rebuild the request when they foll
 - **WHEN** the OpenAPI document is produced
 - **THEN** each collection operation appears once, so generated clients and types do not gain a duplicate
 
+### Requirement: Payment endpoints reject deactivated users
+
+Every `/api/pagos` endpoint SHALL reject a request whose authenticated user has `desactivado = true` with **401**, independently of token validity, and SHALL scope all data access to the caller's `negocio_id`.
+
+#### Scenario: deactivated user rejected
+
+- **WHEN** a request reaches any `/api/pagos` endpoint with a valid token belonging to a deactivated user
+- **THEN** the response is 401 Unauthorized and no payment data is returned

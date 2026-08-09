@@ -6,13 +6,15 @@ Expose the supplier (proveedor) management capability over HTTP for authenticate
 
 - Paginated supplier listing with on-demand balance (`saldo`) computed in a single aggregate query (RN-SALDO, no N+1)
 - Ordering by name (normalized) or by the computed balance expression
-- Create, read, update, and soft-delete with strict per-user isolation (foreign resource → 404, never 403)
+- Create, read, update, and soft-delete with strict per-negocio isolation (foreign resource → 404, never 403)
 - CUIT format validation in the backend (RN-PROV-02)
 - Name search for supplier linkage (RN-VINC)
 - The supporting `(usuario_id, LOWER(nombre))` index migration
 
 The invariants that `saldo` and `estado` are NEVER persisted are preserved throughout.
 
+
+> **Actualizado por C-28 (D-27):** el eje de aislamiento de esta capability pasó de `usuario_id` a `negocio_id`. Las referencias a `usuario_id` que quedan arriba describen migraciones históricas (los índices que existieron hasta la revisión 0005) y se conservan como registro; la migración 0006 los reemplazó por sus equivalentes liderados por `negocio_id`. Ver la capability `negocio-scoping`.
 ## Requirements
 
 ### Requirement: Paginated supplier listing with on-demand balance
@@ -55,54 +57,64 @@ The supplier listing SHALL support ordering by `nombre` (case-insensitive, norma
 
 ### Requirement: Create supplier
 
-The system SHALL expose `POST /api/proveedores` that creates a supplier owned by the authenticated user. The created supplier SHALL be persisted with `usuario_id` set to the caller's id (the client SHALL NOT be able to set `usuario_id`), `categoria` defaulting to `OTRO` when omitted, and `deleted_at = null`. The response SHALL include the supplier with `saldo = 0.00`.
+The system SHALL expose `POST /api/proveedores` that creates a supplier owned by the authenticated caller's **negocio**. The created supplier SHALL be persisted with `negocio_id` set to the caller's `negocio_id` (the client SHALL NOT be able to set `negocio_id`), `creado_por_usuario_id` set to the caller's user id, `categoria` defaulting to `OTRO` when omitted, and `deleted_at = null`. The response SHALL include the supplier with `saldo = 0.00`.
 
 #### Scenario: create a supplier
 
 - **WHEN** an authenticated user POSTs a valid supplier payload (nombre present)
-- **THEN** the supplier is persisted with the caller's `usuario_id`, returned with status 201 and a `saldo` of `0.00`
+- **THEN** the supplier is persisted with the caller's `negocio_id` and `creado_por_usuario_id`, returned with status 201 and a `saldo` of `0.00`
 
-#### Scenario: usuario_id is taken from the session, not the payload
+#### Scenario: negocio_id is taken from the session, not the payload
 
-- **WHEN** the payload attempts to include a `usuario_id` different from the caller's
-- **THEN** the persisted supplier still belongs to the authenticated caller (the payload value is ignored)
+- **WHEN** the payload attempts to include a `negocio_id` different from the caller's
+- **THEN** the persisted supplier still belongs to the authenticated caller's negocio (the payload value is ignored)
 
 #### Scenario: duplicate names are allowed
 
 - **WHEN** a user creates two suppliers with the identical `nombre`
 - **THEN** both are created successfully (nombre is not unique, RN-PROV-01)
 
+#### Scenario: a teammate sees the supplier immediately
+
+- **WHEN** a user creates a supplier and another active user of the same negocio lists suppliers
+- **THEN** the new supplier appears in the teammate's listing
+
 ### Requirement: Read a single supplier
 
-The system SHALL expose `GET /api/proveedores/{id}` returning the supplier with its on-demand `saldo`, only when the supplier belongs to the authenticated user. A supplier that belongs to another user SHALL be indistinguishable from a non-existent one.
+The system SHALL expose `GET /api/proveedores/{id}` returning the supplier with its on-demand `saldo`, only when the supplier belongs to the authenticated caller's negocio. A supplier that belongs to another negocio SHALL be indistinguishable from a non-existent one.
 
 #### Scenario: read own supplier
 
-- **WHEN** an authenticated user requests one of their own suppliers by id
+- **WHEN** an authenticated user requests one of their negocio's suppliers by id
 - **THEN** the supplier is returned with its computed `saldo`
 
 #### Scenario: reading a foreign supplier returns 404
 
-- **WHEN** an authenticated user requests a supplier id that belongs to another user
+- **WHEN** an authenticated user requests a supplier id that belongs to another negocio
 - **THEN** the response is 404 Not Found (never 403)
 
 ### Requirement: Update supplier with ownership check
 
-The system SHALL expose `PATCH /api/proveedores/{id}` that updates editable fields (`nombre`, `cuit`, `telefono`, `categoria`, `notas`) of a supplier owned by the authenticated user. The ownership check SHALL be enforced in the service layer by filtering on `usuario_id`; updating a supplier owned by another user SHALL return **404** (never 403). The update SHALL NOT allow changing `usuario_id`.
+The system SHALL expose `PATCH /api/proveedores/{id}` that updates editable fields (`nombre`, `cuit`, `telefono`, `categoria`, `notas`) of a supplier owned by the authenticated caller's negocio. The ownership check SHALL be enforced in the service layer by filtering on `negocio_id`; updating a supplier owned by another negocio SHALL return **404** (never 403). The update SHALL NOT allow changing `negocio_id`.
 
 #### Scenario: update own supplier
 
-- **WHEN** an authenticated user PATCHes editable fields of their own supplier
+- **WHEN** an authenticated user PATCHes editable fields of a supplier of their own negocio
 - **THEN** the supplier is updated and returned with its computed `saldo`
 
 #### Scenario: updating a foreign supplier returns 404
 
-- **WHEN** an authenticated user PATCHes a supplier that belongs to another user
+- **WHEN** an authenticated user PATCHes a supplier that belongs to another negocio
 - **THEN** the response is 404 Not Found and the foreign supplier is unchanged
+
+#### Scenario: a teammate can update the same supplier
+
+- **WHEN** a user PATCHes a supplier created by another user of the same negocio
+- **THEN** the update succeeds
 
 ### Requirement: Soft-delete supplier reporting dependencies
 
-The system SHALL expose `DELETE /api/proveedores/{id}` that performs a **soft delete** (sets `deleted_at`, RN-PROV-03) on a supplier owned by the authenticated user, preserving the row and its foreign-key references intact. Deleting a foreign supplier SHALL return **404**. The service SHALL determine whether the supplier has associated active invoices or payments and report a `tiene_dependencias` boolean (RN-PROV-04) so the caller can decide whether confirmation was required; the deletion SHALL NOT be blocked by the presence of dependencies.
+The system SHALL expose `DELETE /api/proveedores/{id}` that performs a **soft delete** (sets `deleted_at`, RN-PROV-03) on a supplier owned by the caller's negocio, preserving the row and its foreign-key references intact. Deleting a foreign supplier SHALL return **404**. The service SHALL determine whether the supplier has associated active invoices or payments and report a `tiene_dependencias` boolean (RN-PROV-04) so the caller can decide whether confirmation was required; the deletion SHALL NOT be blocked by the presence of dependencies.
 
 #### Scenario: soft delete preserves the row and FKs
 
@@ -121,7 +133,7 @@ The system SHALL expose `DELETE /api/proveedores/{id}` that performs a **soft de
 
 #### Scenario: deleting a foreign supplier returns 404
 
-- **WHEN** an authenticated user deletes a supplier that belongs to another user
+- **WHEN** an authenticated user deletes a supplier that belongs to another negocio
 - **THEN** the response is 404 Not Found and the foreign supplier is not modified
 
 ### Requirement: Search suppliers by name for linkage
@@ -131,7 +143,7 @@ The system SHALL expose `GET /api/proveedores/buscar?nombre=` returning the auth
 #### Scenario: search returns normalized matches for the caller only
 
 - **WHEN** an authenticated user searches by a name fragment that matches several of their active suppliers (case- and accent-insensitively)
-- **THEN** all matching active suppliers owned by the caller are returned, and no supplier owned by another user is included
+- **THEN** all matching active suppliers owned by the caller are returned, and no supplier owned by another negocio is included
 
 #### Scenario: search excludes soft-deleted suppliers
 
@@ -159,28 +171,28 @@ When a supplier payload includes a non-empty `cuit`, the system SHALL validate i
 
 ### Requirement: All supplier endpoints require authentication
 
-Every `/api/proveedores` endpoint SHALL require a valid authenticated session (`get_current_user`). Requests without a valid `access_token` cookie SHALL be rejected with 401, and all data access SHALL be scoped to the authenticated user's `usuario_id`.
+Every `/api/proveedores` endpoint SHALL require a valid authenticated session (`get_current_user`). Requests without a valid `access_token` cookie SHALL be rejected with 401, and all data access SHALL be scoped to the authenticated caller's negocio's `negocio_id`.
 
 #### Scenario: unauthenticated request rejected
 
 - **WHEN** a request reaches any `/api/proveedores` endpoint without a valid session
 - **THEN** the response is 401 Unauthorized
 
+#### Scenario: deactivated user rejected
+
+- **WHEN** a request reaches any `/api/proveedores` endpoint with a valid token belonging to a user with `desactivado = true`
+- **THEN** the response is 401 Unauthorized
+
 ### Requirement: Supplier name index migration
 
-The change SHALL include a reversible Alembic migration `0003` (revision `"0003"`, `down_revision = "0002"`) that creates a composite index on `proveedor` supporting normalized name search and name ordering for `(usuario_id, nombre)`. To make the index usable by case-insensitive search, the index SHALL be expression-based on `LOWER(nombre)` (or an equivalent collation-aware definition). The migration SHALL NOT create any `saldo` or `estado` column and its `downgrade` SHALL drop the index.
+The change SHALL include a reversible Alembic migration `0003` (revision `"0003"`, `down_revision = "0002"`) that creates a composite index on `proveedor` supporting normalized name search and name ordering. To make the index usable by case-insensitive search, the index SHALL be expression-based on `LOWER(nombre)` (or an equivalent collation-aware definition). Following migration `0006`, the leading column of this index SHALL be `negocio_id` rather than `usuario_id`, so that the index keeps serving the scoped name search and ordering. The migration SHALL NOT create any `saldo` or `estado` column and its `downgrade` SHALL drop the index.
 
 #### Scenario: upgrade creates the name index
 
 - **WHEN** `alembic upgrade head` runs with the database at revision `0002`
-- **THEN** a composite index over `(usuario_id, LOWER(nombre))` exists on the `proveedor` table and the head revision becomes `0003`
+- **THEN** a composite index supporting `LOWER(nombre)` search exists on the `proveedor` table and the head revision becomes `0003`
 
-#### Scenario: downgrade drops the name index
+#### Scenario: the scoped name index follows the negocio axis
 
-- **WHEN** `alembic downgrade` of revision `0003` runs
-- **THEN** the name index is removed and the schema returns to the `0002` state
-
-#### Scenario: migration introduces no derived columns
-
-- **WHEN** the `proveedor` table is inspected after the migration
-- **THEN** no `saldo` and no `estado` column exists
+- **WHEN** the schema is inspected after migration `0006`
+- **THEN** the composite index on `proveedor` leads with `negocio_id` and still covers `LOWER(nombre)`

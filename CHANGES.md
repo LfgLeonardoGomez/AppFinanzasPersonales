@@ -623,7 +623,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 > **Importante**: esta fase cambia el **eje de aislamiento** de todo el sistema (`usuario_id` → `negocio_id`, D-27). Se hace **antes** de Clientes y Ventas a propósito: hoy la migración toca 4 tablas; después de la FASE 11 tocaría 8. Convivir con dos modelos de scoping sería peor que cualquiera de los dos por separado.
 
 ### [C-28] `negocio-scoping-backend`
-- **Estado**: `[ ]`
+- **Estado**: `[x]` archivado 2026-08-09
 - **Scope**:
   - `app/models/negocio.py`: entidad `Negocio` (id UUIDv7, nombre, timestamps)
   - `app/models/usuario.py`: agrega `negocio_id` (FK not null), `es_admin` (bool default false), `desactivado` (bool default false). **NO** usar `deleted_at` — ver D-32
@@ -863,7 +863,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-25 | fix-test-dependency-overrides | MEDIO | C-22 (archivado 2026-07-30) |
 | C-26 | edit-form-ux-and-factura-detail | BAJO | C-13 (archivado 2026-08-05) |
 | C-27 | close-known-gaps | MEDIO | C-24, C-26 (archivado 2026-08-06) |
-| **C-28** | **negocio-scoping-backend** | **CRITICO** | C-27 |
+| C-28 | negocio-scoping-backend | CRITICO | C-27 (archivado 2026-08-09) |
 | **C-29** | **equipo-backend** | **CRITICO** | C-28 |
 | **C-30** | **equipo-frontend** | ALTO | C-29 |
 | **C-31** | **password-recovery** | **CRITICO** | C-29 |
@@ -876,12 +876,12 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | **C-38** | **estadisticas-frontend** | BAJO | C-34, C-37 |
 | **C-39** | **exportacion-pdf-xls** | MEDIO | C-36 |
 
-**Total: 40 entradas (C-01…C-39 + C-15a) · 13 fases · 28 archivadas, 12 pendientes**
+**Total: 40 entradas (C-01…C-39 + C-15a) · 13 fases · 29 archivadas, 11 pendientes**
 
 **Estado del MVP**: completo y archivado desde C-13 (2026-06-27). C-14/C-15 cerraron la IA de visión. C-15a…C-27 fueron housekeeping, fixes y cierre de deudas; el rediseño de UX/UI se entregó fuera de la numeración (ver nota al final de la sección de housekeeping).
 
 **Etapa actual — evolución a sistema de gestión (C-28 → C-39)**: decidida en la charla de diseño del 2026-08-09, documentada en D-27 a D-38. Convierte la app de "registro de facturas a proveedores" en un mini sistema para negocios chicos: equipo multi-usuario, clientes con fiado, ventas y analítica.
 
-**Para el siguiente change**: `C-28-negocio-scoping-backend`. Es **CRITICO** y es el cuello de botella real de toda la etapa — cambia el eje de aislamiento de todo el sistema. Requiere aprobación humana explícita antes de escribir código. No arrancar C-32 (clientes) antes de que C-28 esté archivado: las tablas nuevas tienen que nacer con `negocio_id`.
+**Para el siguiente change**: C-28 ✓ archivado 2026-08-09 (suite 902 passed). El cuello de botella de la etapa quedó destrabado, así que **C-29 (equipo) y C-32 (clientes) pueden correr en paralelo**. Deuda abierta que hereda el primer change de frontend (C-30): `usuario_id` desapareció de las respuestas de proveedores/facturas/pagos; hoy `tsc` pasa porque los tipos generados están viejos, pero rompe al correr `npm run generate-types`.
 
 **Deuda menor pendiente**: quedan items del `known-debt.md` de C-18 (MED-002/003/005, META-002/003/004, LOW-*). No bloquean la etapa actual; absorber oportunistamente.

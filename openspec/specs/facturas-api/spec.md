@@ -6,7 +6,7 @@ Expose the invoice (factura) management capability over HTTP for authenticated u
 
 - Paginated invoice listing with on-demand `estado` (PENDIENTE/PARCIAL/PAGADA) computed via the FIFO algorithm in memory, never persisted (RN-FAC-09)
 - Filtering by supplier, estado, and date range — all applied in Python after FIFO, never in SQL
-- Create, read, update (PATCH), and soft-delete with strict per-user isolation (foreign resource → 404, never 403)
+- Create, read, update (PATCH), and soft-delete with strict per-negocio isolation (foreign resource → 404, never 403)
 - Optional line items (`FacturaItem`) atomically replaced on update
 - `fecha_emision` validation against UTC-3 wall clock; `monto_total > 0` enforced in schema and service
 - Non-blocking `items_sum_mismatch` warning when line items do not sum to `monto_total` (RN-FAC-04)
@@ -14,6 +14,8 @@ Expose the invoice (factura) management capability over HTTP for authenticated u
 - `origen` set to `MANUAL` automatically on creation (RN-FAC-08); IA-assisted origin handled in C-14
 
 The invariants that `estado` and `saldo` are NEVER persisted are preserved throughout. No `factura_id` exists on `Pago` — payments link only to `proveedor_id` (RN-PAG-01).
+
+> **Actualizado por C-28 (D-27):** el eje de aislamiento de esta capability pasó de `usuario_id` a `negocio_id`. Las referencias a `usuario_id` que quedan arriba describen migraciones históricas (los índices que existieron hasta la revisión 0005) y se conservan como registro; la migración 0006 los reemplazó por sus equivalentes liderados por `negocio_id`. Ver la capability `negocio-scoping`.
 ## Requirements
 ### Requirement: Invoice listing with on-demand FIFO estado
 
@@ -80,46 +82,31 @@ The `_compute_estado_fifo` function SHALL be a pure function (no DB access, no s
 
 ### Requirement: Create invoice
 
-The system SHALL expose `POST /api/facturas` that creates an invoice owned by the authenticated user. The service SHALL verify that the target `proveedor_id` belongs to the authenticated user before persisting (foreign proveedor → 404). The service SHALL validate `fecha_emision` is not in the future using `America/Argentina/Buenos_Aires` (UTC-3, no DST). `monto_total` SHALL be validated as > 0 by both Pydantic schema and service layer. `usuario_id` SHALL be taken from the authenticated session — the payload cannot override it. `origen` SHALL be set to `MANUAL` automatically (RN-FAC-08). If provided line items (`items`) do not sum to `monto_total`, the response SHALL include `items_sum_mismatch = true` (non-blocking — the invoice IS persisted, RN-FAC-04). The response SHALL include the computed `estado` for the created invoice. The endpoint SHALL return status 201.
+The system SHALL expose `POST /api/facturas` that creates an invoice owned by the authenticated caller's **negocio**. The service SHALL verify that the target `proveedor_id` belongs to the caller's negocio before persisting (foreign proveedor → 404). The service SHALL validate `fecha_emision` is not in the future using `America/Argentina/Buenos_Aires` (UTC-3, no DST). `monto_total` SHALL be validated as > 0 by both Pydantic schema and service layer. `negocio_id` SHALL be taken from the authenticated session — the payload cannot override it — and `creado_por_usuario_id` SHALL be set to the caller's user id. `origen` SHALL be set to `MANUAL` automatically (RN-FAC-08) unless the client supplies `IA` (D-18). If provided line items (`items`) do not sum to `monto_total`, the response SHALL include `items_sum_mismatch = true` (non-blocking — the invoice IS persisted, RN-FAC-04). The response SHALL include the computed `estado` for the created invoice. The endpoint SHALL return status 201.
 
 #### Scenario: create a valid invoice
 
-- **WHEN** an authenticated user POSTs a valid payload with a `proveedor_id` they own, a `fecha_emision` not in the future, and `monto_total > 0`
-- **THEN** the invoice is persisted with the caller's `usuario_id`, `origen = MANUAL`, and the response includes the computed `estado` with status 201
+- **WHEN** an authenticated user POSTs a valid payload with a `proveedor_id` owned by their negocio, a `fecha_emision` not in the future, and `monto_total > 0`
+- **THEN** the invoice is persisted with the caller's `negocio_id` and `creado_por_usuario_id`, and the response includes the computed `estado` with status 201
 
-#### Scenario: usuario_id is taken from the session, not the payload
+#### Scenario: negocio_id is taken from the session, not the payload
 
 - **WHEN** a FacturaCreate payload is submitted by an authenticated user
-- **THEN** the persisted `usuario_id` equals the authenticated caller's id, regardless of any payload field
+- **THEN** the persisted `negocio_id` equals the authenticated caller's `negocio_id`, regardless of any payload field
 
-#### Scenario: proveedor belonging to another user returns 404
+#### Scenario: proveedor belonging to another negocio returns 404
 
-- **WHEN** the submitted `proveedor_id` belongs to a different user
+- **WHEN** the submitted `proveedor_id` belongs to a different negocio
 - **THEN** the response is 404 Not Found and no invoice is persisted
 
-#### Scenario: future fecha_emision returns 422
+#### Scenario: a teammate's supplier is accepted
 
-- **WHEN** `fecha_emision` is a date in the future relative to the UTC-3 wall clock
-- **THEN** the response is 422 Unprocessable Entity and no invoice is persisted
-
-#### Scenario: monto_total of zero or negative returns 422
-
-- **WHEN** `monto_total <= 0`
-- **THEN** the response is 422 Unprocessable Entity (validated by Pydantic and service)
-
-#### Scenario: items sum mismatch produces non-blocking warning
-
-- **WHEN** the submitted items list does not sum to `monto_total`
-- **THEN** the invoice is persisted normally and the response includes `items_sum_mismatch = true`
-
-#### Scenario: items are optional
-
-- **WHEN** the payload omits the `items` field
-- **THEN** the invoice is created successfully with an empty items list
+- **WHEN** the submitted `proveedor_id` was created by a different user of the same negocio
+- **THEN** the invoice is created successfully
 
 ### Requirement: Read a single invoice
 
-The system SHALL expose `GET /api/facturas/{id}` returning the invoice with its computed `estado` and full `items` list, only when the invoice belongs to the authenticated user. A foreign or soft-deleted invoice SHALL be indistinguishable from a non-existent one (404, never 403).
+The system SHALL expose `GET /api/facturas/{id}` returning the invoice with its computed `estado` and full `items` list, only when the invoice belongs to the caller's negocio. A foreign or soft-deleted invoice SHALL be indistinguishable from a non-existent one (404, never 403).
 
 #### Scenario: read own invoice
 
@@ -128,7 +115,7 @@ The system SHALL expose `GET /api/facturas/{id}` returning the invoice with its 
 
 #### Scenario: reading a foreign invoice returns 404
 
-- **WHEN** an authenticated user requests an invoice id that belongs to another user
+- **WHEN** an authenticated user requests an invoice id that belongs to another negocio
 - **THEN** the response is 404 Not Found (never 403)
 
 #### Scenario: reading a soft-deleted invoice returns 404
@@ -138,7 +125,7 @@ The system SHALL expose `GET /api/facturas/{id}` returning the invoice with its 
 
 ### Requirement: Update invoice with ownership check (PATCH semantics)
 
-The system SHALL expose `PATCH /api/facturas/{id}` that updates editable fields (`fecha_emision`, `monto_total`, `numero`, `fecha_vencimiento`, `archivo_url`, `items`) of an invoice owned by the authenticated user. All fields SHALL be optional; only provided (non-None) fields are applied. If `items` is provided (even as an empty list), existing items SHALL be hard-deleted and replaced atomically in the same flush (RN-D4). The ownership check SHALL be enforced in the service layer (foreign → 404, never 403). `proveedor_id` SHALL NOT be changeable via PATCH. If `fecha_emision` is provided, it SHALL be validated as not future (UTC-3). The response SHALL include the updated `estado` and refreshed items list.
+The system SHALL expose `PATCH /api/facturas/{id}` that updates editable fields (`fecha_emision`, `monto_total`, `numero`, `fecha_vencimiento`, `archivo_url`, `items`) of an invoice owned by the caller's negocio. All fields SHALL be optional; only provided (non-None) fields are applied. If `items` is provided (even as an empty list), existing items SHALL be hard-deleted and replaced atomically in the same flush (RN-D4). The ownership check SHALL be enforced in the service layer (foreign → 404, never 403). `proveedor_id` SHALL NOT be changeable via PATCH. If `fecha_emision` is provided, it SHALL be validated as not future (UTC-3). The response SHALL include the updated `estado` and refreshed items list.
 
 #### Scenario: update editable fields of own invoice
 
@@ -147,7 +134,7 @@ The system SHALL expose `PATCH /api/facturas/{id}` that updates editable fields 
 
 #### Scenario: updating a foreign invoice returns 404
 
-- **WHEN** an authenticated user PATCHes an invoice that belongs to another user
+- **WHEN** an authenticated user PATCHes an invoice that belongs to another negocio
 - **THEN** the response is 404 Not Found and the foreign invoice is unchanged
 
 #### Scenario: items are replaced atomically on update
@@ -162,7 +149,7 @@ The system SHALL expose `PATCH /api/facturas/{id}` that updates editable fields 
 
 ### Requirement: Soft-delete invoice
 
-The system SHALL expose `DELETE /api/facturas/{id}` that performs a soft delete (sets `deleted_at`) on an invoice owned by the authenticated user, preserving the row and its FK references. Deleting a foreign or already-deleted invoice SHALL return 404. Items SHALL remain in the database (no cascade hard-delete on soft-delete) — items have no soft-delete of their own; they stay but are unreachable via the listing. The endpoint SHALL return 204 No Content. Deleting an invoice does NOT affect any payments (payments link only to `proveedor_id`, not `factura_id` — RN-PAG-01).
+The system SHALL expose `DELETE /api/facturas/{id}` that performs a soft delete (sets `deleted_at`) on an invoice owned by the caller's negocio, preserving the row and its FK references. Deleting a foreign or already-deleted invoice SHALL return 404. Items SHALL remain in the database (no cascade hard-delete on soft-delete) — items have no soft-delete of their own; they stay but are unreachable via the listing. The endpoint SHALL return 204 No Content. Deleting an invoice does NOT affect any payments (payments link only to `proveedor_id`, not `factura_id` — RN-PAG-01).
 
 #### Scenario: soft delete preserves the row
 
@@ -171,7 +158,7 @@ The system SHALL expose `DELETE /api/facturas/{id}` that performs a soft delete 
 
 #### Scenario: deleting a foreign invoice returns 404
 
-- **WHEN** an authenticated user deletes an invoice that belongs to another user
+- **WHEN** an authenticated user deletes an invoice that belongs to another negocio
 - **THEN** the response is 404 Not Found and the foreign invoice is not modified
 
 #### Scenario: deleting an already-deleted invoice returns 404
@@ -186,46 +173,40 @@ The system SHALL expose `DELETE /api/facturas/{id}` that performs a soft delete 
 
 ### Requirement: All invoice endpoints require authentication
 
-Every `/api/facturas` endpoint SHALL require a valid authenticated session (`get_current_user`). Requests without a valid `access_token` cookie SHALL be rejected with 401. All data access SHALL be scoped to the authenticated user's `usuario_id`.
+Every `/api/facturas` endpoint SHALL require a valid authenticated session (`get_current_user`). Requests without a valid `access_token` cookie SHALL be rejected with 401. All data access SHALL be scoped to the authenticated caller's negocio's `negocio_id`.
 
 #### Scenario: unauthenticated request rejected
 
 - **WHEN** a request reaches any `/api/facturas` endpoint without a valid session cookie
 - **THEN** the response is 401 Unauthorized
 
+#### Scenario: deactivated user rejected
+
+- **WHEN** a request reaches any `/api/facturas` endpoint with a valid token belonging to a user with `desactivado = true`
+- **THEN** the response is 401 Unauthorized
+
 ### Requirement: Service-layer authorization — 404 on foreign resource
 
-All authorization checks SHALL live exclusively in the service layer (`FacturaService`). The router SHALL NOT contain ownership logic. When a resource does not belong to the authenticated user, the service SHALL raise HTTP 404 (not 403) — foreign resources are indistinguishable from non-existent ones to prevent enumeration. The helper `_get_owned_factura(usuario_id, factura_id)` SHALL raise 404 if the factura is missing, soft-deleted, or owned by a different user.
+All authorization checks SHALL live exclusively in the service layer (`FacturaService`). The router SHALL NOT contain ownership logic. When a resource does not belong to the authenticated caller's negocio, the service SHALL raise HTTP 404 (not 403) — foreign resources are indistinguishable from non-existent ones to prevent enumeration. The helper `_get_owned_factura(negocio_id, factura_id)` SHALL raise 404 if the factura is missing, soft-deleted, or owned by a different negocio.
 
-#### Scenario: cross-user isolation — user B cannot access user A's invoices
+#### Scenario: cross-negocio isolation — negocio B cannot access negocio A's invoices
 
-- **WHEN** user B attempts to GET, PATCH, or DELETE an invoice that belongs to user A
-- **THEN** every operation returns 404, and user A's invoice is not modified
+- **WHEN** a user of negocio B attempts to GET, PATCH, or DELETE an invoice that belongs to negocio A
+- **THEN** every operation returns 404, and negocio A's invoice is not modified
+
+#### Scenario: same-negocio access is permitted
+
+- **WHEN** a user GETs, PATCHes or DELETEs an invoice created by another user of the same negocio
+- **THEN** the operation succeeds
 
 ### Requirement: Schema validation
 
-The `FacturaCreate` schema SHALL enforce: `proveedor_id` (UUID, required); `fecha_emision` (date, required, not future — Pydantic quick-fail before service re-validates UTC-3); `monto_total` (Decimal, > 0); `items` (list of `FacturaItemCreate`, optional, default empty). `FacturaItemCreate` SHALL enforce: `descripcion` (non-empty string); `cantidad` (Decimal, > 0); `precio_unitario` (Decimal, >= 0). `FacturaUpdate` SHALL make all fields optional, applying the same validators to provided values. `usuario_id` SHALL NOT appear in `FacturaCreate` or `FacturaUpdate`.
+The `FacturaCreate` schema SHALL enforce: `proveedor_id` (UUID, required); `fecha_emision` (date, required, not future — Pydantic quick-fail before service re-validates UTC-3); `monto_total` (Decimal, > 0); `items` (list of `FacturaItemCreate`, optional, default empty). `FacturaItemCreate` SHALL enforce: `descripcion` (non-empty string); `cantidad` (Decimal, > 0); `precio_unitario` (Decimal, >= 0). `FacturaUpdate` SHALL make all fields optional, applying the same validators to provided values. Neither `usuario_id` nor `negocio_id` SHALL appear in `FacturaCreate` or `FacturaUpdate`.
 
-#### Scenario: monto_total must be positive
+#### Scenario: scoping fields are not accepted from the wire
 
-- **WHEN** `FacturaCreate` is constructed with `monto_total = 0` or negative
-- **THEN** Pydantic raises a validation error before the request reaches the service
-
-#### Scenario: item cantidad must be positive
-
-- **WHEN** a `FacturaItemCreate` has `cantidad <= 0`
-- **THEN** Pydantic raises a validation error
-
-#### Scenario: item descripcion must not be empty
-
-- **WHEN** a `FacturaItemCreate` has an empty or whitespace-only `descripcion`
-- **THEN** Pydantic raises a validation error
-
-#### Scenario: FacturaUpdate is fully optional
-
-- **WHEN** a `FacturaUpdate` is constructed with no fields set
-- **THEN** it is valid (PATCH semantics — zero fields patched is acceptable)
-
+- **WHEN** a `FacturaCreate` or `FacturaUpdate` payload includes `usuario_id` or `negocio_id`
+- **THEN** the value is never used to determine ownership; the persisted `negocio_id` comes from the session
 ### Requirement: Composite index migration
 
 The change SHALL include a reversible Alembic migration `0004` (file `20240004_0004_factura_indices.py`, revision `"0004"`, `down_revision = "0003"`) that creates composite index `ix_factura_usuario_proveedor_deleted_emision` on `(usuario_id, proveedor_id, deleted_at, fecha_emision)` on the `factura` table (which already exists from migration 0001). The migration SHALL NOT introduce any `estado` or `saldo` column. Its `downgrade` SHALL drop the index.
@@ -280,6 +261,6 @@ The `POST /api/facturas` endpoint SHALL accept an optional `origen` field on the
 
 #### Scenario: Resolving the name does not change ownership rules
 
-- **WHEN** the invoice belongs to another user
+- **WHEN** the invoice belongs to another negocio
 - **THEN** the request still returns 404 and no supplier name is resolved or leaked
 
