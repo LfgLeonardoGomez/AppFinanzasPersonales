@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; }
+  a { color: #7c3aed; text-decoration: none; }
+  a:hover { color: #6d28d9; }
+  input::placeholder { color: #b6b1c6; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+</style>
+</helmet>
+<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#e7e3f5;font-family:'Inter',ui-sans-serif,system-ui,sans-serif;padding:40px;box-sizing:border-box;">
+  <div style="width:560px;background:#fdfcfb;border-radius:24px;box-shadow:0 24px 64px rgba(24,21,31,0.18);padding:32px;box-sizing:border-box;display:flex;flex-direction:column;gap:24px;">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#7c3aed,#e0459b);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <div style="width:12px;height:9px;border:1.6px solid #fff;border-radius:2px;position:relative;"><div style="width:4.5px;height:4.5px;border:1.4px solid #fff;border-radius:50%;position:absolute;top:0.5px;left:2.5px;"></div></div>
+        </div>
+        <p style="margin:0;font-size:16px;font-weight:700;color:#18151f;">{{ modalTitle }}</p>
+      </div>
+      <button onClick="{{ onClose }}" style="border:none;background:transparent;width:28px;height:28px;border-radius:8px;cursor:pointer;color:#8a8598;font-size:16px;font-family:inherit;">✕</button>
+    </div>
+
+    <sc-if value="{{ showTipoToggle }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;background:#f2f0ec;border-radius:999px;padding:3px;">
+        <button onClick="{{ onSetTipoFactura }}" style="flex:1;border:none;padding:8px 0;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;background:{{ tipoFacturaBg }};color:{{ tipoFacturaColor }};">Factura</button>
+        <button onClick="{{ onSetTipoPago }}" style="flex:1;border:none;padding:8px 0;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;background:{{ tipoPagoBg }};color:{{ tipoPagoColor }};">Pago</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isOrigen }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div style="display:flex;background:#f2f0ec;border-radius:12px;padding:3px;">
+          <button onClick="{{ onSetOrigenImagen }}" style="flex:1;border:none;padding:9px 0;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;background:{{ origenImagenBg }};color:{{ origenImagenColor }};">Con imagen (recomendado)</button>
+          <button onClick="{{ onSetOrigenManual }}" style="flex:1;border:none;padding:9px 0;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;background:{{ origenManualBg }};color:{{ origenManualColor }};">Manual</button>
+        </div>
+
+        <div style="min-height:148px;display:flex;flex-direction:column;justify-content:center;">
+          <sc-if value="{{ isOrigenImagen }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ onPickImage }}" style="border:1.6px dashed {{ dropzoneBorder }};background:{{ dropzoneBg }};border-radius:16px;padding:32px 20px;display:flex;flex-direction:column;align-items:center;gap:10px;cursor:pointer;font-family:inherit;width:100%;box-sizing:border-box;">
+              <div style="width:40px;height:40px;border-radius:12px;background:#f2ecfd;display:flex;align-items:center;justify-content:center;">
+                <div style="width:16px;height:12px;border:1.8px solid #7c3aed;border-radius:3px;position:relative;"><div style="width:6px;height:6px;border:1.6px solid #7c3aed;border-radius:50%;position:absolute;top:1px;left:4px;"></div></div>
+              </div>
+              <p style="margin:0;font-size:13.5px;font-weight:600;color:#18151f;">{{ dropzoneTitle }}</p>
+              <p style="margin:0;font-size:12px;color:#8a8598;">{{ dropzoneSubtitle }}</p>
+            </button>
+          </sc-if>
+
+          <sc-if value="{{ isOrigenManual }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid #eeece7;background:#fbfaf8;border-radius:16px;padding:24px 20px;">
+              <p style="margin:0;font-size:13px;color:#8a8598;line-height:1.5;text-align:center;">Vas a completar los campos vos mismo en el siguiente paso. Podés cambiar a carga con imagen cuando quieras.</p>
+            </div>
+          </sc-if>
+        </div>
+
+        <button onClick="{{ onContinuar }}" disabled="{{ continuarDisabled }}" style="border:none;background:{{ continuarBg }};color:#fff;font-size:14px;font-weight:700;padding:13px 0;border-radius:999px;cursor:{{ continuarCursor }};font-family:inherit;">Continuar</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isProcessing }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:18px;padding:36px 0;">
+        <div style="width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,#7c3aed,#e0459b);display:flex;align-items:center;justify-content:center;animation:pulse 1.4s ease-in-out infinite;">
+          <div style="width:22px;height:16px;border:2px solid #fff;border-radius:4px;position:relative;"><div style="width:8px;height:8px;border:2px solid #fff;border-radius:50%;position:absolute;top:1px;left:5px;"></div></div>
+        </div>
+        <div style="text-align:center;">
+          <p style="margin:0 0 4px 0;font-size:14.5px;font-weight:700;color:#18151f;">La IA está leyendo el documento…</p>
+          <p style="margin:0;font-size:12.5px;color:#8a8598;">Esto toma unos segundos</p>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isReview }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:18px;">
+        <sc-if value="{{ isOrigenImagen }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:8px;background:#f2ecfd;border-radius:10px;padding:9px 12px;">
+            <div style="width:6px;height:6px;border-radius:50%;background:#7c3aed;flex-shrink:0;"></div>
+            <p style="margin:0;font-size:12px;color:#4c1d95;font-weight:600;">Listo — revisá y corregí lo que necesites antes de confirmar</p>
+          </div>
+        </sc-if>
+
+        <div>
+          <p style="margin:0 0 6px 0;font-size:11.5px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">Proveedor</p>
+          <div style="display:flex;align-items:center;gap:10px;border:1px solid #eeece7;border-radius:12px;padding:10px 12px;">
+            <div style="width:28px;height:28px;border-radius:8px;background:#f2ecfd;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:#7c3aed;flex-shrink:0;">DN</div>
+            <p style="margin:0;font-size:13.5px;font-weight:600;color:#18151f;flex:1;">{{ proveedorNombre }}</p>
+            <button style="border:none;background:transparent;color:#7c3aed;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;">Cambiar</button>
+          </div>
+        </div>
+
+        <div>
+          <p style="margin:0 0 6px 0;font-size:11.5px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">Fecha</p>
+          <input value="{{ fecha }}" onChange="{{ onFechaChange }}" style="width:100%;box-sizing:border-box;border:1px solid #eeece7;border-radius:10px;padding:9px 12px;font-size:13.5px;font-family:inherit;color:#18151f;" />
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div>
+            <p style="margin:0 0 6px 0;font-size:11.5px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">{{ campoDosLabel }}</p>
+            <input value="{{ campoDos }}" onChange="{{ onCampoDosChange }}" style="width:100%;box-sizing:border-box;border:1px solid #eeece7;border-radius:10px;padding:9px 12px;font-size:13.5px;font-family:inherit;color:#18151f;" />
+          </div>
+          <div>
+            <p style="margin:0 0 6px 0;font-size:11.5px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">Monto</p>
+            <input value="{{ monto }}" onChange="{{ onMontoChange }}" style="width:100%;box-sizing:border-box;border:1px solid #eeece7;border-radius:10px;padding:9px 12px;font-size:13.5px;font-family:inherit;color:#18151f;" />
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;">
+          <button onClick="{{ onVolver }}" style="border:1px solid #eeece7;background:#fff;color:#5b5670;font-size:13.5px;font-weight:600;padding:12px 20px;border-radius:999px;cursor:pointer;font-family:inherit;">Volver</button>
+          <button onClick="{{ onConfirmar }}" style="flex:1;border:none;background:#7c3aed;color:#fff;font-size:14px;font-weight:700;padding:12px 0;border-radius:999px;cursor:pointer;font-family:inherit;">Confirmar</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isSuccess }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:24px 0;text-align:center;">
+        <div style="width:48px;height:48px;border-radius:50%;background:#ecfdf5;display:flex;align-items:center;justify-content:center;">
+          <div style="width:16px;height:9px;border-left:2.2px solid #059669;border-bottom:2.2px solid #059669;transform:rotate(-45deg) translateY(-2px);"></div>
+        </div>
+        <div>
+          <p style="margin:0 0 4px 0;font-size:14.5px;font-weight:700;color:#18151f;">{{ successTitle }}</p>
+          <p style="margin:0;font-size:12.5px;color:#8a8598;">Te llevamos a la cuenta corriente de {{ proveedorNombre }}</p>
+        </div>
+        <a href="Detalle%20Proveedor.dc.html" style="border:none;background:#7c3aed;color:#fff;font-size:13.5px;font-weight:700;padding:11px 22px;border-radius:999px;cursor:pointer;font-family:inherit;">Ver cuenta corriente</a>
+      </div>
+    </sc-if>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    step: 'origen',
+    tipo: 'factura',
+    origen: 'imagen',
+    imagenLista: false,
+    fecha: '',
+    campoDos: '',
+    monto: '',
+  };
+
+  setStep(step) { this.setState({ step }); }
+
+  onSetTipoFactura = () => this.setState({ tipo: 'factura' });
+  onSetTipoPago = () => this.setState({ tipo: 'pago' });
+  onSetOrigenImagen = () => this.setState({ origen: 'imagen', imagenLista: false });
+  onSetOrigenManual = () => this.setState({ origen: 'manual' });
+  onPickImage = () => this.setState({ imagenLista: true });
+  onClose = () => this.setState({ step: 'origen', origen: 'imagen', imagenLista: false, tipo: 'factura', fecha: '', campoDos: '', monto: '' });
+  onReset = () => this.onClose();
+
+  onContinuar = () => {
+    if (this.state.origen === 'imagen') {
+      this.setState({ step: 'processing' });
+      setTimeout(() => {
+        const isFactura = this.state.tipo === 'factura';
+        this.setState({
+          step: 'review',
+          fecha: '14/07/2026',
+          campoDos: isFactura ? '0001-000482' : 'Transferencia',
+          monto: isFactura ? '128.400' : '45.000',
+        });
+      }, 1100);
+    } else {
+      this.setState({ step: 'review', fecha: '', campoDos: '', monto: '' });
+    }
+  };
+
+  onVolver = () => this.setState({ step: 'origen' });
+  onConfirmar = () => this.setState({ step: 'success' });
+
+  onFechaChange = (e) => this.setState({ fecha: e.target.value });
+  onCampoDosChange = (e) => this.setState({ campoDos: e.target.value });
+  onMontoChange = (e) => this.setState({ monto: e.target.value });
+
+  renderVals() {
+    const { step, tipo, origen, imagenLista, fecha, campoDos, monto } = this.state;
+    const isFactura = tipo === 'factura';
+
+    return {
+      modalTitle: isFactura ? 'Cargar factura' : 'Registrar pago',
+      showTipoToggle: step === 'origen',
+      tipoFacturaBg: isFactura ? '#fff' : 'transparent',
+      tipoFacturaColor: isFactura ? '#4c1d95' : '#8a8598',
+      tipoPagoBg: !isFactura ? '#fff' : 'transparent',
+      tipoPagoColor: !isFactura ? '#4c1d95' : '#8a8598',
+      onSetTipoFactura: this.onSetTipoFactura,
+      onSetTipoPago: this.onSetTipoPago,
+
+      isOrigen: step === 'origen',
+      isOrigenImagen: origen === 'imagen',
+      isOrigenManual: origen === 'manual',
+      origenImagenBg: origen === 'imagen' ? '#fff' : 'transparent',
+      origenImagenColor: origen === 'imagen' ? '#18151f' : '#8a8598',
+      origenManualBg: origen === 'manual' ? '#fff' : 'transparent',
+      origenManualColor: origen === 'manual' ? '#18151f' : '#8a8598',
+      onSetOrigenImagen: this.onSetOrigenImagen,
+      onSetOrigenManual: this.onSetOrigenManual,
+      onPickImage: this.onPickImage,
+      dropzoneBorder: imagenLista ? '#7c3aed' : '#d8d3e6',
+      dropzoneBg: imagenLista ? '#f9f6ff' : '#fbfaf8',
+      dropzoneTitle: imagenLista ? 'factura_distribuidora.jpg' : 'Arrastrá una imagen o hacé clic para subir',
+      dropzoneSubtitle: imagenLista ? 'Lista para procesar' : 'JPG, PNG o PDF de una página',
+      continuarDisabled: origen === 'imagen' && !imagenLista,
+      continuarBg: (origen === 'manual' || imagenLista) ? '#7c3aed' : '#d8d3e6',
+      continuarCursor: (origen === 'manual' || imagenLista) ? 'pointer' : 'not-allowed',
+      onContinuar: this.onContinuar,
+
+      isProcessing: step === 'processing',
+
+      isReview: step === 'review',
+      proveedorNombre: 'Distribuidora Norte',
+      fecha, campoDos, monto,
+      campoDosLabel: isFactura ? 'Número' : 'Medio de pago',
+      onFechaChange: this.onFechaChange,
+      onCampoDosChange: this.onCampoDosChange,
+      onMontoChange: this.onMontoChange,
+      onVolver: this.onVolver,
+      onConfirmar: this.onConfirmar,
+
+      isSuccess: step === 'success',
+      successTitle: isFactura ? 'Factura confirmada' : 'Pago confirmado',
+      onReset: this.onReset,
+      onClose: this.onClose,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

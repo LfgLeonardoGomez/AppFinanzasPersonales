@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; }
+  a { color: #7c3aed; text-decoration: none; }
+  a:hover { color: #6d28d9; }
+  input::placeholder { color: #b6b1c6; }
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:56px;padding:56px;background:#f2f0ec;font-family:'Inter',ui-sans-serif,system-ui,sans-serif;min-height:100vh;box-sizing:border-box;">
+
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <span style="font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#8a8598;">Crear/editar proveedor — Desktop</span>
+    <div style="width:560px;display:flex;flex-direction:column;gap:20px;">
+      <a href="Listado%20Proveedores.dc.html" style="font-size:12.5px;font-weight:600;color:#8a8598;">← Proveedores</a>
+
+      <div style="background:#fdfcfb;border:1px solid #eeece7;border-radius:20px;padding:28px;display:flex;flex-direction:column;gap:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <h1 style="margin:0;font-size:20px;font-weight:700;color:#18151f;letter-spacing:-0.01em;">{{ formTitle }}</h1>
+          <div style="display:flex;background:#f2f0ec;border-radius:999px;padding:3px;">
+            <button onClick="{{ onSetCrear }}" style="border:none;padding:6px 14px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;background:{{ crearBg }};color:{{ crearColor }};">Crear</button>
+            <button onClick="{{ onSetEditar }}" style="border:none;padding:6px 14px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;background:{{ editarBg }};color:{{ editarColor }};">Editar</button>
+          </div>
+        </div>
+
+        <div>
+          <p style="margin:0 0 6px 0;font-size:11.5px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">Nombre / razón social</p>
+          <input value="{{ nombre }}" onChange="{{ onNombreChange }}" placeholder="Distribuidora Norte" style="width:100%;box-sizing:border-box;border:1px solid #eeece7;border-radius:10px;padding:11px 14px;font-size:13.5px;font-family:inherit;color:#18151f;" />
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div>
+            <p style="margin:0 0 6px 0;font-size:11.5px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">CUIT</p>
+            <input value="{{ cuit }}" onChange="{{ onCuitChange }}" placeholder="30-71234567-8" style="width:100%;box-sizing:border-box;border:1px solid #eeece7;border-radius:10px;padding:11px 14px;font-size:13.5px;font-family:inherit;color:#18151f;" />
+          </div>
+          <div>
+            <p style="margin:0 0 6px 0;font-size:11.5px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">Teléfono</p>
+            <input value="{{ telefono }}" onChange="{{ onTelefonoChange }}" placeholder="+54 9 351 555-1234" style="width:100%;box-sizing:border-box;border:1px solid #eeece7;border-radius:10px;padding:11px 14px;font-size:13.5px;font-family:inherit;color:#18151f;" />
+          </div>
+        </div>
+
+        <div>
+          <p style="margin:0 0 6px 0;font-size:11.5px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">Email de contacto</p>
+          <input value="{{ email }}" onChange="{{ onEmailChange }}" placeholder="contacto@proveedor.com" style="width:100%;box-sizing:border-box;border:1px solid #eeece7;border-radius:10px;padding:11px 14px;font-size:13.5px;font-family:inherit;color:#18151f;" />
+        </div>
+
+        <div>
+          <p style="margin:0 0 6px 0;font-size:11.5px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">Notas</p>
+          <textarea value="{{ notas }}" onChange="{{ onNotasChange }}" placeholder="Condiciones de pago, referencias, etc." rows="3" style="width:100%;box-sizing:border-box;border:1px solid #eeece7;border-radius:10px;padding:11px 14px;font-size:13.5px;font-family:inherit;color:#18151f;resize:vertical;"></textarea>
+        </div>
+
+        <div style="display:flex;gap:10px;">
+          <a href="Listado%20Proveedores.dc.html" style="border:1px solid #eeece7;background:#fff;color:#5b5670;font-size:13.5px;font-weight:600;padding:12px 20px;border-radius:999px;cursor:pointer;font-family:inherit;text-align:center;">Cancelar</a>
+          <a href="Detalle%20Proveedor.dc.html" style="flex:1;text-align:center;border:none;background:#7c3aed;color:#fff;font-size:14px;font-weight:700;padding:12px 0;border-radius:999px;cursor:pointer;font-family:inherit;">{{ ctaLabel }}</a>
+        </div>
+
+        <sc-if value="{{ isEditar }}" hint-placeholder-val="{{ false }}">
+          <button style="border:1px solid #fbdada;background:#fff;color:#dc2626;font-size:13px;font-weight:600;padding:11px 0;border-radius:999px;cursor:pointer;font-family:inherit;">Eliminar proveedor</button>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <span style="font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#8a8598;">Crear/editar proveedor — Mobile</span>
+    <div style="width:390px;height:844px;background:#fdfcfb;border-radius:36px;box-shadow:0 1px 2px rgba(24,21,31,0.04), 0 24px 64px rgba(24,21,31,0.14);overflow:hidden;display:flex;flex-direction:column;">
+
+      <div style="padding:20px 20px 0 20px;flex-shrink:0;">
+        <a href="Listado%20Proveedores.dc.html" style="font-size:12px;font-weight:600;color:#8a8598;">← Proveedores</a>
+        <h1 style="margin:10px 0 0 0;font-size:19px;font-weight:700;color:#18151f;letter-spacing:-0.01em;">{{ formTitle }}</h1>
+      </div>
+
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:16px 20px 18px 20px;display:flex;flex-direction:column;gap:14px;">
+        <div>
+          <p style="margin:0 0 6px 0;font-size:11px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">Nombre / razón social</p>
+          <input value="{{ nombre }}" onChange="{{ onNombreChange }}" placeholder="Distribuidora Norte" style="width:100%;box-sizing:border-box;border:1px solid #eeece7;border-radius:10px;padding:12px 14px;font-size:14px;font-family:inherit;color:#18151f;" />
+        </div>
+        <div>
+          <p style="margin:0 0 6px 0;font-size:11px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">CUIT</p>
+          <input value="{{ cuit }}" onChange="{{ onCuitChange }}" placeholder="30-71234567-8" style="width:100%;box-sizing:border-box;border:1px solid #eeece7;border-radius:10px;padding:12px 14px;font-size:14px;font-family:inherit;color:#18151f;" />
+        </div>
+        <div>
+          <p style="margin:0 0 6px 0;font-size:11px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">Teléfono</p>
+          <input value="{{ telefono }}" onChange="{{ onTelefonoChange }}" placeholder="+54 9 351 555-1234" style="width:100%;box-sizing:border-box;border:1px solid #eeece7;border-radius:10px;padding:12px 14px;font-size:14px;font-family:inherit;color:#18151f;" />
+        </div>
+        <div>
+          <p style="margin:0 0 6px 0;font-size:11px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">Email de contacto</p>
+          <input value="{{ email }}" onChange="{{ onEmailChange }}" placeholder="contacto@proveedor.com" style="width:100%;box-sizing:border-box;border:1px solid #eeece7;border-radius:10px;padding:12px 14px;font-size:14px;font-family:inherit;color:#18151f;" />
+        </div>
+        <div>
+          <p style="margin:0 0 6px 0;font-size:11px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:#8a8598;">Notas</p>
+          <textarea value="{{ notas }}" onChange="{{ onNotasChange }}" placeholder="Condiciones de pago, referencias, etc." rows="3" style="width:100%;box-sizing:border-box;border:1px solid #eeece7;border-radius:10px;padding:12px 14px;font-size:14px;font-family:inherit;color:#18151f;resize:vertical;"></textarea>
+        </div>
+
+        <sc-if value="{{ isEditar }}" hint-placeholder-val="{{ false }}">
+          <button style="border:1px solid #fbdada;background:#fff;color:#dc2626;font-size:13px;font-weight:600;padding:11px 0;border-radius:999px;cursor:pointer;font-family:inherit;">Eliminar proveedor</button>
+        </sc-if>
+      </div>
+
+      <div style="flex-shrink:0;border-top:1px solid #eeece7;background:#fdfcfb;padding:14px 20px 20px 20px;display:flex;gap:10px;">
+        <a href="Listado%20Proveedores.dc.html" style="border:1px solid #eeece7;background:#fff;color:#5b5670;font-size:13.5px;font-weight:600;padding:12px 18px;border-radius:999px;cursor:pointer;font-family:inherit;">Cancelar</a>
+        <a href="Detalle%20Proveedor.dc.html" style="flex:1;text-align:center;border:none;background:#7c3aed;color:#fff;font-size:14px;font-weight:700;padding:12px 0;border-radius:999px;cursor:pointer;font-family:inherit;">{{ ctaLabel }}</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { mode: 'editar', nombre: 'Distribuidora Norte', cuit: '30-71234567-8', telefono: '+54 9 351 555-1234', email: 'contacto@distribuidoranorte.com', notas: 'Pago a 30 días.' };
+  onSetCrear = () => this.setState({ mode: 'crear', nombre: '', cuit: '', telefono: '', email: '', notas: '' });
+  onSetEditar = () => this.setState({ mode: 'editar', nombre: 'Distribuidora Norte', cuit: '30-71234567-8', telefono: '+54 9 351 555-1234', email: 'contacto@distribuidoranorte.com', notas: 'Pago a 30 días.' });
+  onNombreChange = (e) => this.setState({ nombre: e.target.value });
+  onCuitChange = (e) => this.setState({ cuit: e.target.value });
+  onTelefonoChange = (e) => this.setState({ telefono: e.target.value });
+  onEmailChange = (e) => this.setState({ email: e.target.value });
+  onNotasChange = (e) => this.setState({ notas: e.target.value });
+
+  renderVals() {
+    const { mode, nombre, cuit, telefono, email, notas } = this.state;
+    const isEditar = mode === 'editar';
+    return {
+      isEditar,
+      formTitle: isEditar ? 'Editar proveedor' : 'Nuevo proveedor',
+      crearBg: !isEditar ? '#fff' : 'transparent',
+      crearColor: !isEditar ? '#18151f' : '#8a8598',
+      editarBg: isEditar ? '#fff' : 'transparent',
+      editarColor: isEditar ? '#18151f' : '#8a8598',
+      onSetCrear: this.onSetCrear,
+      onSetEditar: this.onSetEditar,
+      nombre, cuit, telefono, email, notas,
+      onNombreChange: this.onNombreChange,
+      onCuitChange: this.onCuitChange,
+      onTelefonoChange: this.onTelefonoChange,
+      onEmailChange: this.onEmailChange,
+      onNotasChange: this.onNotasChange,
+      ctaLabel: isEditar ? 'Guardar cambios' : 'Crear proveedor',
+    };
+  }
+}
+
+</script>
+</body>
+</html>

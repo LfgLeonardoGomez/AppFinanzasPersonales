@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; }
+  a { color: #7c3aed; text-decoration: none; }
+  a:hover { color: #6d28d9; }
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:56px;padding:56px;background:#f2f0ec;font-family:'Inter',ui-sans-serif,system-ui,sans-serif;min-height:100vh;box-sizing:border-box;">
+
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <span style="font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#8a8598;">Perfil — Desktop</span>
+    <div style="width:720px;display:flex;flex-direction:column;gap:20px;">
+      <a href="Home.dc.html" style="font-size:12.5px;font-weight:600;color:#8a8598;">← Home</a>
+
+      <div style="background:#fdfcfb;border:1px solid #eeece7;border-radius:20px;padding:28px;display:flex;align-items:center;gap:20px;">
+        <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#e0459b);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#fff;flex-shrink:0;">L</div>
+        <div style="flex:1;min-width:0;">
+          <p style="margin:0 0 3px 0;font-size:19px;font-weight:700;color:#18151f;">Leonardo Gómez</p>
+          <p style="margin:0;font-size:13px;color:#8a8598;">leonardo@empresa.com</p>
+        </div>
+        <button style="border:1px solid #eeece7;background:#fff;color:#5b5670;font-size:13px;font-weight:600;padding:10px 18px;border-radius:999px;cursor:pointer;font-family:inherit;flex-shrink:0;">Editar</button>
+      </div>
+
+      <div style="background:#fdfcfb;border:1px solid #eeece7;border-radius:20px;padding:24px;display:flex;flex-direction:column;gap:4px;">
+        <p style="margin:0 0 12px 0;font-size:14px;font-weight:700;color:#18151f;">Cuenta</p>
+        <sc-for list="{{ cuentaItems }}" as="i" hint-placeholder-count="3">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-top:1px solid #f1efe9;">
+            <div>
+              <p style="margin:0;font-size:13.5px;font-weight:600;color:#18151f;">{{ i.label }}</p>
+              <p style="margin:1px 0 0 0;font-size:12px;color:#8a8598;">{{ i.detalle }}</p>
+            </div>
+            <a href="#" style="font-size:12.5px;font-weight:600;">{{ i.action }}</a>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="background:#fdfcfb;border:1px solid #eeece7;border-radius:20px;padding:24px;display:flex;flex-direction:column;gap:4px;">
+        <p style="margin:0 0 12px 0;font-size:14px;font-weight:700;color:#18151f;">Preferencias</p>
+        <sc-for list="{{ prefItems }}" as="p" hint-placeholder-count="2">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-top:1px solid #f1efe9;">
+            <div>
+              <p style="margin:0;font-size:13.5px;font-weight:600;color:#18151f;">{{ p.label }}</p>
+              <p style="margin:1px 0 0 0;font-size:12px;color:#8a8598;">{{ p.detalle }}</p>
+            </div>
+            <div style="width:38px;height:22px;border-radius:999px;background:{{ p.toggleBg }};position:relative;flex-shrink:0;">
+              <div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:3px;left:{{ p.toggleLeft }};box-shadow:0 1px 2px rgba(0,0,0,0.15);"></div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <a href="Auth.dc.html" style="border:1px solid #fbdada;background:#fff;color:#dc2626;font-size:13.5px;font-weight:600;padding:13px 0;border-radius:999px;cursor:pointer;font-family:inherit;width:100%;text-align:center;box-sizing:border-box;">Cerrar sesión</a>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <span style="font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#8a8598;">Perfil — Mobile</span>
+    <div style="width:390px;height:844px;background:#fdfcfb;border-radius:36px;box-shadow:0 1px 2px rgba(24,21,31,0.04), 0 24px 64px rgba(24,21,31,0.14);overflow:hidden;display:flex;flex-direction:column;">
+
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:20px 20px 18px 20px;display:flex;flex-direction:column;gap:16px;">
+        <a href="Home.dc.html" style="font-size:12px;font-weight:600;color:#8a8598;">← Home</a>
+
+        <div style="background:#fff;border:1px solid #eeece7;border-radius:16px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;">
+          <div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#e0459b);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:#fff;">L</div>
+          <div>
+            <p style="margin:0 0 2px 0;font-size:16px;font-weight:700;color:#18151f;">Leonardo Gómez</p>
+            <p style="margin:0;font-size:12.5px;color:#8a8598;">leonardo@empresa.com</p>
+          </div>
+          <button style="border:1px solid #eeece7;background:#fff;color:#5b5670;font-size:12.5px;font-weight:600;padding:8px 16px;border-radius:999px;cursor:pointer;font-family:inherit;">Editar</button>
+        </div>
+
+        <div style="background:#fff;border:1px solid #eeece7;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:4px;">
+          <p style="margin:0 0 10px 0;font-size:13.5px;font-weight:700;color:#18151f;">Cuenta</p>
+          <sc-for list="{{ cuentaItems }}" as="i" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid #f1efe9;gap:8px;">
+              <div style="min-width:0;">
+                <p style="margin:0;font-size:12.5px;font-weight:600;color:#18151f;">{{ i.label }}</p>
+                <p style="margin:1px 0 0 0;font-size:11px;color:#8a8598;">{{ i.detalle }}</p>
+              </div>
+              <a href="#" style="font-size:12px;font-weight:600;flex-shrink:0;">{{ i.action }}</a>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:#fff;border:1px solid #eeece7;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:4px;">
+          <p style="margin:0 0 10px 0;font-size:13.5px;font-weight:700;color:#18151f;">Preferencias</p>
+          <sc-for list="{{ prefItems }}" as="p" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid #f1efe9;gap:8px;">
+              <div style="min-width:0;">
+                <p style="margin:0;font-size:12.5px;font-weight:600;color:#18151f;">{{ p.label }}</p>
+                <p style="margin:1px 0 0 0;font-size:11px;color:#8a8598;">{{ p.detalle }}</p>
+              </div>
+              <div style="width:36px;height:21px;border-radius:999px;background:{{ p.toggleBg }};position:relative;flex-shrink:0;">
+                <div style="width:15px;height:15px;border-radius:50%;background:#fff;position:absolute;top:3px;left:{{ p.toggleLeft }};box-shadow:0 1px 2px rgba(0,0,0,0.15);"></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <a href="Auth.dc.html" style="border:1px solid #fbdada;background:#fff;color:#dc2626;font-size:13px;font-weight:600;padding:12px 0;border-radius:999px;cursor:pointer;font-family:inherit;width:100%;text-align:center;box-sizing:border-box;">Cerrar sesión</a>
+      </div>
+
+      <div style="flex-shrink:0;border-top:1px solid #eeece7;background:#fdfcfb;padding:10px 12px 18px 12px;display:flex;justify-content:space-around;">
+        <sc-for list="{{ tabItems }}" as="t" hint-placeholder-count="5">
+          <a href="{{ t.href }}" style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <div style="width:7px;height:7px;border-radius:2px;background:{{ t.color }};"></div>
+            <span style="font-size:10.5px;font-weight:600;color:{{ t.textColor }};">{{ t.label }}</span>
+          </a>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const tabItems = [
+      { label: 'Home', color: '#d8d3e6', textColor: '#8a8598', href: 'Home.dc.html' },
+      { label: 'Proveed.', color: '#d8d3e6', textColor: '#8a8598', href: 'Listado Proveedores.dc.html' },
+      { label: 'Facturas', color: '#d8d3e6', textColor: '#8a8598', href: 'Listado Facturas.dc.html' },
+      { label: 'Pagos', color: '#d8d3e6', textColor: '#8a8598', href: 'Listado Pagos.dc.html' },
+      { label: 'Perfil', color: '#7c3aed', textColor: '#4c1d95', href: 'Perfil.dc.html' },
+    ];
+    return {
+      cuentaItems: [
+        { label: 'Nombre de la empresa', detalle: 'Leonardo Gómez S.A.', action: 'Editar' },
+        { label: 'CUIT', detalle: '30-71234567-8', action: 'Editar' },
+        { label: 'Contraseña', detalle: 'Última actualización hace 3 meses', action: 'Cambiar' },
+      ],
+      prefItems: [
+        { label: 'Notificaciones', detalle: 'Avisos de vencimientos y pagos', toggleBg: '#7c3aed', toggleLeft: '19px' },
+        { label: 'Confirmar antes de guardar con IA', detalle: 'Revisar siempre los datos antes de confirmar', toggleBg: '#7c3aed', toggleLeft: '19px' },
+      ],
+      tabItems,
+    };
+  }
+}
+
+</script>
+</body>
+</html>
