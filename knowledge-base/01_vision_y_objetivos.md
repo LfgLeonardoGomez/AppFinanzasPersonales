@@ -32,10 +32,24 @@ Es un **registro contable simplificado de cuentas a pagar**. Explícitamente **N
 - **Carga asistida por IA** de facturas y pagos. ✅ c-14 (backend) + c-15 (frontend, 2026-06-29) — implementado sobre el flujo manual ya funcionando, tal como se planeó.
 - Test pollution regression suite (housekeeping de infra de tests). ✅ c-17 (2026-06-29)
 
-## Fuera del MVP (Fase 2 / Futuro)
+## Alcance de la evolución post-MVP (decidido 2026-08-09 — ver D-27 a D-38)
 
-- **Fase 2:** Gestión de clientes / cuentas por cobrar (ventas).
-- **Futuro:** Dashboard/inicio personalizable, gráficos y métricas, notificaciones de vencimiento, badge de clima, app nativa (React Native), multi-usuario con roles/datos compartidos, recuperación de contraseña por email.
+> El sistema deja de ser "registro de facturas y pagos a proveedores" para volverse un **mini sistema de gestión para negocios chicos**: compras, ventas y las dos cuentas corrientes. El proyecto se renombrará cuando esta etapa esté encaminada.
+
+- **Negocio como entidad de aislamiento** y equipo multi-usuario: varias personas del mismo local, cada una con su cuenta y su dispositivo (D-27 a D-32). Un solo nivel de privilegio, `es_admin`.
+- **Registro autoservicio**: alta de negocio sin intervención manual + alta de empleado por código de invitación de un solo uso.
+- **Recuperación de contraseña por email** (D-38) — sale de "Futuro" y entra al alcance: es la red de seguridad del modelo de equipo.
+- **Clientes y cuenta corriente / fiados** (D-36, D-37): la libreta del negocio, reutilizando el motor de saldo y FIFO de proveedores. Sin saldo a favor.
+- **Registro de ventas** (D-33 a D-35): una fila por operación, con forma de pago. El fiado es una venta, no una entidad aparte.
+- **Estadísticas**: compras por proveedor y ventas por período (día/semana/mes), con desglose por forma de pago, y contraste compras-vs-ventas.
+- **Exportación PDF / XLS** de cuentas corrientes y proveedores. XLS = tabla de movimientos para seguir trabajando en Excel; PDF = resumen de cuenta prolijo, presentable al cliente del negocio.
+
+## Fuera del alcance actual (Futuro)
+
+- Dashboard/inicio personalizable, notificaciones de vencimiento, badge de clima, app nativa (React Native).
+- Roles con permisos granulares (más allá del booleano `es_admin` — ver D-29).
+- Un usuario operando **dos negocios** con la misma cuenta (hoy: dos cuentas, ver D-28).
+- Facturación / control de stock e inventario. El registro de ventas es de **montos**, no de items: no es un POS.
 
 ## Fuera de alcance — permanente o descartado
 

@@ -107,6 +107,53 @@ Es una vista **distinta** del estado FIFO (RN-FIFO): muestra la evolución de la
 3. Siempre disponible el control **"Buscar proveedor"** (lista todos, con búsqueda por nombre) + botón **"Crear nuevo proveedor"**.
 4. Si no hay coincidencia o la sugerencia es incorrecta, el usuario elige el correcto o **crea uno nuevo en el momento**.
 
+## Dominio: Negocio y equipo *(evolución post-MVP — D-27 a D-32)*
+
+| Código | Regla |
+|---|---|
+| **RN-NEG-01** | El **`Negocio` es la unidad de aislamiento**. Toda consulta de negocio se filtra por el `negocio_id` del usuario autenticado, en el **service layer** (nunca en router ni repository). Recurso de otro negocio → **404**, no 403 (D-06 intacto). |
+| **RN-NEG-02** | Un `Usuario` pertenece a **un solo** `Negocio` (`negocio_id` not null, sin tabla de membresía). Quien opere dos locales usa dos cuentas: `email` es unique global (D-28). |
+| **RN-NEG-03** | El **registro público** crea `Usuario` + `Negocio` en una **única transacción**, con `es_admin = true`. Si falla cualquiera de los dos, no se persiste ninguno. No existe endpoint suelto de "crear negocio" (D-30). |
+| **RN-NEG-04** | El **alta de empleado NO la hace el admin**: el empleado se registra solo, con un código de invitación, eligiendo su propia contraseña. Hereda el `negocio_id` del código y nace con `es_admin = false` (D-30). El admin nunca manipula credenciales ajenas. |
+| **RN-NEG-05** | Las invitaciones son de **un solo uso y con vencimiento**: `código válido ⟺ usado_en IS NULL AND expira_en > now()`. Se persiste solo el hash; el código legible se muestra **una vez** al admin y no se puede volver a ver (D-31). Un código inválido, vencido o ya usado devuelve un error **genérico** que no revela si el negocio existe. |
+| **RN-NEG-06** | El único privilegio diferenciado es `es_admin` (D-29). Habilita exactamente: generar invitaciones, listar miembros y desactivar/reactivar miembros. **Todo lo demás** —proveedores, facturas, pagos, clientes, ventas, cobros— lo opera cualquier miembro activo del negocio. |
+| **RN-NEG-07** | Desactivar un usuario **revoca su acceso, no borra sus datos** (D-32): `desactivado = true`, el login lo rechaza y sus refresh tokens activos se revocan. Los registros que cargó siguen existiendo y atribuidos vía `creado_por_usuario_id`. |
+| **RN-NEG-08** | **Un negocio nunca puede quedar sin admin activo.** Un admin no puede desactivarse a sí mismo si es el último con `es_admin = true AND desactivado = false`. El intento se rechaza con un error explícito. Un negocio huérfano no puede generar invitaciones ni reactivar a nadie, y no hay salida sin intervención manual en la base. |
+| **RN-NEG-09** | El token de sesión transporta `negocio_id` además de `usuario_id`, para que el service layer no consulte la base en cada request. Como los access tokens son de TTL corto (D-17), el riesgo de token stale es acotado. |
+
+## Dominio: Clientes *(D-36)*
+
+| Código | Regla |
+|---|---|
+| **RN-CLI-01** | Un `Cliente` requiere **solo un nombre**. Todo lo demás es opcional y editable después. El alta ocurre **inline en el formulario de venta**, sin modal ni navegación. |
+| **RN-CLI-02** | Antes de crear, se **autocompleta**: el nombre tipeado se normaliza (minúsculas, sin acentos, trim) y se buscan clientes activos del negocio — primero coincidencia exacta normalizada, luego "contiene". Las coincidencias se ofrecen como sugerencias. Mismo criterio que RN-VINC para proveedores. |
+| **RN-CLI-03** | **Índice único `(negocio_id, nombre_normalizado)`.** Dos clientes con nombre equivalente no pueden coexistir en el mismo negocio: partirían la deuda en dos cuentas y el sistema perdería su única razón de ser. Si el usuario insiste con un nombre ya existente, se le ofrece el cliente existente, no se crea uno nuevo. |
+| **RN-CLI-04** | `nombre_normalizado` se **deriva en el service layer** a partir de `nombre`. Nunca se acepta desde el payload del cliente. |
+
+## Dominio: Ventas *(D-33 a D-35)*
+
+| Código | Regla |
+|---|---|
+| **RN-VTA-01** | Una fila de `Venta` = **una operación de venta**. `monto > 0`, `fecha` no futura (UTC-3), `forma_pago` obligatoria. |
+| **RN-VTA-02** | **El fiado no es una entidad aparte**: es una `Venta` con `forma_pago = CUENTA_CORRIENTE` y `cliente_id` cargado. La misma fila es la venta del día y el cargo en la cuenta corriente del cliente (D-33). Está **prohibido** registrar el fiado por duplicado como cargo separado. |
+| **RN-VTA-03** | **Invariante bidireccional**: `cliente_id` es obligatorio **si y solo si** `forma_pago = CUENTA_CORRIENTE`. Venta fiada sin cliente → rechazada. Venta no fiada con cliente → rechazada. Validado con Pydantic + service layer. |
+| **RN-VTA-04** | **Un cobro de cuenta corriente NO es una venta** y no escribe en `venta` (D-34). La venta se registra cuando sale la mercadería; el cobro, cuando entra la plata. Contar el cobro como venta duplicaría la facturación y rompería el contraste compras-vs-ventas. |
+| **RN-VTA-05** | Los totales por período (día / semana / mes) y su desglose por `forma_pago` son **agregaciones calculadas on-demand**, nunca columnas persistidas. Coherente con D-01. |
+| **RN-VTA-06** | La granularidad de carga es libre: el esquema admite tanto una fila por operación como una fila agregada al cierre del día. Es decisión de UX, no de modelo (D-35). |
+
+## Dominio: Cuenta corriente de clientes *(D-37)*
+
+> **Reutiliza el motor de proveedores sin modificarlo.** La correspondencia es exacta:
+> `Proveedor → Cliente`, `Factura → Venta con forma_pago = CUENTA_CORRIENTE`, `Pago → CobroCliente`.
+
+| Código | Regla |
+|---|---|
+| **RN-CCC-01** | **Saldo del cliente** = `SUM(ventas fiadas activas.monto) − SUM(cobros activos.monto)`. Calculado on-demand, **nunca persistido** (D-01). Aplica RN-SALDO con las entidades espejadas. |
+| **RN-CCC-02** | **Estado de cada venta fiada** (PENDIENTE / PARCIAL / COBRADA) por asignación **FIFO** de un pool de cobros, con el mismo algoritmo y el mismo desempate determinista `(fecha ASC, created_at ASC, id ASC)` de RN-FIFO. |
+| **RN-CCC-03** | Un `CobroCliente` **no lleva `venta_id`**: se asocia solo al cliente, igual que RN-PAG-01. La imputación a ventas concretas es derivada, nunca almacenada. |
+| **RN-CCC-04** | **No se admite saldo negativo (a favor del cliente).** Un cobro no puede superar el saldo pendiente: `SUM(cobros activos) ≤ SUM(ventas fiadas activas)`. Validado en el **service layer** antes de persistir. Es la única diferencia sustantiva con la cuenta corriente de proveedores, donde el saldo a favor sí es un estado válido. |
+| **RN-CCC-05** | **Historial cronológico** debe/haber con saldo acumulado por fila, aplicando RN-HIST sobre ventas fiadas y cobros. |
+
 ## Dominio: Testing
 
 | Código | Regla |
@@ -120,4 +167,7 @@ Es una vista **distinta** del estado FIFO (RN-FIFO): muestra la evolución de la
 3. Un pago se asocia a un proveedor, **nunca** a una factura puntual.
 4. El **saldo se calcula dinámicamente** en cada consulta, nunca se persiste.
 5. El **estado de factura es derivado** (FIFO), nunca almacenado.
-6. App **multi-usuario con datos aislados por cuenta**, sin roles ni datos compartidos en el MVP. Registro abierto y mínimo (email, nombre, contraseña).
+6. ~~App multi-usuario con datos aislados por cuenta, sin roles ni datos compartidos en el MVP.~~ **Actualizado por D-27/D-29:** datos aislados por **negocio**, con varios usuarios compartiendo el mismo local y un único nivel de privilegio (`es_admin`). Registro abierto y mínimo se mantiene; se le suma el registro de empleado por código de invitación (RN-NEG-04).
+7. El **fiado no es una entidad aparte** (D-33): es una venta con `forma_pago = CUENTA_CORRIENTE`. Nunca se registra dos veces.
+8. **Venta ≠ cobro** (D-34). El cobro de una cuenta corriente no incrementa las ventas del día.
+9. La cuenta corriente de clientes **no admite saldo a favor** (D-37), a diferencia de la de proveedores.
