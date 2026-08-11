@@ -59,9 +59,12 @@ Todo el resto de los endpoints requiere sesión válida (cookie httpOnly). El `u
 | `/api/facturas/*` | CRUD + `extraer-ia` | Aislado por `negocio_id`; el `/extraer-ia` no persiste (RN-IA-04) | facturas-api, ia-vision-backend |
 | `/api/pagos/*` | CRUD + `extraer-ia` | Aislado por `negocio_id`; sin `factura_id` (RN-PAG-01) | pagos-backend, ia-vision-backend |
 | `/api/cuenta-corriente/proveedores/{id}` | GET | Saldo, estado FIFO, historial cronológico (todo on-demand) | cuenta-corriente-backend |
-| `/api/equipo` | GET | Lista miembros del negocio. **Solo `es_admin`** (RN-NEG-06) | equipo-backend |
+| `/api/equipo` | GET | Lista miembros del negocio, **incluidos los desactivados** (si no, un admin no podría reactivar a quien no ve). **Solo `es_admin`** (RN-NEG-06) | equipo-backend |
 | `/api/equipo/invitaciones` | POST | Genera un código de un solo uso; el valor legible se devuelve **una sola vez** (RN-NEG-05). **Solo `es_admin`** | equipo-backend |
-| `/api/equipo/{id}/desactivar` | POST | Revoca acceso sin borrar datos (RN-NEG-07). **Solo `es_admin`**; rechaza dejar al negocio sin admin activo (RN-NEG-08) | equipo-backend |
+| `/api/equipo/{id}/desactivar` | POST | Revoca acceso sin borrar datos y revoca los refresh tokens activos (RN-NEG-07). **Solo `es_admin`**; rechaza con **409** dejar al negocio sin admin activo (RN-NEG-08) | equipo-backend |
+| `/api/equipo/{id}/reactivar` | POST | Restaura el acceso. **Solo `es_admin`** | equipo-backend |
+
+> **Códigos de estado del privilegio**: falta de `es_admin` responde **403**, no 404. A diferencia de un recurso ajeno, acá no hay nada que ocultar: el solicitante es miembro legítimo del negocio y sabe que el endpoint existe; lo que le falta es el privilegio, y decírselo es la única forma de que pueda actuar (pedirle a un admin). El **404** se reserva para recursos de otro negocio.
 | `/api/clientes/*` | CRUD + `buscar` | Aislado por `negocio_id`; alta inline y unicidad normalizada (RN-CLI-01/03) | clientes-backend |
 | `/api/ventas/*` | CRUD | Aislado por `negocio_id`; invariante `cliente_id ⟺ CUENTA_CORRIENTE` (RN-VTA-03) | ventas-backend |
 | `/api/cobros/*` | CRUD | Aislado por `negocio_id`; sin `venta_id`, no puede superar el saldo (RN-CCC-03/04) | cuenta-corriente-clientes-backend |

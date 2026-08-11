@@ -643,7 +643,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Negocio y equipo (RN-NEG-01/02/09)
 
 ### [C-29] `equipo-backend`
-- **Estado**: `[ ]`
+- **Estado**: `[x]` archivado 2026-08-11
 - **Scope**:
   - ~~Registro público reescrito~~ → **entregado en C-28** (design D6, forzado por el `NOT NULL` de `usuario.negocio_id`)
   - `app/models/invitacion_empleado.py`: `codigo_hash` (único, solo hash — nunca el crudo), `negocio_id`, `creado_por_usuario_id`, `expira_en`, `usado_en`
@@ -677,7 +677,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `knowledge-base/03_actores_y_roles.md` §Actores del sistema
 
 ### [C-31] `password-recovery`
-- **Estado**: `[ ]`
+- **Estado**: `[ ]` — **ya no es opcional**: con D-40 (un solo admin por negocio) es la única salida por software ante un fundador bloqueado
 - **Scope**:
   - Token de reset: un solo uso, con vencimiento, **solo hash persistido** (mismo criterio que `RefreshToken`, D-17)
   - `POST /api/auth/recuperar` — respuesta **idéntica** exista o no el email (no enumerar cuentas); rate limiting
@@ -864,7 +864,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-26 | edit-form-ux-and-factura-detail | BAJO | C-13 (archivado 2026-08-05) |
 | C-27 | close-known-gaps | MEDIO | C-24, C-26 (archivado 2026-08-06) |
 | C-28 | negocio-scoping-backend | CRITICO | C-27 (archivado 2026-08-09) |
-| **C-29** | **equipo-backend** | **CRITICO** | C-28 |
+| C-29 | equipo-backend | CRITICO | C-28 (archivado 2026-08-11) |
 | **C-30** | **equipo-frontend** | ALTO | C-29 |
 | **C-31** | **password-recovery** | **CRITICO** | C-29 |
 | **C-32** | **clientes-backend** | MEDIO | C-28 |

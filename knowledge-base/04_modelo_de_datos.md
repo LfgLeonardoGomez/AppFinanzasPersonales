@@ -78,6 +78,8 @@ NO existe relación Venta–CobroCliente.   (mismo criterio: FIFO derivado, D-37
 | created_at / updated_at | timestamp | |
 
 > **Regla de validez:** `código válido ⟺ usado_en IS NULL AND expira_en > now()`. Un solo uso, sin excepción (D-31).
+>
+> **Implementado en C-29.** El predicado de validez vive en el `WHERE` de `InvitacionRepository.get_valida_by_codigo`, no en el caller: resolver el código y comprobar que está vivo tiene que ser una sola query, para que ningún caller pueda olvidarse la comprobación ni filtrar cuál de los tres motivos falló (D-41). El código legible tiene **8 caracteres** de un alfabeto sin `0/O` ni `1/I/L` —se dicta por teléfono— generado con `secrets`, y vive **48 horas** (`INVITACION_TTL_HORAS`).
 
 ### Proveedor
 | Campo | Tipo | Notas |
