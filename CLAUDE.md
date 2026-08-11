@@ -42,7 +42,9 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 | Entrega / PRs | `work-unit-commits`, `branch-pr`, `chained-pr` |
 | Documentación | `cognitive-doc-design` |
 
-> Los compact rules de cada skill los resuelve el orquestador desde `.atl/skill-registry.md` (generado por `skill-registry`; no versionado — no está en el repo).
+> Los compact rules de cada skill los resuelve el orquestador desde `.atl/skill-registry.md`, generado por `skill-registry`.
+>
+> **Sí está versionado** — desde el commit inicial del repo, pese a lo que decía esta línea hasta 2026-08-11. Tenerlo en git hace que el registry viaje con el código, pero conviene saber dos cosas: se regenera con `gentle-ai skill-registry refresh --force` y su contenido incluye **rutas absolutas de la máquina que lo generó** (`C:\Users\...`), visibles en un repo público. Si eso molesta, la salida es gitignorearlo y que cada máquina lo regenere.
 
 ## Roadmap de Changes
 
