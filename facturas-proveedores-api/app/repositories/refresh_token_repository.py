@@ -71,5 +71,30 @@ class RefreshTokenRepository:
         self.session.flush()
         return rt
 
+    def revoke_all_for_usuario(self, usuario_id: uuid.UUID) -> int:
+        """
+        Revoke every still-active refresh token of a user. Returns how many.
+
+        Used when an admin deactivates a member (C-29, RN-NEG-07). Access dies
+        on their next request anyway — get_current_user checks `desactivado` —
+        but that only kills the current access token; without this they could
+        keep minting new ones until the refresh expired.
+
+        Already-revoked rows are left alone, so calling twice is a no-op.
+        Caller commits.
+        """
+        ahora = datetime.now(timezone.utc)
+        statement = select(RefreshToken).where(
+            RefreshToken.usuario_id == usuario_id,
+            RefreshToken.revoked_at.is_(None),
+        )
+        activos = list(self.session.exec(statement))
+        for rt in activos:
+            rt.revoked_at = ahora
+            self.session.add(rt)
+        if activos:
+            self.session.flush()
+        return len(activos)
+
 
 __all__ = ["RefreshTokenRepository"]

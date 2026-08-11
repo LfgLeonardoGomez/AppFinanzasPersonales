@@ -41,6 +41,42 @@ class RegistroRequest(BaseModel):
         return v.strip()
 
 
+class RegistroEmpleadoRequest(BaseModel):
+    """Payload for POST /api/auth/registro-empleado (C-29).
+
+    Deliberately has no `negocio_id` and no `es_admin`: the shop comes from the
+    invitation code and the privilege is not something you can ask for.
+    """
+
+    email: EmailStr
+    nombre: str
+    password: str
+    codigo: str
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("La contraseña debe tener al menos 8 caracteres.")
+        return v
+
+    @field_validator("nombre")
+    @classmethod
+    def nombre_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("El nombre no puede estar vacío.")
+        return v.strip()
+
+    @field_validator("codigo")
+    @classmethod
+    def codigo_normalizado(cls, v: str) -> str:
+        """Trim and uppercase — the code is dictated, so casing is noise."""
+        limpio = v.strip().upper()
+        if not limpio:
+            raise ValueError("El código no puede estar vacío.")
+        return limpio
+
+
 class LoginRequest(BaseModel):
     """Payload for POST /api/auth/login."""
 
@@ -73,4 +109,9 @@ class UsuarioResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-__all__ = ["RegistroRequest", "LoginRequest", "UsuarioResponse"]
+__all__ = [
+    "RegistroRequest",
+    "RegistroEmpleadoRequest",
+    "LoginRequest",
+    "UsuarioResponse",
+]

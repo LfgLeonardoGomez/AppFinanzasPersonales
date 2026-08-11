@@ -38,6 +38,7 @@ from app.models.negocio import Negocio
 from app.models.usuario import Usuario
 from app.repositories.usuario_repository import UsuarioRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
+from app.repositories.invitacion_repository import InvitacionRepository
 from app.schemas.perfil import PerfilUpdate, AvatarUpdate
 
 _INVALID_CREDENTIALS = HTTPException(
@@ -65,6 +66,13 @@ _USER_NOT_FOUND = HTTPException(
     detail="Usuario not found",
 )
 
+# One error for unknown / expired / already-used codes (C-29, D3). Splitting
+# them would let anyone probe which shops exist and which codes are live.
+_INVITACION_INVALIDA = HTTPException(
+    status_code=status.HTTP_400_BAD_REQUEST,
+    detail="El código de invitación no es válido.",
+)
+
 
 class UsuarioService:
     """
@@ -78,6 +86,7 @@ class UsuarioService:
         self._session = session
         self._usuario_repo = UsuarioRepository(session)
         self._rt_repo = RefreshTokenRepository(session)
+        self._invitacion_repo = InvitacionRepository(session)
 
     # ── registrar ─────────────────────────────────────────────────────────────
 
@@ -125,6 +134,54 @@ class UsuarioService:
             negocio_id=negocio.id,
             es_admin=True,
         )
+        return usuario
+
+    def registrar_empleado(
+        self, email: str, nombre: str, password: str, codigo: str
+    ) -> Usuario:
+        """
+        Register a new member into an EXISTING negocio, via an invitation code.
+
+        Distinct from `registrar` on purpose (D-30): this one creates no
+        Negocio. The employee joins the one the code points at, with
+        `es_admin = False`, and picks their own password — the admin never
+        handles someone else's credentials.
+
+        Order matters here. The email check runs BEFORE the invitation is
+        consumed, so a typo'd email does not burn the code and force the admin
+        to issue another one (D4). The invitation is only marked used once the
+        user is actually created, in this same transaction.
+
+        Every failure mode of the code — unknown, expired, already used —
+        raises the SAME error. Telling them apart would turn a public endpoint
+        into an oracle for probing which shops exist (D3).
+
+        Returns the created Usuario (not yet committed — caller commits).
+        """
+        invitacion = self._invitacion_repo.get_valida_by_codigo(codigo)
+        if invitacion is None:
+            raise _INVITACION_INVALIDA
+
+        existing = self._usuario_repo.get_by_email(email)
+        if existing is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El email ya está en uso.",
+            )
+
+        password_hash = hash_password(password)
+        usuario = self._usuario_repo.create(
+            email=email,
+            nombre=nombre,
+            password_hash=password_hash,
+            negocio_id=invitacion.negocio_id,
+            es_admin=False,
+        )
+
+        invitacion.usado_en = datetime.now(timezone.utc)
+        self._session.add(invitacion)
+        self._session.flush()
+
         return usuario
 
     # ── login ──────────────────────────────────────────────────────────────────

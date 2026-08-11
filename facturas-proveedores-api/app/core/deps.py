@@ -130,6 +130,34 @@ def get_current_user(
     return usuario
 
 
+_FORBIDDEN_ADMIN = HTTPException(
+    status_code=status.HTTP_403_FORBIDDEN,
+    detail="Requiere privilegios de administrador del negocio.",
+)
+
+
+def require_admin(
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+) -> Usuario:
+    """
+    Authenticated user who also administers their negocio (C-29, D1).
+
+    Declared as a dependency rather than checked inside each handler so the
+    privilege is visible in the endpoint signature: a new team endpoint that
+    forgets it is obvious in review, whereas a missing `if` is not.
+
+    Deactivated users never get here — get_current_user already rejected them.
+
+    403 rather than 404 on purpose: unlike a foreign resource, there is nothing
+    to hide. The caller is a legitimate member of this negocio and knows the
+    endpoint exists; what they lack is the privilege, and saying so is the only
+    way they can act on it (ask an admin).
+    """
+    if not current_user.es_admin:
+        raise _FORBIDDEN_ADMIN
+    return current_user
+
+
 # ── Rate limiting ─────────────────────────────────────────────────────────────
 
 _RATE_LIMIT_WINDOW_SECONDS = 60
@@ -200,4 +228,4 @@ def rate_limit(request: Request) -> None:
     attempts.append(now)
 
 
-__all__ = ["get_db", "get_current_user", "rate_limit"]
+__all__ = ["get_db", "get_current_user", "require_admin", "rate_limit"]

@@ -151,6 +151,47 @@ def hash_refresh_token(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+# ── Invitation code (C-29) ────────────────────────────────────────────────────
+
+# Uppercase alphanumerics minus the characters people confuse when reading a
+# code aloud or off a screenshot: 0/O and 1/I/L. 32 symbols (D2).
+_ALFABETO_INVITACION = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+_LARGO_INVITACION = 8
+
+
+def generar_codigo_invitacion() -> tuple[str, str]:
+    """
+    Generate a single-use invitation code.
+
+    Returns:
+        (codigo, codigo_hash)
+
+        codigo      — 8 chars from an unambiguous alphabet, shown to the admin
+                      exactly once and never persisted.
+        codigo_hash — SHA-256 hex digest, the only thing stored.
+
+    8 positions over 32 symbols is ~40 bits. That is deliberately not
+    password-grade: the code is single-use, expires in hours, and sits behind
+    rate limiting. What it has to survive is being dictated over the phone.
+
+    Uses `secrets`, never `random`: the latter's output is predictable from
+    previous draws, which for an access token is the whole ballgame.
+    """
+    codigo = "".join(
+        secrets.choice(_ALFABETO_INVITACION) for _ in range(_LARGO_INVITACION)
+    )
+    return codigo, hash_codigo_invitacion(codigo)
+
+
+def hash_codigo_invitacion(codigo: str) -> str:
+    """
+    SHA-256 hex digest of an invitation code, for lookup.
+
+    Deterministic, so the raw code never has to be stored to be verified.
+    """
+    return hashlib.sha256(codigo.encode()).hexdigest()
+
+
 __all__ = [
     "hash_password",
     "verify_password",
@@ -159,4 +200,6 @@ __all__ = [
     "decode_token",
     "create_refresh_token",
     "hash_refresh_token",
+    "generar_codigo_invitacion",
+    "hash_codigo_invitacion",
 ]

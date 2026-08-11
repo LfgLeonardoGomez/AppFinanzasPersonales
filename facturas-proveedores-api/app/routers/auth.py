@@ -16,7 +16,12 @@ from sqlmodel import Session
 
 from app.core.config import settings
 from app.core.deps import get_db, rate_limit
-from app.schemas.auth import LoginRequest, RegistroRequest, UsuarioResponse
+from app.schemas.auth import (
+    LoginRequest,
+    RegistroEmpleadoRequest,
+    RegistroRequest,
+    UsuarioResponse,
+)
 from app.services.usuario_service import UsuarioService
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -99,6 +104,43 @@ def registro(
         nombre=body.nombre,
         password=body.password,
         nombre_negocio=body.nombre_negocio,
+    )
+    session.commit()
+    session.refresh(usuario)
+    return UsuarioResponse.model_validate(usuario)
+
+
+@router.post(
+    "/registro-empleado",
+    response_model=UsuarioResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Join an existing negocio with an invitation code",
+)
+def registro_empleado(
+    body: RegistroEmpleadoRequest,
+    session: Session = Depends(get_db),
+    _rate: None = Depends(rate_limit),
+) -> UsuarioResponse:
+    """
+    Create an account inside an EXISTING negocio, using an invitation code.
+
+    Separate from `/registro` on purpose (D-30): that one creates a shop, this
+    one joins one. Routing both through a single endpoint would mean an
+    employee who mistypes the code silently gets their own empty business.
+
+    The employee sets their own password here, which is why the admin never has
+    to hand out credentials — relevant while password recovery does not exist.
+
+    An unknown, expired or already-used code all return the same error: this is
+    a public endpoint, and distinguishing them would let anyone probe which
+    shops exist (D3).
+    """
+    svc = UsuarioService(session)
+    usuario = svc.registrar_empleado(
+        email=str(body.email),
+        nombre=body.nombre,
+        password=body.password,
+        codigo=body.codigo,
     )
     session.commit()
     session.refresh(usuario)

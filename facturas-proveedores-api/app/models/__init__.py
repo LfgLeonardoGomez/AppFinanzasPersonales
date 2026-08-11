@@ -16,6 +16,7 @@ from app.models.proveedor import Proveedor
 from app.models.factura import Factura, FacturaItem
 from app.models.pago import Pago
 from app.models.refresh_token import RefreshToken
+from app.models.invitacion_empleado import InvitacionEmpleado
 
 __all__ = [
     "TemaPreferido",
@@ -31,4 +32,5 @@ __all__ = [
     "FacturaItem",
     "Pago",
     "RefreshToken",
+    "InvitacionEmpleado",
 ]
