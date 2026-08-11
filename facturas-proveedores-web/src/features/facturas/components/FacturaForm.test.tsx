@@ -26,7 +26,6 @@ import type { FacturaResponse, ProveedorListItem } from '@shared/api/api'
 
 const mockProveedor: ProveedorListItem = {
   id: 'prov-uuid-1',
-  usuario_id: 'user-1',
   nombre: 'Proveedor Test SA',
   cuit: '20-12345678-9',
   telefono: null,
@@ -39,7 +38,7 @@ const mockProveedor: ProveedorListItem = {
 
 const mockCreatedFactura: FacturaResponse = {
   id: 'factura-uuid-1',
-  usuario_id: 'user-1',
+  negocio_id: 'user-1',
   proveedor_id: 'prov-uuid-1',
   numero: null,
   fecha_emision: '2026-06-01',

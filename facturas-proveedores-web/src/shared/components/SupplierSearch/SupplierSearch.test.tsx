@@ -17,7 +17,6 @@ import type { ProveedorListItem } from '@shared/api/api'
 const mockResults: ProveedorListItem[] = [
   {
     id: 'uuid-1',
-    usuario_id: 'user-1',
     nombre: 'Transportes García',
     cuit: null,
     telefono: null,
@@ -29,7 +28,6 @@ const mockResults: ProveedorListItem[] = [
   },
   {
     id: 'uuid-2',
-    usuario_id: 'user-1',
     nombre: 'García Distribuciones',
     cuit: null,
     telefono: null,

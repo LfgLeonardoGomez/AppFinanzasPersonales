@@ -15,7 +15,6 @@ import type { Proveedor } from '@shared/api/api'
 
 const existingProveedor: Proveedor = {
   id: 'uuid-1',
-  usuario_id: 'user-1',
   nombre: 'Proveedor Existente',
   cuit: '20-12345678-9',
   telefono: '011-1234-5678',

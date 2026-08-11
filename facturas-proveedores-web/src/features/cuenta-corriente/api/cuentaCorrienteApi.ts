@@ -30,7 +30,7 @@ import type {
 
 interface RawFacturaConEstado {
   id: string
-  usuario_id: string
+  negocio_id: string
   proveedor_id: string
   numero: string | null
   fecha_emision: string
@@ -94,7 +94,7 @@ export function parseCuentaCorriente(
 function parseFacturaConEstado(raw: RawFacturaConEstado): FacturaConEstado {
   return {
     id: raw.id,
-    usuario_id: raw.usuario_id,
+    negocio_id: raw.negocio_id,
     proveedor_id: raw.proveedor_id,
     numero: raw.numero,
     fecha_emision: raw.fecha_emision,

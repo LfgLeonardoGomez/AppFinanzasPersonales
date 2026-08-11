@@ -36,7 +36,7 @@ const baseFactura = (
   archivoUrl: string | null = null,
 ): FacturaConEstado => ({
   id,
-  usuario_id: 'user-1',
+  negocio_id: 'user-1',
   proveedor_id: 'proveedor-uuid-1',
   numero,
   fecha_emision: fechaEmision,

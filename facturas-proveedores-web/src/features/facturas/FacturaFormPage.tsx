@@ -52,7 +52,6 @@ function EditFacturaPage({ id }: { id: string }) {
   // empty (soft-deleted supplier, or the name failed to resolve).
   const proveedorForDisplay: ProveedorListItem = {
     id: factura.proveedor_id,
-    usuario_id: factura.usuario_id,
     nombre: factura.proveedor_nombre ?? '',
     cuit: null,
     telefono: null,

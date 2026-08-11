@@ -65,7 +65,6 @@ export type Categoria = 'INSUMO' | 'SERVICIO' | 'OTRO'
  */
 export interface Proveedor {
   id: string
-  usuario_id: string
   nombre: string
   cuit: string | null
   telefono: string | null
@@ -225,7 +224,7 @@ export interface FacturaItemCreate {
  */
 export interface FacturaResponse {
   id: string
-  usuario_id: string
+  negocio_id: string
   proveedor_id: string
   numero: string | null
   fecha_emision: string
@@ -363,7 +362,7 @@ export type MetodoPago =
  */
 export interface PagoResponse {
   id: string
-  usuario_id: string
+  negocio_id: string
   proveedor_id: string
   monto: number
   fecha: string
@@ -543,7 +542,7 @@ export interface PropuestaPago {
  */
 export interface FacturaConEstado {
   id: string
-  usuario_id: string
+  negocio_id: string
   proveedor_id: string
   numero: string | null
   fecha_emision: string

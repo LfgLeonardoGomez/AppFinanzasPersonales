@@ -27,7 +27,7 @@ import type { CuentaCorrienteResponse, FacturaConEstado, EntradaHistorial } from
 
 const f1: FacturaConEstado = {
   id: 'f-1',
-  usuario_id: 'user-1',
+  negocio_id: 'user-1',
   proveedor_id: 'p-1',
   numero: 'FAC-001',
   fecha_emision: '2026-06-01',

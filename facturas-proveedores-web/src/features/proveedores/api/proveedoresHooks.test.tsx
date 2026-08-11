@@ -28,7 +28,6 @@ import type {
 
 const mockProveedor: Proveedor = {
   id: 'uuid-1',
-  usuario_id: 'user-1',
   nombre: 'Proveedor Test SA',
   cuit: '20-12345678-9',
   telefono: null,

@@ -47,7 +47,7 @@ const mockPagoListItem: PagoListItem = {
 
 const mockPagoResponse: PagoResponse = {
   ...mockPagoListItem,
-  usuario_id: 'user-1',
+  negocio_id: 'user-1',
   comprobante_url: null,
   updated_at: '2026-06-15T10:00:00',
 }

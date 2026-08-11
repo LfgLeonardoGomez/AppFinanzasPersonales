@@ -47,7 +47,7 @@ describe('Pago types — RN-PAG-01 enforcement (runtime guard)', () => {
   it('PagoResponse has no key whose name contains "factura"', () => {
     const response: PagoResponse = {
       id: 'pago-1',
-      usuario_id: 'user-1',
+      negocio_id: 'user-1',
       proveedor_id: 'prov-1',
       monto: 1500,
       fecha: '2026-06-01',

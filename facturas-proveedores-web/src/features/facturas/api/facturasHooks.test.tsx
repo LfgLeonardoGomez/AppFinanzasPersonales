@@ -40,7 +40,7 @@ const mockFacturaListItem: FacturaListItem = {
 const mockFacturaResponse: FacturaResponse = {
   ...mockFacturaListItem,
   // c-26: the LEAN list row does not carry these — the full response does.
-  usuario_id: 'user-1',
+  negocio_id: 'user-1',
   fecha_vencimiento: null,
   archivo_url: null,
   origen: 'MANUAL',

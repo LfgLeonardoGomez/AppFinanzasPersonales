@@ -24,7 +24,7 @@ function rawResponse(saldo: string, monto = '0.00', saldoAcumulado = '0.00') {
     facturas_con_estado: [
       {
         id: 'f-1',
-        usuario_id: 'u-1',
+        negocio_id: 'u-1',
         proveedor_id: 'p-1',
         numero: null,
         fecha_emision: '2026-06-01',

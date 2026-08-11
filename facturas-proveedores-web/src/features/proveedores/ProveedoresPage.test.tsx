@@ -16,7 +16,6 @@ import type { ProveedorListItem } from '@shared/api/api'
 const mockPagedResponse: ProveedorListItem[] = [
   {
     id: 'uuid-1',
-    usuario_id: 'user-1',
     nombre: 'Proveedor Uno',
     cuit: null,
     telefono: null,

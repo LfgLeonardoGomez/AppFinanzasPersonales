@@ -17,7 +17,6 @@ import type { ProveedorListItem, ProveedorDeleteResponse } from '@shared/api/api
 const mockPage1: ProveedorListItem[] = [
   {
     id: 'uuid-1',
-    usuario_id: 'user-1',
     nombre: 'Proveedor Alfa',
     cuit: null,
     telefono: null,
@@ -29,7 +28,6 @@ const mockPage1: ProveedorListItem[] = [
   },
   {
     id: 'uuid-2',
-    usuario_id: 'user-1',
     nombre: 'Proveedor Beta',
     cuit: '20-99887766-5',
     telefono: null,

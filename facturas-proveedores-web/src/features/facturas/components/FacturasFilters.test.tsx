@@ -16,7 +16,6 @@ import type { ProveedorListItem, FacturasFilters as FacturasFiltersType } from '
 
 const mockProveedor: ProveedorListItem = {
   id: 'prov-uuid-1',
-  usuario_id: 'user-1',
   nombre: 'Proveedor Test SA',
   cuit: null,
   telefono: null,

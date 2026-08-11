@@ -56,7 +56,6 @@ function EditPagoPage({ id }: { id: string }) {
   // `nombre` is empty, so we pass `''` here instead of the id.
   const proveedorForDisplay: ProveedorListItem = {
     id: pago.proveedor_id,
-    usuario_id: pago.usuario_id,
     nombre: pago.proveedor_nombre ?? '',
     cuit: null,
     telefono: null,

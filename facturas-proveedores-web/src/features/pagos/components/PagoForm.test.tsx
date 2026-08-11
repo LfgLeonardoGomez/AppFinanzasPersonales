@@ -36,7 +36,6 @@ import type { PagoResponse, ProveedorListItem, PagoListItem } from '@shared/api/
 
 const mockProveedor: ProveedorListItem = {
   id: 'prov-uuid-1',
-  usuario_id: 'user-1',
   nombre: 'Proveedor Test SA',
   cuit: '20-12345678-9',
   telefono: null,
@@ -49,7 +48,7 @@ const mockProveedor: ProveedorListItem = {
 
 const mockPagoResponse: PagoResponse = {
   id: 'pago-uuid-1',
-  usuario_id: 'user-1',
+  negocio_id: 'user-1',
   proveedor_id: 'prov-uuid-1',
   monto: 1500,
   fecha: '2026-06-15',

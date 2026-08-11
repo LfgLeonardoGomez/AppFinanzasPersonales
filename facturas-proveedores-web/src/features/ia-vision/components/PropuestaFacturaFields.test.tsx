@@ -26,7 +26,6 @@ import { PropuestaFacturaFields } from './PropuestaFacturaFields'
 function proveedor(overrides: Partial<ProveedorListItem>): ProveedorListItem {
   return {
     id: 'prov-1',
-    usuario_id: 'user-1',
     nombre: 'Acme SA',
     cuit: null,
     telefono: null,

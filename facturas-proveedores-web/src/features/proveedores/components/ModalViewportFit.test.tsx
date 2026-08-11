@@ -72,7 +72,6 @@ describe('Modal viewport fit (c-23)', () => {
         open
         proveedor={{
           id: 'uuid-1',
-          usuario_id: 'user-1',
           nombre: 'Proveedor Existente',
           cuit: '20-12345678-9',
           telefono: '1144556677',
@@ -100,7 +99,6 @@ describe('Modal viewport fit (c-23)', () => {
         open
         proveedor={{
           id: 'uuid-1',
-          usuario_id: 'user-1',
           nombre: 'Proveedor Existente',
           cuit: null,
           telefono: null,
