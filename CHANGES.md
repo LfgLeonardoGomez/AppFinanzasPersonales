@@ -831,6 +831,39 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 
 ---
 
+## Deuda técnica detectada (descubierta durante C-30, 2026-08-11)
+
+> Los dos surgieron al intentar regenerar los tipos del frontend. Ninguno es urgente, pero los dos tienen **resultado desconocido hasta ejecutarlos**, y por eso no se metieron dentro de un change de pantallas.
+
+### [C-40] `dev-setup-lint-guard`
+- **Estado**: `[ ]`
+- **Por qué**: `docker-compose.override.yml` no monta `eslint.config.js` ni `facturas-proveedores-web/tests/`. Consecuencias medidas:
+  1. `npm run lint` no puede correr dentro del contenedor: *"ESLint couldn't find an eslint.config.js"*. Reproducido también sobre `HEAD` limpio, así que es preexistente.
+  2. **`tests/frontend-lint.test.ts` nunca se ejecutó.** Es el regression-guard que C-20 escribió para lockear `npm run lint` en exit 0 (D-24). Como el directorio no está montado, la suite del contenedor corre 72 archivos y ese no está entre ellos. **Un guard que existe en el repo y no guarda nada.**
+- **Scope**:
+  - Agregar los dos montajes al override del servicio `web`.
+  - Correr el guard **por primera vez** y arreglar lo que aparezca.
+  - Verificar que el conteo de la suite suba (el archivo pasa a ejecutarse).
+- **Riesgo**: el alcance real es desconocido hasta correrlo. Puede ser cero o puede destapar lint acumulado desde C-20.
+- **Dependencias**: ninguna
+- **Governance**: BAJO
+- **Leer antes**: `knowledge-base/09_decisiones_y_supuestos.md` D-24 (baseline de lint), `docker-compose.override.yml`
+
+### [C-41] `api-types-generated`
+- **Estado**: `[ ]`
+- **Por qué**: `src/shared/api/api.d.ts` es un archivo **escrito a mano**, pese a que su propio encabezado y el script `generate-types` del `package.json` sugieren lo contrario. Exporta 48 tipos con nombre que importan **84 archivos**. Correr `npm run generate-types` produce la forma de `openapi-typescript` (`components['schemas']`, `paths`) y **rompe 262 imports** — medido, no estimado. De los 48 tipos, **24 no tienen contraparte en el backend** (`FacturaDeleteInput`, `PagosFilters`, `HTTPError`, `MeResponse`…): son invenciones del frontend y no se pueden generar.
+- **Scope propuesto** (opción B evaluada en C-30):
+  - El generado va a `api.generated.d.ts`; `api.d.ts` deriva sus nombres de ahí (`export type X = components['schemas']['X']`).
+  - Los 24 tipos sin contraparte quedan escritos a mano y **marcados como tales**, para que se note qué es contrato y qué es invención.
+  - Alinear el drift que aparezca. Ya se sabe de uno preexistente: `ProveedorListItem extends Proveedor`, pero el backend devuelve una forma más chica y con `ultima_factura_fecha`.
+- **Riesgo**: **alcance desconocido**. Al atar los tipos a la realidad va a aflorar drift que hoy nadie ve. Por eso no entró en C-30.
+- **Beneficio**: el backend pasa a ser la fuente de verdad y este tipo de deriva deja de ser invisible.
+- **Dependencias**: ninguna (conviene después de C-30 para no competir por los mismos archivos)
+- **Governance**: MEDIO
+- **Leer antes**: el mensaje del commit `8e085f1`, que documenta la medición y por qué C-30 no lo hizo
+
+---
+
 ## Resumen
 
 | Change | Nombre | Governance | Depende de |
@@ -875,6 +908,8 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | **C-37** | **estadisticas-backend** | MEDIO | C-33 |
 | **C-38** | **estadisticas-frontend** | BAJO | C-34, C-37 |
 | **C-39** | **exportacion-pdf-xls** | MEDIO | C-36 |
+| **C-40** | **dev-setup-lint-guard** | BAJO | — (deuda detectada en C-30) |
+| **C-41** | **api-types-generated** | MEDIO | — (deuda detectada en C-30) |
 
 **Total: 40 entradas (C-01…C-39 + C-15a) · 13 fases · 29 archivadas, 11 pendientes**
 
