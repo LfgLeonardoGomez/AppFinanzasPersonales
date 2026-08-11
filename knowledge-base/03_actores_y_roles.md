@@ -65,7 +65,7 @@ Todo el resto de los endpoints requiere sesión válida (cookie httpOnly). El `u
 | `/api/equipo/{id}/reactivar` | POST | Restaura el acceso. **Solo `es_admin`** | equipo-backend |
 
 > **Códigos de estado del privilegio**: falta de `es_admin` responde **403**, no 404. A diferencia de un recurso ajeno, acá no hay nada que ocultar: el solicitante es miembro legítimo del negocio y sabe que el endpoint existe; lo que le falta es el privilegio, y decírselo es la única forma de que pueda actuar (pedirle a un admin). El **404** se reserva para recursos de otro negocio.
-| `/api/clientes/*` | CRUD + `buscar` | Aislado por `negocio_id`; alta inline y unicidad normalizada (RN-CLI-01/03) | clientes-backend |
+| `/api/clientes/*` | CRUD + `buscar` | Aislado por `negocio_id`; alta con solo `nombre`; unicidad normalizada por negocio (RN-CLI-01/03). Duplicado → **409 con el cliente existente**. `/buscar` se declara antes que `/{id}` para no ser ensombrecido | clientes-backend |
 | `/api/ventas/*` | CRUD | Aislado por `negocio_id`; invariante `cliente_id ⟺ CUENTA_CORRIENTE` (RN-VTA-03) | ventas-backend |
 | `/api/cobros/*` | CRUD | Aislado por `negocio_id`; sin `venta_id`, no puede superar el saldo (RN-CCC-03/04) | cuenta-corriente-clientes-backend |
 | `/api/cuenta-corriente/clientes/{id}` | GET | Saldo, estado FIFO de ventas fiadas, historial (todo on-demand) | cuenta-corriente-clientes-backend |

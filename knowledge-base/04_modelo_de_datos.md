@@ -167,6 +167,8 @@ NO existe relación Venta–CobroCliente.   (mismo criterio: FIFO derivado, D-37
 | created_at / updated_at | timestamp | |
 
 > Deliberadamente mínimo: pedir más datos en el momento de la venta rompe el flujo del mostrador. Todo lo demás es opcional y editable después.
+>
+> **Implementado en C-32.** La normalización vive en `app/core/normalizacion.py` y es **conservadora** (D-43): colapsa mayúsculas, acentos y espacios, pero NO aplica fonética, NO reordena palabras y NO convierte `ñ` en `n` — `Peña` y `Pena` son apellidos distintos. El índice único es **parcial** (`WHERE deleted_at IS NULL`, D-44), así que el soft delete libera el nombre para reutilizarlo. Un alta duplicada responde **409 con el id y el nombre del cliente existente** (D-45), para que la UI ofrezca el que ya está en vez de un error seco.
 
 ### Venta *(D-33 — tabla `venta`)*
 | Campo | Tipo | Notas |

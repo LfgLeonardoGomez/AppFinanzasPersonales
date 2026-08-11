@@ -696,7 +696,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 ## FASE 11 — Clientes y Ventas
 
 ### [C-32] `clientes-backend`
-- **Estado**: `[ ]`
+- **Estado**: `[x]` archivado 2026-08-11
 - **Scope**:
   - `app/models/cliente.py`: `negocio_id`, `nombre`, `nombre_normalizado`, `telefono?`, `notas?`, `deleted_at`
   - Normalización (minúsculas, sin acentos, trim) **derivada en el service layer**, nunca aceptada del payload (RN-CLI-04)
@@ -867,7 +867,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-29 | equipo-backend | CRITICO | C-28 (archivado 2026-08-11) |
 | **C-30** | **equipo-frontend** | ALTO | C-29 |
 | **C-31** | **password-recovery** | **CRITICO** | C-29 |
-| **C-32** | **clientes-backend** | MEDIO | C-28 |
+| C-32 | clientes-backend | MEDIO | C-28 (archivado 2026-08-11) |
 | **C-33** | **ventas-backend** | ALTO | C-32 |
 | **C-34** | **ventas-clientes-frontend** | MEDIO | C-30, C-33 |
 | **C-35** | **cuenta-corriente-clientes-backend** | ALTO | C-33 |
