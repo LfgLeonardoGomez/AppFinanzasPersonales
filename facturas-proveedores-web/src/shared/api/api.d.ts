@@ -56,6 +56,17 @@ export interface RegistroEmpleadoBody {
   codigo: string
 }
 
+/** Payload for POST /api/auth/recuperar (C-31). */
+export interface RecuperarBody {
+  email: string
+}
+
+/** Payload for POST /api/auth/reset (C-31). */
+export interface ResetBody {
+  token: string
+  password: string
+}
+
 export interface LoginBody {
   email: string
   password: string

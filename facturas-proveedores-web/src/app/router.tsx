@@ -16,6 +16,8 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import LoginPage from '@features/auth/LoginPage'
 import RegisterPage from '@features/auth/RegisterPage'
+import RecuperarPage from '@features/auth/RecuperarPage'
+import ResetPasswordPage from '@features/auth/ResetPasswordPage'
 import { setNavigate } from '@shared/api/navigateToLogin'
 import { HomePage } from './HomePage'
 import { AuthenticatedLayout } from './AuthenticatedLayout'
@@ -34,6 +36,8 @@ export const router = createBrowserRouter([
   // ── Public routes ──────────────────────────────────────────────────────────
   { path: '/login', element: <LoginPage /> },
   { path: '/registro', element: <RegisterPage /> },
+  { path: '/recuperar', element: <RecuperarPage /> },
+  { path: '/reset', element: <ResetPasswordPage /> },
 
   // ── Private routes (bootstrap guard + AppLayout) ───────────────────────────
   {

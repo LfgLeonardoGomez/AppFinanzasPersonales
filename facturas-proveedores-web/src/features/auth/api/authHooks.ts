@@ -11,6 +11,8 @@ import { useAuthStore } from '../store/authStore'
 import type {
   RegistroBody,
   RegistroEmpleadoBody,
+  RecuperarBody,
+  ResetBody,
   LoginBody,
   LoginResponse,
   MeResponse,
@@ -85,6 +87,41 @@ export function useRegisterEmpleado() {
  */
 export function getCodigoErrorMessage(_error: unknown): string {
   return 'El código no es válido o ya venció. Pedile uno nuevo a tu administrador.'
+}
+
+/**
+ * Ask for a recovery link (C-31).
+ *
+ * The backend answers the same whether or not the email has an account, so
+ * this hook has nothing to branch on — and the screen must not pretend it does.
+ */
+export function useRecuperar() {
+  return useMutation({
+    mutationFn: async (body: RecuperarBody) => {
+      const res = await apiClient.post('/auth/recuperar', body)
+      return res.data
+    },
+  })
+}
+
+/** Apply a new password with a recovery token (C-31). */
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: async (body: ResetBody) => {
+      const res = await apiClient.post('/auth/reset', body)
+      return res.data
+    },
+  })
+}
+
+/**
+ * The message for a rejected reset token.
+ *
+ * Unknown, expired and already-used are one case on the server (D2) and stay
+ * one case here: the copy points at the way out instead of guessing why.
+ */
+export function getResetErrorMessage(_error: unknown): string {
+  return 'El enlace no es válido o ya venció. Pedí uno nuevo desde "Olvidé mi contraseña".'
 }
 
 // ── useLogin ──────────────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@
  * remember_me.
  */
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { isAxiosError } from 'axios'
 import { useLogin, getLoginErrorMessage } from './api/authHooks'
 import { AuthShell } from './components/AuthShell'
@@ -77,16 +77,25 @@ export default function LoginPage() {
           required
         />
 
-        <label className="flex items-center gap-2 text-xs font-medium text-ink-soft">
-          <input
-            id="rememberMe"
-            type="checkbox"
-            checked={rememberMe}
-            onChange={(e) => setRememberMe(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-border-subtle text-violet-500 focus:ring-2 focus:ring-violet-100"
-          />
-          Recordarme
-        </label>
+        <div className="flex items-center justify-between gap-3">
+          <label className="flex items-center gap-2 text-xs font-medium text-ink-soft">
+            <input
+              id="rememberMe"
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-border-subtle text-violet-500 focus:ring-2 focus:ring-violet-100"
+            />
+            Recordarme
+          </label>
+
+          <Link
+            to="/recuperar"
+            className="text-xs font-medium text-violet-700 hover:underline"
+          >
+            Olvidé mi contraseña
+          </Link>
+        </div>
 
         {displayError && (
           <div
