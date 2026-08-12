@@ -9,6 +9,7 @@ count as the same person — the one thing this feature exists to control.
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -64,6 +65,12 @@ class ClienteResponse(BaseModel):
     notas: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+    # On-demand balance (C-35, D6) — populated only by the plain listing
+    # endpoint (GET /api/clientes with no `buscar` filter), via a single
+    # aggregate query. `None` everywhere else (create/get/update/search),
+    # which don't pay that extra query for a value they don't show.
+    saldo: Optional[Decimal] = None
 
     model_config = ConfigDict(from_attributes=True)
 

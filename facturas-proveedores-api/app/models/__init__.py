@@ -14,6 +14,8 @@ from app.models.enums import (
     OrigenDocumento,
     MetodoPago,
     FormaPago,
+    MetodoCobro,
+    EstadoVentaFiada,
 )
 from app.models.base import TimestampUUIDMixin, SoftDeleteMixin
 from app.models.negocio import Negocio
@@ -26,6 +28,7 @@ from app.models.invitacion_empleado import InvitacionEmpleado
 from app.models.cliente import Cliente
 from app.models.token_reset import TokenReset
 from app.models.venta import Venta
+from app.models.cobro_cliente import CobroCliente
 
 __all__ = [
     "TemaPreferido",
@@ -46,4 +49,7 @@ __all__ = [
     "TokenReset",
     "Venta",
     "FormaPago",
+    "CobroCliente",
+    "MetodoCobro",
+    "EstadoVentaFiada",
 ]

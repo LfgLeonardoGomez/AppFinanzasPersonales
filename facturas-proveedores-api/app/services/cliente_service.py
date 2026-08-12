@@ -21,7 +21,8 @@ The check exists for the message; the index exists for the guarantee.
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Sequence
+from decimal import Decimal
+from typing import Any, Optional, Sequence
 
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -52,6 +53,23 @@ def _conflicto(existente: Optional[Cliente]) -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detalle)
 
 
+class ClienteConSaldo:
+    """
+    Combines a Cliente ORM entity with its on-demand balance (C-35, D6).
+
+    Delegates attribute access to the underlying Cliente entity so it can be
+    used with `ClienteResponse.model_validate(obj)`, mirroring
+    ProveedorConSaldoResponse on the supplier side.
+    """
+
+    def __init__(self, cliente: Cliente, saldo: Decimal) -> None:
+        self._cliente = cliente
+        self.saldo = saldo
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._cliente, name)
+
+
 class ClienteService:
     """Customer CRUD and search, scoped to one negocio."""
 
@@ -69,8 +87,20 @@ class ClienteService:
 
     # ── lectura ───────────────────────────────────────────────────────────────
 
-    def listar(self, negocio_id: uuid.UUID) -> Sequence[Cliente]:
-        return self._repo.listar(negocio_id)
+    def listar(self, negocio_id: uuid.UUID) -> Sequence["ClienteConSaldo"]:
+        """
+        Every active customer of the negocio, each carrying its on-demand
+        balance (C-35, D6) obtained via a single aggregate query — never one
+        query per customer.
+        """
+        clientes = self._repo.listar(negocio_id)
+        saldos = self._repo.get_saldo_por_cliente(negocio_id)
+        return [
+            ClienteConSaldo(
+                c, saldos.get(c.id, Decimal("0.00")).quantize(Decimal("0.01"))
+            )
+            for c in clientes
+        ]
 
     def buscar(self, negocio_id: uuid.UUID, texto: str) -> Sequence[Cliente]:
         """Autocomplete. The query is normalized with the same rule as the alta.
@@ -166,3 +196,137 @@ class ClienteService:
 
 
 __all__ = ["ClienteService"]
+
+
+# ── C-35 — Cuenta corriente composition ─────────────────────────────────────
+#
+# Mirrors ProveedorService.get_cuenta_corriente (C-12) exactly, mapped onto
+# the customer ledger's own vocabulary (D2): the shared engine returns
+# allocated amounts, this module maps them to EstadoVentaFiada, never
+# EstadoFactura.
+
+
+class VentaConEstado:
+    """
+    Combines a Venta (fiado) ORM entity with its FIFO-computed estado.
+
+    Delegates attribute access to the underlying Venta so it can be used
+    with a schema's `model_validate(obj)`.
+    """
+
+    def __init__(self, venta, estado) -> None:
+        self._venta = venta
+        self.estado = estado
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._venta, name)
+
+
+class _CuentaCorrienteClienteResult:
+    """
+    Service-layer container for the on-demand cuenta-corriente triple of one
+    customer (RN-CCC-01, RN-CCC-02, RN-CCC-05).
+
+    `saldo` may be NEGATIVE (D4) — the read path reports the real figure
+    rather than clamping it at zero.
+    """
+
+    def __init__(
+        self,
+        cliente_id: uuid.UUID,
+        saldo: Decimal,
+        ventas_con_estado: list,
+        historial: list[dict],
+    ) -> None:
+        self.cliente_id = cliente_id
+        self.saldo = saldo
+        self.ventas_con_estado = ventas_con_estado
+        self.historial = historial
+
+
+def _get_cuenta_corriente_impl(
+    self,
+    negocio_id: uuid.UUID,
+    cliente_id: uuid.UUID,
+) -> _CuentaCorrienteClienteResult:
+    """
+    Build the on-demand cuenta-corriente triple for one customer (C-35).
+
+    Steps (design.md D1-D5):
+    1. Ownership check (404 on foreign/missing/deleted, D-06).
+    2. Live fiados (VentaRepository.listar_fiadas_de_cliente — already
+       oldest-first) and live payments (CobroClienteRepository.listar_de_cliente).
+    3. saldo = SUM(fiados activos) - SUM(cobros activos) (RN-CCC-01), signed,
+       reported honestly even if negative (D4) — NOT derived from the FIFO
+       leftover, because a fiado can be deleted after being paid off, which
+       the FIFO pool alone would not reveal as debt.
+    4. FIFO allocation via the shared `asignar_fifo` (C-35, D1) — pool is
+       the sum of live payments, allocated oldest-fiado-first.
+    5. Map allocated amounts to EstadoVentaFiada (D2): never PAGADA — that
+       word belongs to the supplier ledger.
+    6. Chronological historial via the shared `construir_historial`, with
+       tipo_cargo="VENTA", tipo_abono="COBRO" (RN-CCC-05). A VENTA row has
+       no attachment today, so archivo_url is always None on that side.
+
+    Read-only: no session.commit() issued here.
+    """
+    from decimal import Decimal as _Decimal
+
+    from app.repositories.cobro_cliente_repository import CobroClienteRepository
+    from app.repositories.venta_repository import VentaRepository
+    from app.models.enums import EstadoVentaFiada
+    from app.services.cuenta_corriente_engine import Movimiento, asignar_fifo, construir_historial
+
+    cliente = self._get_propio(negocio_id, cliente_id)
+
+    venta_repo = VentaRepository(self._session)
+    cobro_repo = CobroClienteRepository(self._session)
+
+    # 1. Live fiados and live payments (already deterministically ordered).
+    fiados = venta_repo.listar_fiadas_de_cliente(negocio_id, cliente.id)
+    cobros = cobro_repo.listar_de_cliente(negocio_id, cliente.id)
+
+    # 2. saldo = SUM(fiados activos) - SUM(cobros activos) (RN-CCC-01, D4).
+    # Quantized to 2 decimals so the wire format is always "0.00", never "0"
+    # (numeric(12,2) convention — mirrors ProveedorService._get_saldo_for).
+    total_fiados = sum((v.monto for v in fiados), _Decimal("0"))
+    total_cobros = sum((c.monto for c in cobros), _Decimal("0"))
+    saldo = (total_fiados - total_cobros).quantize(_Decimal("0.01"))
+
+    # 3. FIFO allocation — the shared engine (C-35, D1).
+    movimientos_fiados = [
+        Movimiento(id=v.id, fecha=v.fecha, created_at=v.created_at, monto=v.monto)
+        for v in fiados
+    ]
+    aplicado_por_id = asignar_fifo(movimientos_fiados, total_cobros)
+
+    ventas_con_estado = []
+    for v in fiados:
+        aplicado = aplicado_por_id[v.id]
+        if aplicado <= _Decimal("0"):
+            estado = EstadoVentaFiada.PENDIENTE
+        elif aplicado >= v.monto:
+            estado = EstadoVentaFiada.COBRADA
+        else:
+            estado = EstadoVentaFiada.PARCIAL
+        ventas_con_estado.append(VentaConEstado(v, estado))
+
+    # 4. Chronological merge for RN-CCC-05.
+    movimientos_cobros = [
+        Movimiento(id=c.id, fecha=c.fecha, created_at=c.created_at, monto=c.monto, archivo_url=c.comprobante_url)
+        for c in cobros
+    ]
+    historial = construir_historial(
+        movimientos_fiados, movimientos_cobros, tipo_cargo="VENTA", tipo_abono="COBRO"
+    )
+
+    return _CuentaCorrienteClienteResult(
+        cliente_id=cliente.id,
+        saldo=saldo,
+        ventas_con_estado=ventas_con_estado,
+        historial=historial,
+    )
+
+
+# Bind the impl onto the class so the public API is `ClienteService`.
+ClienteService.get_cuenta_corriente = _get_cuenta_corriente_impl

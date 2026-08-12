@@ -11,12 +11,16 @@ they belong in the query rather than in a caller's judgement:
 """
 
 import uuid
+from decimal import Decimal
 from typing import Optional, Sequence
 
-from sqlalchemy import case
+from sqlalchemy import case, func
 from sqlmodel import Session, select
 
 from app.models.cliente import Cliente
+from app.models.cobro_cliente import CobroCliente
+from app.models.enums import FormaPago
+from app.models.venta import Venta
 
 
 class ClienteRepository:
@@ -93,6 +97,65 @@ class ClienteRepository:
         self.session.flush()
         self.session.refresh(cliente)
         return cliente
+
+    # ── Balance aggregate (C-35, D6) ──────────────────────────────────────────
+
+    def get_saldo_por_cliente(
+        self, negocio_id: uuid.UUID
+    ) -> dict[uuid.UUID, Decimal]:
+        """
+        Balance per active customer for a negocio, in ONE aggregate query.
+
+        Formula (RN-CCC-01):
+            saldo = SUM(fiados activos.monto) - SUM(cobros activos.monto)
+
+        Mirrors ProveedorRepository.get_saldo_por_proveedor exactly: two
+        pre-aggregated subqueries LEFT JOIN-ed to cliente, so ordering
+        customers by debt never requires one request per customer (no N+1,
+        no join fan-out).
+
+        Customers with no movements are simply absent from the returned
+        dict — the caller (service layer) defaults a missing key to 0.00.
+        """
+        fiado_sums = (
+            select(
+                Venta.cliente_id.label("cliente_id"),
+                func.coalesce(func.sum(Venta.monto), 0).label("total_fiados"),
+            )
+            .where(Venta.negocio_id == negocio_id)
+            .where(Venta.forma_pago == FormaPago.CUENTA_CORRIENTE)
+            .where(Venta.deleted_at == None)  # noqa: E711
+            .group_by(Venta.cliente_id)
+            .subquery()
+        )
+
+        cobro_sums = (
+            select(
+                CobroCliente.cliente_id.label("cliente_id"),
+                func.coalesce(func.sum(CobroCliente.monto), 0).label("total_cobros"),
+            )
+            .where(CobroCliente.negocio_id == negocio_id)
+            .where(CobroCliente.deleted_at == None)  # noqa: E711
+            .group_by(CobroCliente.cliente_id)
+            .subquery()
+        )
+
+        statement = (
+            select(
+                Cliente.id.label("cliente_id"),
+                (
+                    func.coalesce(fiado_sums.c.total_fiados, 0)
+                    - func.coalesce(cobro_sums.c.total_cobros, 0)
+                ).label("saldo"),
+            )
+            .where(Cliente.negocio_id == negocio_id)
+            .where(Cliente.deleted_at == None)  # noqa: E711
+            .outerjoin(fiado_sums, Cliente.id == fiado_sums.c.cliente_id)
+            .outerjoin(cobro_sums, Cliente.id == cobro_sums.c.cliente_id)
+        )
+
+        rows = self.session.exec(statement).all()
+        return {row.cliente_id: Decimal(str(row.saldo)) for row in rows}
 
 
 __all__ = ["ClienteRepository"]

@@ -42,6 +42,7 @@ from app.repositories.factura_repository import FacturaRepository
 from app.repositories.pago_repository import PagoRepository
 from app.repositories.proveedor_repository import ProveedorRepository, ProveedorConSaldo
 from app.schemas.proveedor import ProveedorCreate, ProveedorUpdate
+from app.services.cuenta_corriente_engine import Movimiento, construir_historial
 
 _CUIT_REGEX = re.compile(r"^\d{2}-\d{8}-\d{1}$")
 
@@ -294,37 +295,35 @@ def _build_historial(
     underlying row has no file attached. Threading this through does NOT
     change the ordering or the saldo_acumulado running-balance logic below.
 
+    NOTE: This is a thin adapter over the shared `construir_historial`
+    (C-35, D1). The merge/sort/running-total logic itself lives in
+    `cuenta_corriente_engine` — this function only maps Factura/Pago rows
+    in and plain dicts out. Signature, name and return type are unchanged
+    from before the extraction.
+
     NO DB access. NO side effects. Tested in isolation.
     """
-    tagged: list[tuple] = []
-    for f in facturas:
-        tagged.append(
-            (f.fecha_emision, f.created_at, f.id, f.id, "FACTURA", f.monto_total, f.archivo_url)
+    cargos = [
+        Movimiento(
+            id=f.id,
+            fecha=f.fecha_emision,
+            created_at=f.created_at,
+            monto=f.monto_total,
+            archivo_url=f.archivo_url,
         )
-    for p in pagos:
-        tagged.append((p.fecha, p.created_at, p.id, p.id, "PAGO", p.monto, p.comprobante_url))
-
-    # Stable sort by (fecha ASC, created_at ASC, id ASC) — see D4.
-    tagged.sort(key=lambda row: (row[0], row[1], row[2]))
-
-    historial: list[dict] = []
-    running = Decimal("0.00")
-    for _fecha, _created, _id, row_id, tipo, monto, archivo_url in tagged:
-        if tipo == "FACTURA":
-            running += monto
-        else:  # PAGO
-            running -= monto
-        historial.append(
-            {
-                "id": row_id,
-                "tipo": tipo,
-                "fecha": _fecha,
-                "monto": monto,
-                "saldo_acumulado": running,
-                "archivo_url": archivo_url,
-            }
+        for f in facturas
+    ]
+    abonos = [
+        Movimiento(
+            id=p.id,
+            fecha=p.fecha,
+            created_at=p.created_at,
+            monto=p.monto,
+            archivo_url=p.comprobante_url,
         )
-    return historial
+        for p in pagos
+    ]
+    return construir_historial(cargos, abonos, tipo_cargo="FACTURA", tipo_abono="PAGO")
 
 
 # Attach the new method to ProveedorService (deferred method definition so

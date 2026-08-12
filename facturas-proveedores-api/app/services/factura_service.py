@@ -36,6 +36,7 @@ from app.repositories.factura_repository import FacturaItemRepository, FacturaRe
 from app.repositories.pago_repository import PagoRepository
 from app.repositories.proveedor_repository import ProveedorRepository
 from app.schemas.factura import FacturaCreate, FacturaUpdate
+from app.services.cuenta_corriente_engine import Movimiento, asignar_fifo
 
 _TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
 
@@ -77,14 +78,25 @@ def _compute_estado_fifo(
     Returns:
         dict mapping factura.id → EstadoFactura.
 
-    NOTE: This is a PURE FUNCTION — no DB access, no side effects.
+    NOTE: This is a thin adapter over the shared `asignar_fifo` (C-35, D1).
+    The allocation loop itself lives in `cuenta_corriente_engine` — this
+    function only maps Factura rows in and EstadoFactura out. Signature,
+    name and return type are unchanged from before the extraction.
     """
-    result: dict[uuid.UUID, EstadoFactura] = {}
-    remaining_pool = pool
+    movimientos = [
+        Movimiento(
+            id=factura.id,
+            fecha=factura.fecha_emision,
+            created_at=factura.created_at,
+            monto=factura.monto_total,
+        )
+        for factura in facturas
+    ]
+    aplicado_por_id = asignar_fifo(movimientos, pool)
 
+    result: dict[uuid.UUID, EstadoFactura] = {}
     for factura in facturas:
-        applied = min(remaining_pool, factura.monto_total)
-        remaining_pool -= applied
+        applied = aplicado_por_id[factura.id]
 
         if applied <= Decimal("0"):
             estado = EstadoFactura.PENDIENTE

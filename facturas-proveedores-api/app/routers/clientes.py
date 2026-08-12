@@ -20,6 +20,7 @@ from sqlmodel import Session
 from app.core.deps import get_current_user, get_db
 from app.models.usuario import Usuario
 from app.schemas.cliente import ClienteCreate, ClienteResponse, ClienteUpdate
+from app.schemas.cuenta_corriente_cliente import CuentaCorrienteClienteResponse
 from app.services.cliente_service import ClienteService
 
 router = APIRouter(prefix="/api/clientes", tags=["clientes"])
@@ -44,6 +45,41 @@ def buscar_clientes(
     svc = ClienteService(session)
     resultados = svc.buscar(current_user.negocio_id, nombre)
     return [ClienteResponse.model_validate(c) for c in resultados]
+
+
+# ── GET /{cliente_id}/cuenta-corriente — MUST come before /{cliente_id} (C-35) ─
+#
+# Mirrors the supplier equivalent GET /api/proveedores/{proveedor_id}/cuenta-corriente
+# (D7): same shape, same placement discipline as /buscar above.
+
+
+@router.get(
+    "/{cliente_id}/cuenta-corriente",
+    response_model=CuentaCorrienteClienteResponse,
+    summary="Get a customer's current account (saldo, ventas con estado, historial)",
+)
+def get_cuenta_corriente(
+    cliente_id: Annotated[uuid.UUID, ...],
+    current_user: CurrentUser = ...,
+    session: DbSession = ...,
+) -> CuentaCorrienteClienteResponse:
+    """
+    Return the on-demand cuenta-corriente triple for one customer.
+
+    Composed on-demand (no persistence):
+    - `saldo`: SUM(fiados activos) - SUM(cobros activos) (RN-CCC-01). SIGNED
+      and MAY be negative (D4) — the API reports the real figure rather
+      than clamping it at zero.
+    - `ventas_con_estado`: active fiados, each with FIFO estado (RN-CCC-02).
+    - `historial`: chronological merge with row-by-row saldo_acumulado (RN-CCC-05).
+
+    Returns 404 if the customer belongs to another negocio, is soft-deleted,
+    or does not exist (never 403 — no enumeration leak, D-06). Read-only:
+    no session.commit() is issued.
+    """
+    svc = ClienteService(session)
+    result = svc.get_cuenta_corriente(current_user.negocio_id, cliente_id)
+    return CuentaCorrienteClienteResponse.model_validate(result)
 
 
 @router.get(
