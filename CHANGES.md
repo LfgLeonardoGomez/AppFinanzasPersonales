@@ -737,7 +737,9 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - Aviso claro si el nombre tipeado coincide con un cliente existente: se ofrece el existente, no se crea otro (RN-CLI-03)
   - Totales del día visibles al cargar, con desglose por forma de pago
   - Tests: el campo cliente aparece/desaparece según forma de pago, alta inline de cliente, sugerencia de duplicado, totales del día
-- **Dependencias**: `C-30`, `C-33`
+  - **El formulario de edición NUNCA manda `cliente_id: null`** (D-60): el backend lee la ausencia como "no lo toques", y limpiar el cliente es consecuencia implícita de cambiar la forma de pago
+  - Los totales del día se calculan en el cliente y **dependen de que `GET /api/ventas` no esté paginado** (D-61) — dejar el comentario en el código
+- **Dependencias**: `C-30`, `C-32` (el autocomplete consume clientes; faltaba en esta lista), `C-33`
 - **Governance**: MEDIO
 - **Leer antes**:
   - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Ventas, §Dominio: Clientes
@@ -750,10 +752,11 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 > **Reutiliza el motor de C-12/C-13 sin modificarlo.** `Proveedor : Factura : Pago` ≡ `Cliente : Venta fiada : CobroCliente`. Antes de escribir código nuevo, revisar qué se puede extraer y compartir en lugar de duplicar.
 
 ### [C-35] `cuenta-corriente-clientes-backend`
-- **Estado**: `[ ]`
+- **Estado**: `[x]` archivado 2026-08-12 (suite 1200 passed) — el motor FIFO quedó **extraído y compartido** con proveedores (D-57), no duplicado. **C-36 tiene que saber que `saldo` puede venir negativo** (D-58)
 - **Scope**:
   - `app/models/cobro_cliente.py`: `negocio_id`, `cliente_id`, `monto`, `fecha`, `metodo`, `comprobante_url?`, `creado_por_usuario_id`, `deleted_at`. **Sin `venta_id`** (RN-CCC-03)
-  - `GET /api/cuenta-corriente/clientes/{id}` → `{ saldo, ventas_con_estado, historial }`
+  - `GET /api/clientes/{cliente_id}/cuenta-corriente` → `{ saldo, ventas_con_estado, historial }` — **corregido**: esta entrada decía `/api/cuenta-corriente/clientes/{id}`, una forma que no existe en ningún otro lado de la API. El gemelo de proveedores es `GET /api/proveedores/{proveedor_id}/cuenta-corriente` y toda lectura cuelga de su recurso dueño; dos formas para el mismo concepto ensucian el cliente TypeScript generado
+  - `saldo` es **con signo y puede venir negativo** (D-58) — no se redondea a cero
   - Saldo = `SUM(ventas fiadas activas) − SUM(cobros activos)` (RN-CCC-01), calculado on-demand
   - Estado de venta fiada (PENDIENTE/PARCIAL/COBRADA) por **FIFO** con el mismo desempate determinista de RN-FIFO (RN-CCC-02)
   - Historial cronológico debe/haber con saldo acumulado por fila (RN-CCC-05)
@@ -902,6 +905,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-31 | password-recovery | CRITICO | C-29 (archivado 2026-08-12) |
 | C-32 | clientes-backend | MEDIO | C-28 (archivado 2026-08-11) |
 | C-33 | ventas-backend | ALTO | C-32 (archivado 2026-08-12) |
+| C-35 | cuenta-corriente-clientes-backend | ALTO | C-33 (archivado 2026-08-12) |
 | **C-34** | **ventas-clientes-frontend** | MEDIO | C-30, C-33 |
 | **C-35** | **cuenta-corriente-clientes-backend** | ALTO | C-33 |
 | **C-36** | **cuenta-corriente-clientes-frontend** | MEDIO | C-34, C-35 |
@@ -911,7 +915,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | **C-40** | **dev-setup-lint-guard** | BAJO | — (deuda detectada en C-30) |
 | **C-41** | **api-types-generated** | MEDIO | — (deuda detectada en C-30) |
 
-**Total: 40 entradas (C-01…C-39 + C-15a) · 13 fases · 29 archivadas, 11 pendientes**
+**Total: 40 entradas (C-01…C-39 + C-15a) · 13 fases · 30 archivadas, 10 pendientes**
 
 **Estado del MVP**: completo y archivado desde C-13 (2026-06-27). C-14/C-15 cerraron la IA de visión. C-15a…C-27 fueron housekeeping, fixes y cierre de deudas; el rediseño de UX/UI se entregó fuera de la numeración (ver nota al final de la sección de housekeeping).
 
