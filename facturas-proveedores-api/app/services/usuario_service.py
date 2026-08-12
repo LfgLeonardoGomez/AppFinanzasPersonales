@@ -26,7 +26,13 @@ from fastapi import HTTPException, status
 from sqlmodel import Session
 
 from app.core.config import settings
+from app.core.email import (
+    construir_enlace_reset,
+    construir_mensaje_reset,
+    get_email_sender,
+)
 from app.core.security import (
+    generar_token_reset,
     hash_password,
     verify_password,
     dummy_verify,
@@ -39,6 +45,7 @@ from app.models.usuario import Usuario
 from app.repositories.usuario_repository import UsuarioRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.invitacion_repository import InvitacionRepository
+from app.repositories.token_reset_repository import TokenResetRepository
 from app.schemas.perfil import PerfilUpdate, AvatarUpdate
 
 _INVALID_CREDENTIALS = HTTPException(
@@ -68,6 +75,14 @@ _USER_NOT_FOUND = HTTPException(
 
 # One error for unknown / expired / already-used codes (C-29, D3). Splitting
 # them would let anyone probe which shops exist and which codes are live.
+# Same single error for unknown / expired / already-used reset tokens, for the
+# same reason as invitations (D-41): a public endpoint that distinguishes them
+# is an oracle.
+_TOKEN_RESET_INVALIDO = HTTPException(
+    status_code=status.HTTP_400_BAD_REQUEST,
+    detail="El enlace no es válido o ya venció. Pedí uno nuevo.",
+)
+
 _INVITACION_INVALIDA = HTTPException(
     status_code=status.HTTP_400_BAD_REQUEST,
     detail="El código de invitación no es válido.",
@@ -87,6 +102,7 @@ class UsuarioService:
         self._usuario_repo = UsuarioRepository(session)
         self._rt_repo = RefreshTokenRepository(session)
         self._invitacion_repo = InvitacionRepository(session)
+        self._reset_repo = TokenResetRepository(session)
 
     # ── registrar ─────────────────────────────────────────────────────────────
 
@@ -182,6 +198,92 @@ class UsuarioService:
         self._session.add(invitacion)
         self._session.flush()
 
+        return usuario
+
+    # ── recuperación de contraseña (C-31) ─────────────────────────────────────
+
+    def solicitar_reset(self, email: str) -> None:
+        """
+        Start password recovery. Returns nothing, always, on purpose.
+
+        The caller must respond identically whether or not the account exists —
+        otherwise this public endpoint tells anyone who has an account here.
+
+        Matching the response text is not enough. The "exists" branch generates
+        a token, hashes it, inserts a row and dispatches mail; a branch that did
+        none of that would answer measurably faster. So the miss path generates
+        and hashes a token too, then throws it away without persisting or
+        sending (D2). Same idea as `dummy_verify` in login (D-C03-5).
+
+        A deactivated user is treated as a miss: recovering a password must not
+        be a way around having been removed from a negocio.
+        """
+        token, token_hash = generar_token_reset()
+
+        usuario = self._usuario_repo.get_by_email(email)
+        if usuario is None or usuario.desactivado:
+            # Work done, nothing kept. The point is the clock, not the value.
+            return
+
+        # Cap how many live tokens one account can accumulate (D5). Rate
+        # limiting is per IP and does not stop someone rotating addresses to
+        # fill a stranger's inbox; this at least bounds how many of those links
+        # actually work at once.
+        pendientes = self._reset_repo.listar_pendientes(usuario.id)
+        sobrantes = len(pendientes) - (settings.RESET_TOKENS_PENDIENTES_MAX - 1)
+        if sobrantes > 0:
+            self._reset_repo.invalidar(pendientes[:sobrantes])
+
+        ttl = settings.RESET_TOKEN_TTL_MIN
+        self._reset_repo.create(
+            usuario_id=usuario.id,
+            token_hash=token_hash,
+            expira_en=datetime.now(timezone.utc) + timedelta(minutes=ttl),
+        )
+
+        enlace = construir_enlace_reset(token)
+        asunto, cuerpo = construir_mensaje_reset(enlace, ttl)
+        get_email_sender().enviar(usuario.email, asunto, cuerpo)
+
+    def aplicar_reset(self, token: str, password_nueva: str) -> Usuario:
+        """
+        Apply a new password against a reset token.
+
+        Order matters. The password is validated BEFORE the token is marked
+        used, so a too-short password does not burn the link and send the user
+        back to their inbox over a typo (D4) — same call as D-42 made for
+        invitations.
+
+        On success everything else that was open dies (D3): all refresh tokens
+        of that user, and any other pending reset token. Someone resetting
+        usually believes they lost control; if the intruder's session survives,
+        the reset achieved nothing, and a stale reset link is enough to repeat
+        the takeover.
+
+        Does NOT establish a session (D7): the user logs in normally.
+        """
+        fila = self._reset_repo.get_valido_by_token(token)
+        if fila is None:
+            raise _TOKEN_RESET_INVALIDO
+
+        if len(password_nueva) < 8:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="La contraseña debe tener al menos 8 caracteres.",
+            )
+
+        usuario = self._usuario_repo.get_by_id(fila.usuario_id)
+        if usuario is None:
+            raise _TOKEN_RESET_INVALIDO
+
+        usuario.password_hash = hash_password(password_nueva)
+        self._session.add(usuario)
+
+        self._reset_repo.invalidar([fila])
+        self._reset_repo.invalidar_pendientes_de_usuario(usuario.id, excepto=fila.id)
+        self._rt_repo.revoke_all_for_usuario(usuario.id)
+
+        self._session.flush()
         return usuario
 
     # ── login ──────────────────────────────────────────────────────────────────

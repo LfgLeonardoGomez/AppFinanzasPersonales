@@ -59,6 +59,32 @@ class Settings(BaseSettings):
         description="URL de Cloudinary. Formato: cloudinary://api_key:api_secret@cloud_name",
     )
 
+    # ── Proveedor de correo (C-31) ────────────────────────────────────────────
+    EMAIL_PROVIDER: str = Field(
+        default="console",
+        description=(
+            "Proveedor de envío de correo. Opciones: console | smtp. "
+            "El default es 'console' A PROPÓSITO: un default que intente enviar "
+            "de verdad mandaría correos desde una máquina de desarrollo."
+        ),
+    )
+    RESET_TOKEN_TTL_MIN: int = Field(
+        default=60,
+        description=(
+            "Vida del token de recuperación, en minutos. Mucho más corta que la "
+            "de una invitación (48h) porque este toma control de una cuenta que "
+            "YA existe, no crea una nueva (C-31, D1)."
+        ),
+    )
+    RESET_TOKENS_PENDIENTES_MAX: int = Field(
+        default=3,
+        description=(
+            "Tope de tokens de reset vivos por cuenta. El rate limit es por IP y "
+            "no frena a quien las rote para llenar una casilla ajena; esto acota "
+            "cuántos tokens quedan usables a la vez (C-31, D5)."
+        ),
+    )
+
     # ── Proveedor de visión IA ────────────────────────────────────────────────
     VISION_PROVIDER: str = Field(
         ...,

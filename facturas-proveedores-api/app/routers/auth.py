@@ -18,6 +18,8 @@ from app.core.config import settings
 from app.core.deps import get_db, rate_limit
 from app.schemas.auth import (
     LoginRequest,
+    RecuperarRequest,
+    ResetRequest,
     RegistroEmpleadoRequest,
     RegistroRequest,
     UsuarioResponse,
@@ -145,6 +147,58 @@ def registro_empleado(
     session.commit()
     session.refresh(usuario)
     return UsuarioResponse.model_validate(usuario)
+
+
+@router.post(
+    "/recuperar",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Request a password recovery link",
+)
+def recuperar(
+    body: RecuperarRequest,
+    session: Session = Depends(get_db),
+    _rate: None = Depends(rate_limit),
+) -> dict:
+    """
+    Send a recovery link, if the email belongs to an account.
+
+    The response is deliberately the same either way — same status, same body,
+    and comparable timing. Anything else turns this into a way to find out who
+    has an account here (D2).
+
+    202 rather than 200 because that is literally what happened: the request was
+    accepted, and whether anything was sent is not something the caller gets
+    to learn.
+    """
+    svc = UsuarioService(session)
+    svc.solicitar_reset(str(body.email))
+    session.commit()
+    return {
+        "mensaje": "Si el email corresponde a una cuenta, te enviamos un enlace."
+    }
+
+
+@router.post(
+    "/reset",
+    status_code=status.HTTP_200_OK,
+    summary="Set a new password using a recovery token",
+)
+def reset(
+    body: ResetRequest,
+    session: Session = Depends(get_db),
+    _rate: None = Depends(rate_limit),
+) -> dict:
+    """
+    Apply a new password.
+
+    Consumes the token, kills every open session of that user and every other
+    pending reset token, and does NOT log anyone in — the user goes through the
+    normal login (D3, D7).
+    """
+    svc = UsuarioService(session)
+    svc.aplicar_reset(body.token, body.password)
+    session.commit()
+    return {"mensaje": "Tu contraseña quedó actualizada. Ya podés ingresar."}
 
 
 @router.post(

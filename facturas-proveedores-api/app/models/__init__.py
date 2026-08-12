@@ -18,6 +18,7 @@ from app.models.pago import Pago
 from app.models.refresh_token import RefreshToken
 from app.models.invitacion_empleado import InvitacionEmpleado
 from app.models.cliente import Cliente
+from app.models.token_reset import TokenReset
 
 __all__ = [
     "TemaPreferido",
@@ -35,4 +36,5 @@ __all__ = [
     "RefreshToken",
     "InvitacionEmpleado",
     "Cliente",
+    "TokenReset",
 ]

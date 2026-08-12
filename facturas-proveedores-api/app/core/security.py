@@ -151,6 +151,29 @@ def hash_refresh_token(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+# ── Password reset token (C-31) ───────────────────────────────────────────────
+
+
+def generar_token_reset() -> tuple[str, str]:
+    """
+    Generate a password-reset token.
+
+    Returns (token, token_hash). Only the hash is persisted; the raw value
+    travels once, in the email, and exists nowhere else.
+
+    URL-safe and long, unlike the invitation code (C-29, D2): that one is
+    dictated over the phone, so it trades entropy for readability. This one
+    rides in a link nobody reads, so entropy wins.
+    """
+    raw = secrets.token_urlsafe(32)
+    return raw, hash_token_reset(raw)
+
+
+def hash_token_reset(raw: str) -> str:
+    """SHA-256 hex digest of a reset token, for lookup."""
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
 # ── Invitation code (C-29) ────────────────────────────────────────────────────
 
 # Uppercase alphanumerics minus the characters people confuse when reading a
@@ -202,4 +225,6 @@ __all__ = [
     "hash_refresh_token",
     "generar_codigo_invitacion",
     "hash_codigo_invitacion",
+    "generar_token_reset",
+    "hash_token_reset",
 ]

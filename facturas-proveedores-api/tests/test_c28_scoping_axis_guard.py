@@ -29,6 +29,18 @@ _WHITELIST = {
     "usuario_service.py",
     "usuario_repository.py",
     "refresh_token_repository.py",
+    # C-31: a reset token belongs to a PERSON, not a shop. `token_reset` has no
+    # negocio_id at all — recovering a password is about identity, and the same
+    # account could not plausibly be scoped by negocio without breaking the
+    # feature. Structurally identical to refresh_token_repository above.
+    #
+    # Note this is the opposite call from C-29's equipo_service, and the
+    # difference is the point: there, `usuario_id` was AMBIGUOUS — the target
+    # member inside a negocio-scoped operation — so it got renamed to
+    # `miembro_id` rather than excused. Here the name matches the table's own
+    # FK column and there is no tenancy dimension to confuse it with; renaming
+    # would make the code disagree with the schema.
+    "token_reset_repository.py",
     "security.py",
     "rate_limit_ia.py",
     "deps.py",

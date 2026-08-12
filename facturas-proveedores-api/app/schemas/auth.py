@@ -77,6 +77,37 @@ class RegistroEmpleadoRequest(BaseModel):
         return limpio
 
 
+class RecuperarRequest(BaseModel):
+    """Payload for POST /api/auth/recuperar (C-31).
+
+    Only an email. The response is identical whether or not it matches an
+    account, so nothing else would be meaningful here.
+    """
+
+    email: EmailStr
+
+
+class ResetRequest(BaseModel):
+    """Payload for POST /api/auth/reset (C-31)."""
+
+    token: str
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("La contraseña debe tener al menos 8 caracteres.")
+        return v
+
+    @field_validator("token")
+    @classmethod
+    def token_no_vacio(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("El token es requerido.")
+        return v.strip()
+
+
 class LoginRequest(BaseModel):
     """Payload for POST /api/auth/login."""
 
@@ -113,5 +144,7 @@ __all__ = [
     "RegistroRequest",
     "RegistroEmpleadoRequest",
     "LoginRequest",
+    "RecuperarRequest",
+    "ResetRequest",
     "UsuarioResponse",
 ]
