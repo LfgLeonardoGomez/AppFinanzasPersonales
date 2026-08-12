@@ -662,7 +662,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `knowledge-base/03_actores_y_roles.md` §Rutas públicas, §Endpoints autenticados
 
 ### [C-30] `equipo-frontend`
-- **Estado**: `[ ]`
+- **Estado**: `[x]` archivado 2026-08-11 — la deuda de `usuario_id` en las respuestas quedó **saldada** (ver commit `8e085f1`); la migración de la capa de tipos sigue pendiente en C-41
 - **Scope**:
   - Registro con **dos caminos** visibles: "Crear mi negocio" y "Sumarme a un negocio" (con campo de código) — RN-NEG-04
   - `src/features/equipo/`: `EquipoPage.tsx` (lista de miembros con estado activo/desactivado), acción "Invitar", acción "Desactivar" con confirmación
@@ -898,7 +898,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-27 | close-known-gaps | MEDIO | C-24, C-26 (archivado 2026-08-06) |
 | C-28 | negocio-scoping-backend | CRITICO | C-27 (archivado 2026-08-09) |
 | C-29 | equipo-backend | CRITICO | C-28 (archivado 2026-08-11) |
-| **C-30** | **equipo-frontend** | ALTO | C-29 |
+| C-30 | equipo-frontend | ALTO | C-29 (archivado 2026-08-11) |
 | **C-31** | **password-recovery** | **CRITICO** | C-29 |
 | C-32 | clientes-backend | MEDIO | C-28 (archivado 2026-08-11) |
 | **C-33** | **ventas-backend** | ALTO | C-32 |

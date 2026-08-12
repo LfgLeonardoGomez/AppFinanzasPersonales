@@ -124,3 +124,15 @@ Recomendado:  rewrite/proxy en el frontend (/api/* → backend)
 Fallback:     SameSite=None; Secure; HttpOnly + CORS con origen explícito
               + credentials:true (nunca wildcard con credenciales) + HTTPS en ambos
 ```
+
+## Flujo 8: Alta de empleado por invitación *(C-29 backend + C-30 frontend)*
+
+1. El **admin** entra a `/equipo` y toca "Invitar". El backend genera un código de 8 caracteres, persiste solo su hash y lo devuelve **una única vez**.
+2. La app lo muestra en un diálogo que **no se cierra ni con backdrop ni con Escape**, con botón de copiar y el aviso de que no se puede recuperar. Si se pierde, se genera otro: es gratis.
+3. El admin le pasa el código al empleado **fuera del sistema** (WhatsApp, en persona). El sistema no manda mails hasta C-31.
+4. El **empleado** entra a `/registro`, elige "Sumarme a uno", completa sus datos y el código, y **elige su propia contraseña**. El admin nunca toca credenciales ajenas.
+5. El backend valida el código (`usado_en IS NULL AND expira_en > now()`), crea el `Usuario` con el `negocio_id` de la invitación y `es_admin = false`, y marca la invitación como usada — todo en una transacción.
+6. Si el código es inexistente, vencido o ya usado, la respuesta es **la misma en los tres casos** (D-41): es un endpoint público y distinguirlos permitiría sondear qué negocios existen.
+7. Si el alta falla por email duplicado, **la invitación NO se consume** (D-42): un typo no obliga al admin a generar otra.
+
+**Baja de un miembro:** el admin toca "Quitar acceso" y confirma. El backend setea `desactivado` y revoca los refresh tokens activos: pierde el acceso en su request siguiente y tampoco puede renovar. **Sus facturas y pagos siguen visibles** para el resto del equipo, atribuidos a él. Si sería el último admin activo, se rechaza con **409** y un mensaje que explica por qué (RN-NEG-08).
