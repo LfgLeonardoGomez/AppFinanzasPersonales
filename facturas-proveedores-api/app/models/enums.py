@@ -40,6 +40,26 @@ class MetodoPago(str, enum.Enum):
     OTRO = "OTRO"
 
 
+class FormaPago(str, enum.Enum):
+    """How a Venta was paid (C-33).
+
+    CUENTA_CORRIENTE is the fiado: the sale happened, the money did not. It is
+    a payment method rather than a separate entity on purpose (D-33) — that one
+    row is both the day's sale and the charge on the customer's account, so the
+    two can never drift apart.
+
+    Deliberately not MetodoPago: that one is for money going OUT to suppliers
+    and carries MERCADOPAGO but no notion of credit. Sharing them would mean a
+    supplier payment could be "on account", which is not a thing here.
+    """
+
+    EFECTIVO = "EFECTIVO"
+    TRANSFERENCIA = "TRANSFERENCIA"
+    TARJETA = "TARJETA"
+    CUENTA_CORRIENTE = "CUENTA_CORRIENTE"
+    OTRO = "OTRO"
+
+
 class EstadoFactura(str, enum.Enum):
     """
     Derived state of an invoice computed by the FIFO algorithm (RN-FIFO).
@@ -58,5 +78,6 @@ __all__ = [
     "CategoriaProveedor",
     "OrigenDocumento",
     "MetodoPago",
+    "FormaPago",
     "EstadoFactura",
 ]

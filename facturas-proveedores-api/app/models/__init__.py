@@ -8,7 +8,13 @@ enums → base → negocio → usuario → proveedor → factura → pago
 `negocio` leads because every other business table has an FK to it (D-27).
 """
 
-from app.models.enums import TemaPreferido, CategoriaProveedor, OrigenDocumento, MetodoPago
+from app.models.enums import (
+    TemaPreferido,
+    CategoriaProveedor,
+    OrigenDocumento,
+    MetodoPago,
+    FormaPago,
+)
 from app.models.base import TimestampUUIDMixin, SoftDeleteMixin
 from app.models.negocio import Negocio
 from app.models.usuario import Usuario
@@ -19,6 +25,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.invitacion_empleado import InvitacionEmpleado
 from app.models.cliente import Cliente
 from app.models.token_reset import TokenReset
+from app.models.venta import Venta
 
 __all__ = [
     "TemaPreferido",
@@ -37,4 +44,6 @@ __all__ = [
     "InvitacionEmpleado",
     "Cliente",
     "TokenReset",
+    "Venta",
+    "FormaPago",
 ]
