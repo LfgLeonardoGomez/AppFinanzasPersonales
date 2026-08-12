@@ -16,7 +16,7 @@
  * "silent nav" shell (BRAND.md: componentes livianos, sin ruido).
  */
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { Home, Users, FileText, CreditCard, UserCircle, LogOut } from 'lucide-react'
+import { Home, Users, Users2, FileText, CreditCard, UserCircle, LogOut } from 'lucide-react'
 import { useAuthStore } from '@features/auth/store/authStore'
 import { useLogout } from '@features/auth/api/authHooks'
 
@@ -26,6 +26,12 @@ const NAV_ITEMS = [
   { to: '/facturas', label: 'Facturas', icon: FileText, end: false },
   { to: '/pagos', label: 'Pagos', icon: CreditCard, end: false },
   { to: '/perfil', label: 'Perfil', icon: UserCircle, end: false },
+]
+
+// Offered only to admins. This is NOT access control — the backend answers
+// 403 either way; it just avoids offering a path that ends in an error.
+const NAV_ITEMS_ADMIN = [
+  { to: '/equipo', label: 'Equipo', icon: Users2, end: false },
 ] as const
 
 function useIsActive() {
@@ -54,6 +60,9 @@ function LogoMark() {
 export function AppLayout() {
   const isActive = useIsActive()
   const user = useAuthStore((s) => s.user)
+  // Admins get one extra entry. The route itself and the API both still
+  // enforce the privilege — this only decides what is offered.
+  const navItems = user?.es_admin ? [...NAV_ITEMS, ...NAV_ITEMS_ADMIN] : NAV_ITEMS
   const logoutMutation = useLogout()
   const initial = user?.nombre?.charAt(0).toUpperCase() ?? 'U'
 
@@ -67,7 +76,7 @@ export function AppLayout() {
         </div>
 
         <nav className="flex flex-col gap-0.5" aria-label="Navegación principal">
-          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => {
+          {navItems.map(({ to, label, icon: Icon, end }) => {
             const active = isActive(to, end)
             return (
               <Link
@@ -125,7 +134,7 @@ export function AppLayout() {
         aria-label="Navegación principal"
         className="fixed inset-x-0 bottom-0 z-30 flex justify-around border-t border-border-subtle bg-surface px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 lg:hidden"
       >
-        {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => {
+        {navItems.map(({ to, label, icon: Icon, end }) => {
           const active = isActive(to, end)
           return (
             <Link

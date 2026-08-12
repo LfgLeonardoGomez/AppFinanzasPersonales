@@ -15,6 +15,10 @@
 
 export interface Usuario {
   id: string
+  /** Negocio the session belongs to (C-28, D-27). Output only. */
+  negocio_id: string
+  /** Single privilege flag (C-28, D-29). Gates team management only. */
+  es_admin: boolean
   email: string
   nombre: string
   /** Optional profile fields (C-05). */
@@ -34,6 +38,22 @@ export interface RegistroBody {
   email: string
   nombre: string
   password: string
+  /** Optional (C-28): omitted, the backend derives it from the user's name. */
+  nombre_negocio?: string
+}
+
+/**
+ * Payload for POST /api/auth/registro-empleado (C-29).
+ *
+ * Separate from RegistroBody on purpose: that one creates a negocio, this
+ * one joins an existing one. No negocio_id and no es_admin — the shop comes
+ * from the code and the privilege is not something you can ask for.
+ */
+export interface RegistroEmpleadoBody {
+  email: string
+  nombre: string
+  password: string
+  codigo: string
 }
 
 export interface LoginBody {
@@ -659,4 +679,31 @@ export interface HTTPValidationError {
 
 export interface HTTPError {
   detail: string
+}
+
+// ---------------------------------------------------------------------------
+// Equipo (C-29)
+// ---------------------------------------------------------------------------
+
+/** A team member as the admin sees them in the list. */
+export interface MiembroResponse {
+  id: string
+  nombre: string
+  email: string
+  es_admin: boolean
+  desactivado: boolean
+  created_at: string
+}
+
+/**
+ * A freshly issued invitation.
+ *
+ * `codigo` appears here and nowhere else in the API: only its hash is stored,
+ * so this response is the single chance to read it (D-31). The UI has to make
+ * that obvious to the admin.
+ */
+export interface InvitacionResponse {
+  id: string
+  codigo: string
+  expira_en: string
 }

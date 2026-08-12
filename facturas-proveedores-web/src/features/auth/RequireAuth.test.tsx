@@ -86,7 +86,7 @@ describe('RequireAuth — redirect when not authenticated', () => {
     const { useAuthStore } = await import('./store/authStore')
     useAuthStore
       .getState()
-      .login({ id: '1', email: 'a@b.com', nombre: 'A', created_at: '' })
+      .login({ id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A', created_at: '' })
 
     await renderWithAuth('/private')
 
@@ -145,7 +145,7 @@ describe('RequireAuth — bootstrap state', () => {
   })
 
   it('populates store and shows private content when bootstrap returns 2xx', async () => {
-    const user = { id: '1', email: 'b@b.com', nombre: 'B', created_at: '' }
+    const user = { id: '1', negocio_id: 'neg-1', es_admin: false, email: 'b@b.com', nombre: 'B', created_at: '' }
 
     server.use(
       http.get(`${BASE}/api/me`, () => HttpResponse.json(user)),

@@ -10,6 +10,7 @@ import { apiClient } from '@shared/api/client'
 import { useAuthStore } from '../store/authStore'
 import type {
   RegistroBody,
+  RegistroEmpleadoBody,
   LoginBody,
   LoginResponse,
   MeResponse,
@@ -57,6 +58,33 @@ export function useRegister() {
       return res.data
     },
   })
+}
+
+/**
+ * Join an EXISTING negocio with an invitation code (C-29).
+ *
+ * Deliberately a separate hook from useRegister, hitting a separate endpoint.
+ * Routing both through one call would mean an employee who mistypes something
+ * silently ends up with their own empty business instead of an error.
+ */
+export function useRegisterEmpleado() {
+  return useMutation({
+    mutationFn: async (body: RegistroEmpleadoBody) => {
+      const res = await apiClient.post<Usuario>('/auth/registro-empleado', body)
+      return res.data
+    },
+  })
+}
+
+/**
+ * The message for a rejected invitation code.
+ *
+ * The backend answers identically for unknown, expired and already-used codes
+ * so the endpoint cannot be used to probe which shops exist (D-41). The UI must
+ * not invent precision it does not have — it points at the action instead.
+ */
+export function getCodigoErrorMessage(_error: unknown): string {
+  return 'El código no es válido o ya venció. Pedile uno nuevo a tu administrador.'
 }
 
 // ── useLogin ──────────────────────────────────────────────────────────────────

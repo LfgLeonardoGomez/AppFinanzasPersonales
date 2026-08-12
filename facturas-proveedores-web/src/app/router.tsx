@@ -26,6 +26,7 @@ import FacturaFormPage from '@features/facturas/FacturaFormPage'
 import PagosPage from '@features/pagos/PagosPage'
 import PagoFormPage from '@features/pagos/PagoFormPage'
 import PerfilPage from '@features/perfil/PerfilPage'
+import EquipoPage from '@features/equipo/EquipoPage'
 
 // ── Router ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
 
       // ── Perfil route (C-05) ─────────────────────────────────────────────────
       { path: '/perfil', element: <PerfilPage /> },
+      { path: '/equipo', element: <EquipoPage /> },
     ],
   },
 

@@ -69,9 +69,9 @@ describe('RegisterPage', () => {
     renderRegisterPage()
 
     await userEvent.type(screen.getByLabelText(/email/i), 'new@t.com')
-    await userEvent.type(screen.getByLabelText(/nombre/i), 'New User')
+    await userEvent.type(screen.getByLabelText('Nombre', { exact: true }), 'New User')
     await userEvent.type(screen.getByLabelText(/contraseña/i), 'securepassword')
-    await userEvent.click(screen.getByRole('button', { name: /registrar/i }))
+    await userEvent.click(screen.getByRole('button', { name: /crear mi negocio/i }))
 
     // After successful registration, redirect to /login (or /)
     await waitFor(() => {
@@ -91,9 +91,9 @@ describe('RegisterPage', () => {
     renderRegisterPage()
 
     await userEvent.type(screen.getByLabelText(/email/i), 'dup@t.com')
-    await userEvent.type(screen.getByLabelText(/nombre/i), 'Dup')
+    await userEvent.type(screen.getByLabelText('Nombre', { exact: true }), 'Dup')
     await userEvent.type(screen.getByLabelText(/contraseña/i), 'securepassword')
-    await userEvent.click(screen.getByRole('button', { name: /registrar/i }))
+    await userEvent.click(screen.getByRole('button', { name: /crear mi negocio/i }))
 
     await waitFor(() => {
       expect(screen.getByText(/email.*uso|ya.*registrado|ya existe/i)).toBeTruthy()
@@ -112,9 +112,9 @@ describe('RegisterPage', () => {
     renderRegisterPage()
 
     await userEvent.type(screen.getByLabelText(/email/i), 'a@b.com')
-    await userEvent.type(screen.getByLabelText(/nombre/i), 'A')
+    await userEvent.type(screen.getByLabelText('Nombre', { exact: true }), 'A')
     await userEvent.type(screen.getByLabelText(/contraseña/i), 'short') // < 8 chars
-    await userEvent.click(screen.getByRole('button', { name: /registrar/i }))
+    await userEvent.click(screen.getByRole('button', { name: /crear mi negocio/i }))
 
     // Should show client-side error
     await waitFor(() => {
@@ -138,9 +138,9 @@ describe('RegisterPage', () => {
     renderRegisterPage()
 
     await userEvent.type(screen.getByLabelText(/email/i), 'notanemail')
-    await userEvent.type(screen.getByLabelText(/nombre/i), 'Test')
+    await userEvent.type(screen.getByLabelText('Nombre', { exact: true }), 'Test')
     await userEvent.type(screen.getByLabelText(/contraseña/i), 'password123')
-    await userEvent.click(screen.getByRole('button', { name: /registrar/i }))
+    await userEvent.click(screen.getByRole('button', { name: /crear mi negocio/i }))
 
     await waitFor(() => {
       // Some error must be shown
@@ -150,5 +150,86 @@ describe('RegisterPage', () => {
 
     const { useAuthStore } = await import('./store/authStore')
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+})
+
+// ── C-30: dos caminos de alta ─────────────────────────────────────────────────
+
+describe('RegisterPage — dos caminos', () => {
+  it('el camino de invitación pide código y no pide nombre de negocio', async () => {
+    renderRegisterPage()
+
+    await userEvent.click(screen.getByRole('radio', { name: /sumarme a uno/i }))
+
+    expect(screen.getByLabelText(/código de invitación/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/nombre del negocio/i)).not.toBeInTheDocument()
+  })
+
+  it('cada camino pega al endpoint que le corresponde', async () => {
+    // El modo de falla que importa es silencioso: por el camino equivocado el
+    // empleado no recibe error, se queda con un negocio propio y vacío.
+    const golpeados: string[] = []
+    server.use(
+      http.post(`${BASE}/api/auth/registro`, async () => {
+        golpeados.push('registro')
+        return HttpResponse.json({ id: 'u1' }, { status: 201 })
+      }),
+      http.post(`${BASE}/api/auth/registro-empleado`, async () => {
+        golpeados.push('registro-empleado')
+        return HttpResponse.json({ id: 'u2' }, { status: 201 })
+      }),
+    )
+
+    renderRegisterPage()
+    await userEvent.click(screen.getByRole('radio', { name: /sumarme a uno/i }))
+    await userEvent.type(screen.getByLabelText('Nombre', { exact: true }), 'Empleado')
+    await userEvent.type(screen.getByLabelText(/email/i), 'emp@test.com')
+    await userEvent.type(screen.getByLabelText(/contraseña/i), 'password123')
+    await userEvent.type(screen.getByLabelText(/código de invitación/i), 'A3F7K2QB')
+    await userEvent.click(screen.getByRole('button', { name: /sumarme al negocio/i }))
+
+    await waitFor(() => expect(golpeados).toEqual(['registro-empleado']))
+  })
+
+  it('sin código no envía nada', async () => {
+    const golpeados: string[] = []
+    server.use(
+      http.post(`${BASE}/api/auth/registro-empleado`, async () => {
+        golpeados.push('registro-empleado')
+        return HttpResponse.json({ id: 'u2' }, { status: 201 })
+      }),
+    )
+
+    renderRegisterPage()
+    await userEvent.click(screen.getByRole('radio', { name: /sumarme a uno/i }))
+    await userEvent.type(screen.getByLabelText('Nombre', { exact: true }), 'Empleado')
+    await userEvent.type(screen.getByLabelText(/email/i), 'emp@test.com')
+    await userEvent.type(screen.getByLabelText(/contraseña/i), 'password123')
+    await userEvent.click(screen.getByRole('button', { name: /sumarme al negocio/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/código/i)
+    expect(golpeados).toHaveLength(0)
+  })
+
+  it('un código rechazado muestra un mensaje único, sin revelar el motivo', async () => {
+    server.use(
+      http.post(`${BASE}/api/auth/registro-empleado`, () =>
+        HttpResponse.json({ detail: 'El código de invitación no es válido.' }, { status: 400 }),
+      ),
+    )
+
+    renderRegisterPage()
+    await userEvent.click(screen.getByRole('radio', { name: /sumarme a uno/i }))
+    await userEvent.type(screen.getByLabelText('Nombre', { exact: true }), 'Empleado')
+    await userEvent.type(screen.getByLabelText(/email/i), 'emp@test.com')
+    await userEvent.type(screen.getByLabelText(/contraseña/i), 'password123')
+    await userEvent.type(screen.getByLabelText(/código de invitación/i), 'ZZZZ2345')
+    await userEvent.click(screen.getByRole('button', { name: /sumarme al negocio/i }))
+
+    const alerta = await screen.findByRole('alert')
+    // El backend no distingue inexistente / vencido / usado (D-41) y la UI
+    // tampoco debe inventar precisión: orienta a la acción.
+    expect(alerta).toHaveTextContent(/pedile uno nuevo a tu administrador/i)
+    expect(alerta).not.toHaveTextContent(/vencid|usado|inexistente/i)
   })
 })

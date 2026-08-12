@@ -52,7 +52,7 @@ describe('useMe — bootstrap query', () => {
   it('resolves with the user profile when the session cookie is valid', async () => {
     server.use(
       http.get(`${BASE}/api/me`, () =>
-        HttpResponse.json({ id: '1', email: 'me@test.com', nombre: 'Me', created_at: '' }),
+        HttpResponse.json({ id: '1', negocio_id: 'neg-1', es_admin: false, email: 'me@test.com', nombre: 'Me', created_at: '' }),
       ),
     )
 
@@ -80,7 +80,7 @@ describe('useMe — bootstrap query', () => {
   it('does NOT write to the authStore — syncing is the caller\'s job', async () => {
     server.use(
       http.get(`${BASE}/api/me`, () =>
-        HttpResponse.json({ id: '1', email: 'me@test.com', nombre: 'Me', created_at: '' }),
+        HttpResponse.json({ id: '1', negocio_id: 'neg-1', es_admin: false, email: 'me@test.com', nombre: 'Me', created_at: '' }),
       ),
     )
 
@@ -106,7 +106,7 @@ describe('useRegister', () => {
   it('resolves on successful registration (2xx)', async () => {
     server.use(
       http.post(`${BASE}/api/auth/registro`, () =>
-        HttpResponse.json({ id: '1', email: 'new@test.com', nombre: 'New', created_at: '' }),
+        HttpResponse.json({ id: '1', negocio_id: 'neg-1', es_admin: false, email: 'new@test.com', nombre: 'New', created_at: '' }),
       ),
     )
 
@@ -169,7 +169,7 @@ describe('useLogin', () => {
   it('populates authStore on successful login', async () => {
     server.use(
       http.post(`${BASE}/api/auth/login`, () =>
-        HttpResponse.json({ user: { id: '1', email: 'u@u.com', nombre: 'U', created_at: '' } }),
+        HttpResponse.json({ user: { id: '1', negocio_id: 'neg-1', es_admin: false, email: 'u@u.com', nombre: 'U', created_at: '' } }),
       ),
     )
 
@@ -257,7 +257,7 @@ describe('useLogout', () => {
     const { useAuthStore } = await import('../store/authStore')
 
     // Simulate logged-in state
-    useAuthStore.getState().login({ id: '1', email: 'a@b.com', nombre: 'A', created_at: '' })
+    useAuthStore.getState().login({ id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A', created_at: '' })
 
     const { result } = renderHook(() => useLogout(), { wrapper: makeWrapper() })
 
@@ -283,10 +283,10 @@ describe('useLogout', () => {
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
     // Seed a stale-but-successful /me result (the state after a prior login).
-    qc.setQueryData(AUTH_QUERY_KEYS.me, { id: '1', email: 'a@b.com', nombre: 'A', created_at: '' })
+    qc.setQueryData(AUTH_QUERY_KEYS.me, { id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A', created_at: '' })
     expect(qc.getQueryData(AUTH_QUERY_KEYS.me)).toBeDefined()
 
-    useAuthStore.getState().login({ id: '1', email: 'a@b.com', nombre: 'A', created_at: '' })
+    useAuthStore.getState().login({ id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A', created_at: '' })
 
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
