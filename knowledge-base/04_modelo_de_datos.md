@@ -187,6 +187,8 @@ NO existe relación Venta–CobroCliente.   (mismo criterio: FIFO derivado, D-37
 > **Una fila = una operación de venta.** El fiado NO tiene tabla propia: es una `Venta` con `forma_pago = CUENTA_CORRIENTE` y `cliente_id` cargado (D-33). Esa misma fila es, al mismo tiempo, la venta del día y el cargo en la cuenta corriente del cliente — se carga una vez y no puede desincronizarse.
 >
 > La granularidad de carga (venta por venta vs. un total al cierre) es decisión de UX, no de modelo (D-35).
+>
+> **Implementado en C-33.** La invariante se garantiza con un **CHECK en la base** (D-53), no solo con Pydantic: `cliente_id` es nullable por necesidad, así que el tipo no impide un fiado huérfano. `PATCH` valida el **par resultante** y limpia el cliente al salir de cuenta corriente (D-54) — lo que **hace desaparecer una deuda**, y necesita aviso en la UI. Sin campo `origen`: nada de esto lo propone la IA. Sin endpoint de totales todavía: eso es C-37 (D-55).
 
 ### CobroCliente *(D-34 — tabla `cobro_cliente`)*
 | Campo | Tipo | Notas |

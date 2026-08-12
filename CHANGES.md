@@ -712,7 +712,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `knowledge-base/09_decisiones_y_supuestos.md` D-36
 
 ### [C-33] `ventas-backend`
-- **Estado**: `[ ]`
+- **Estado**: `[x]` archivado 2026-08-12
 - **Scope**:
   - `app/models/venta.py`: `negocio_id`, `cliente_id?`, `fecha`, `monto`, `forma_pago`, `notas?`, `creado_por_usuario_id`, `deleted_at`
   - Enum `FormaPago` = `EFECTIVO`/`TRANSFERENCIA`/`TARJETA`/`CUENTA_CORRIENTE`/`OTRO`
@@ -729,7 +729,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `knowledge-base/09_decisiones_y_supuestos.md` D-33, D-34, D-35
 
 ### [C-34] `ventas-clientes-frontend`
-- **Estado**: `[ ]`
+- **Estado**: `[ ]` — **heredado de C-33 (D-54)**: borrar una venta fiada, o sacarla de cuenta corriente, **hace desaparecer una deuda del cliente**. El backend lo permite porque es una corrección legítima; la UI tiene que avisarlo, como el borrado de proveedor avisa de sus dependencias (RN-PROV-04)
 - **Scope**:
   - `src/features/ventas/`: listado filtrable (fecha, forma de pago, cliente) + formulario de carga
   - Formulario optimizado para el mostrador: monto, fecha (default hoy), forma de pago. El campo cliente **aparece solo** si la forma de pago es Cuenta corriente
@@ -901,7 +901,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-30 | equipo-frontend | ALTO | C-29 (archivado 2026-08-11) |
 | C-31 | password-recovery | CRITICO | C-29 (archivado 2026-08-12) |
 | C-32 | clientes-backend | MEDIO | C-28 (archivado 2026-08-11) |
-| **C-33** | **ventas-backend** | ALTO | C-32 |
+| C-33 | ventas-backend | ALTO | C-32 (archivado 2026-08-12) |
 | **C-34** | **ventas-clientes-frontend** | MEDIO | C-30, C-33 |
 | **C-35** | **cuenta-corriente-clientes-backend** | ALTO | C-33 |
 | **C-36** | **cuenta-corriente-clientes-frontend** | MEDIO | C-34, C-35 |

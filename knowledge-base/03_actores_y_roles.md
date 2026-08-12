@@ -65,7 +65,7 @@ Todo el resto de los endpoints requiere sesión válida (cookie httpOnly). El `u
 | `/api/equipo/{id}/reactivar` | POST | Restaura el acceso. **Solo `es_admin`** | equipo-backend |
 
 | `/api/clientes/*` | CRUD + `buscar` | Aislado por `negocio_id`; alta con solo `nombre`; unicidad normalizada por negocio (RN-CLI-01/03). Duplicado → **409 con el cliente existente**. `/buscar` se declara antes que `/{id}` para no ser ensombrecido | clientes-backend |
-| `/api/ventas/*` | CRUD | Aislado por `negocio_id`; invariante `cliente_id ⟺ CUENTA_CORRIENTE` (RN-VTA-03) | ventas-backend |
+| `/api/ventas/*` | CRUD | Aislado por `negocio_id`; invariante `cliente_id ⟺ CUENTA_CORRIENTE` garantizada por **CHECK en la base** (RN-VTA-03, D-53). Filtros por rango de fechas (extremos incluidos), `forma_pago` y `cliente_id`; cliente ajeno → **404**, no lista vacía | ventas-backend |
 | `/api/cobros/*` | CRUD | Aislado por `negocio_id`; sin `venta_id`, no puede superar el saldo (RN-CCC-03/04) | cuenta-corriente-clientes-backend |
 | `/api/cuenta-corriente/clientes/{id}` | GET | Saldo, estado FIFO de ventas fiadas, historial (todo on-demand) | cuenta-corriente-clientes-backend |
 | `/api/estadisticas/*` | GET | Agregaciones de compras y ventas por período (RN-VTA-05) | estadisticas-backend |
