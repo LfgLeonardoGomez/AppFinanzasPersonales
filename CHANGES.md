@@ -677,7 +677,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `knowledge-base/03_actores_y_roles.md` §Actores del sistema
 
 ### [C-31] `password-recovery`
-- **Estado**: `[ ]` — **ya no es opcional**: con D-40 (un solo admin por negocio) es la única salida por software ante un fundador bloqueado
+- **Estado**: `[x]` archivado 2026-08-12 — **cierra el riesgo abierto por D-40**: un fundador bloqueado ya tiene salida por software
 - **Scope**:
   - Token de reset: un solo uso, con vencimiento, **solo hash persistido** (mismo criterio que `RefreshToken`, D-17)
   - `POST /api/auth/recuperar` — respuesta **idéntica** exista o no el email (no enumerar cuentas); rate limiting
@@ -899,7 +899,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-28 | negocio-scoping-backend | CRITICO | C-27 (archivado 2026-08-09) |
 | C-29 | equipo-backend | CRITICO | C-28 (archivado 2026-08-11) |
 | C-30 | equipo-frontend | ALTO | C-29 (archivado 2026-08-11) |
-| **C-31** | **password-recovery** | **CRITICO** | C-29 |
+| C-31 | password-recovery | CRITICO | C-29 (archivado 2026-08-12) |
 | C-32 | clientes-backend | MEDIO | C-28 (archivado 2026-08-11) |
 | **C-33** | **ventas-backend** | ALTO | C-32 |
 | **C-34** | **ventas-clientes-frontend** | MEDIO | C-30, C-33 |

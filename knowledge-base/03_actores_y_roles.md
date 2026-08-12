@@ -40,8 +40,8 @@ No es un RBAC clásico: es **aislamiento horizontal por `negocio_id`**, más un 
 | Registro de negocio | Alta de cuenta + creación del negocio en una transacción (email, nombre, contraseña, nombre del negocio). `es_admin = true`. Rate limiting (RN-AUTH-06). |
 | Registro de empleado | Alta de cuenta contra un **código de invitación** de un solo uso (RN-NEG-05). El empleado elige su propia contraseña; hereda `negocio_id`, `es_admin = false`. Rate limiting. Error genérico si el código es inválido, vencido o ya usado. |
 | Login | Inicio de sesión. Con rate limiting (RN-AUTH-06). Mensaje de error genérico. |
-| Solicitud de recuperación de contraseña | Envía el mail de reset. Respuesta **siempre idéntica** exista o no el email (D-38). Rate limiting. |
-| Reset de contraseña | Consume el token de reset (un solo uso, con vencimiento) y setea la nueva contraseña. |
+| Solicitud de recuperación de contraseña | `POST /api/auth/recuperar`. Respuesta **idéntica en código, cuerpo y tiempo** exista o no la cuenta (D-48). Un usuario `desactivado` tampoco recibe enlace: recuperar la contraseña no puede esquivar una baja. Rate limiting. |
+| Reset de contraseña | `POST /api/auth/reset`. Consume el token (un solo uso, una hora de vida), revoca **todas** las sesiones activas y los demás tokens pendientes (D-49), y **no inicia sesión** (D-51). |
 
 Todo el resto de los endpoints requiere sesión válida (cookie httpOnly). El `usuario_id` y el `negocio_id` se obtienen vía la dependency `get_current_user` (RN-AUTH-08, RN-NEG-09), y el filtro por `negocio_id` se aplica en el **service layer** en cada operación de negocio.
 
@@ -64,9 +64,10 @@ Todo el resto de los endpoints requiere sesión válida (cookie httpOnly). El `u
 | `/api/equipo/{id}/desactivar` | POST | Revoca acceso sin borrar datos y revoca los refresh tokens activos (RN-NEG-07). **Solo `es_admin`**; rechaza con **409** dejar al negocio sin admin activo (RN-NEG-08) | equipo-backend |
 | `/api/equipo/{id}/reactivar` | POST | Restaura el acceso. **Solo `es_admin`** | equipo-backend |
 
-> **Códigos de estado del privilegio**: falta de `es_admin` responde **403**, no 404. A diferencia de un recurso ajeno, acá no hay nada que ocultar: el solicitante es miembro legítimo del negocio y sabe que el endpoint existe; lo que le falta es el privilegio, y decírselo es la única forma de que pueda actuar (pedirle a un admin). El **404** se reserva para recursos de otro negocio.
 | `/api/clientes/*` | CRUD + `buscar` | Aislado por `negocio_id`; alta con solo `nombre`; unicidad normalizada por negocio (RN-CLI-01/03). Duplicado → **409 con el cliente existente**. `/buscar` se declara antes que `/{id}` para no ser ensombrecido | clientes-backend |
 | `/api/ventas/*` | CRUD | Aislado por `negocio_id`; invariante `cliente_id ⟺ CUENTA_CORRIENTE` (RN-VTA-03) | ventas-backend |
 | `/api/cobros/*` | CRUD | Aislado por `negocio_id`; sin `venta_id`, no puede superar el saldo (RN-CCC-03/04) | cuenta-corriente-clientes-backend |
 | `/api/cuenta-corriente/clientes/{id}` | GET | Saldo, estado FIFO de ventas fiadas, historial (todo on-demand) | cuenta-corriente-clientes-backend |
 | `/api/estadisticas/*` | GET | Agregaciones de compras y ventas por período (RN-VTA-05) | estadisticas-backend |
+
+> **Códigos de estado del privilegio**: falta de `es_admin` responde **403**, no 404. A diferencia de un recurso ajeno, acá no hay nada que ocultar: el solicitante es miembro legítimo del negocio y sabe que el endpoint existe; lo que le falta es el privilegio, y decírselo es la única forma de que pueda actuar (pedirle a un admin). El **404** se reserva para recursos de otro negocio.

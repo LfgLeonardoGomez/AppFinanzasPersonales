@@ -136,3 +136,14 @@ Fallback:     SameSite=None; Secure; HttpOnly + CORS con origen explícito
 7. Si el alta falla por email duplicado, **la invitación NO se consume** (D-42): un typo no obliga al admin a generar otra.
 
 **Baja de un miembro:** el admin toca "Quitar acceso" y confirma. El backend setea `desactivado` y revoca los refresh tokens activos: pierde el acceso en su request siguiente y tampoco puede renovar. **Sus facturas y pagos siguen visibles** para el resto del equipo, atribuidos a él. Si sería el último admin activo, se rechaza con **409** y un mensaje que explica por qué (RN-NEG-08).
+
+## Flujo 9: Recuperación de contraseña *(C-31)*
+
+1. El usuario entra a `/recuperar` desde el enlace "Olvidé mi contraseña" del login y escribe su email.
+2. El backend responde **202 con el mismo cuerpo siempre**, exista o no la cuenta — y hace un trabajo equivalente en las dos ramas para que **el tiempo tampoco lo delate** (D-48). La pantalla muestra la misma confirmación condicional: *"Si ese email tiene una cuenta…"*.
+3. Si la cuenta existe y está activa, se genera un token de **un solo uso** con **una hora** de vida, se persiste **solo su hash**, y se manda el enlace por correo. Un usuario `desactivado` **no** recibe nada: recuperar la contraseña no puede esquivar una baja.
+4. El usuario abre `/reset?token=…`, elige una contraseña nueva y la repite. Si es demasiado corta, **el token NO se consume** (D-50): corrige y sigue.
+5. Al aplicarse, el backend revoca **todas las sesiones activas** del usuario y **los demás tokens de reset pendientes** (D-49). Quien resetea suele creer que perdió el control; dejar viva la sesión del intruso haría que el reset no sirviera de nada.
+6. **No se inicia sesión sola** (D-51): el usuario va al login. Autologuear convertiría el enlace del correo en una sesión para cualquiera que lo intercepte.
+
+**En desarrollo** el correo no se envía: `EMAIL_PROVIDER=console` imprime el mensaje —con el enlace— en la salida del contenedor `api`. Es el default a propósito, para que un entorno sin credenciales no mande correos reales desde una máquina de desarrollo.
