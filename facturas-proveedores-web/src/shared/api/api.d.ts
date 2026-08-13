@@ -718,3 +718,165 @@ export interface InvitacionResponse {
   codigo: string
   expira_en: string
 }
+
+// ---------------------------------------------------------------------------
+// Clientes domain types (C-32 backend, C-34 frontend)
+// ---------------------------------------------------------------------------
+
+/**
+ * A customer as the app sees them (backend: app/schemas/cliente.py).
+ *
+ * `nombre_normalizado` is returned for information — it MAY be displayed or
+ * compared, but MUST NEVER be sent in a request payload (design.md D8):
+ * identity is decided exclusively by the backend (`app/core/normalizacion.py`).
+ */
+export interface Cliente {
+  id: string
+  negocio_id: string
+  nombre: string
+  nombre_normalizado: string
+  telefono?: string | null
+  notas?: string | null
+  created_at: string
+  updated_at: string
+  /**
+   * On-demand balance (backend: `ClienteResponse.saldo: Optional[Decimal] =
+   * None`, app/schemas/cliente.py). Populated ONLY by the plain listing
+   * endpoint (GET /api/clientes with no `buscar` filter) — `null` on
+   * create/get/update/search, which don't pay the extra aggregate query.
+   *
+   * Typed as `string`, not `number`, unlike `Proveedor.saldo` — this
+   * backend serializes `Decimal` fields as JSON strings (confirmed on the
+   * same Decimal-typed field via
+   * `test_c35_cuenta_corriente_cliente_integration.py`: `data["saldo"] ==
+   * "0.00"`), the same convention already used for `Venta.monto`.
+   * `Proveedor.saldo: number` predates this and is not touched here.
+   */
+  saldo: string | null
+}
+
+/** Item in the customer list/search results — same shape as Cliente. */
+export interface ClienteListItem extends Cliente {}
+
+/**
+ * Payload for POST /api/clientes (create).
+ *
+ * Only `nombre` — this change's `ClienteAutocomplete` creates a customer from
+ * the name alone (RN-CLI-01, design.md D7). `negocio_id` comes from the
+ * session; `nombre_normalizado` is derived server-side, never accepted.
+ */
+export interface ClienteCreate {
+  nombre: string
+}
+
+/**
+ * Shape of the `detail` object on a `409` from POST /api/clientes
+ * (backend: `app/services/cliente_service.py::_conflicto`).
+ *
+ * `cliente_existente` is present whenever the conflicting customer could be
+ * identified — the frontend offers it instead of surfacing an error
+ * (design.md D8, RN-CLI-03).
+ */
+export interface ClienteConflictDetail {
+  mensaje: string
+  cliente_existente?: { id: string; nombre: string }
+}
+
+// ---------------------------------------------------------------------------
+// Ventas domain types (C-33 backend, C-34 frontend)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sale payment method (backend: app/models/enums.py FormaPago).
+ *
+ * Deliberately SEPARATE from `MetodoPago` (money going OUT to suppliers,
+ * C-10): `MetodoPago` carries `MERCADOPAGO` and has no notion of credit;
+ * `FormaPago` carries `CUENTA_CORRIENTE` and has no `MERCADOPAGO`. Sharing
+ * them would make a supplier payment expressible as "on account", which is
+ * not a thing on that side of the ledger (design.md D4).
+ */
+export type FormaPago = 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA' | 'CUENTA_CORRIENTE' | 'OTRO'
+
+/**
+ * A sale as the app sees it (backend: app/schemas/venta.py VentaResponse).
+ *
+ * `cliente_id IS NOT NULL ⟺ forma_pago = CUENTA_CORRIENTE` (RN-VTA-03) — a
+ * database CHECK enforces it, `venta_service._validar_par` enforces it, and
+ * the frontend form's shape enforces it too (design.md D1).
+ *
+ * `monto` is typed `string` on the wire, like every other `Decimal` in this
+ * API — it is parsed only at the aggregation boundary (design.md D2), never
+ * accumulated as a float.
+ *
+ * NO `estado`, NO `saldo` — there is nothing to compute per sale; RN-VTA-05
+ * totals are aggregated on demand from the list, never persisted (D-01).
+ */
+export interface Venta {
+  id: string
+  negocio_id: string
+  cliente_id: string | null
+  fecha: string
+  monto: string
+  forma_pago: FormaPago
+  notas?: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** Item in the sales list (GET /api/ventas) — same shape as Venta. */
+export interface VentaListItem extends Venta {}
+
+/**
+ * Payload for POST /api/ventas (create).
+ *
+ * NO `negocio_id`, NO `creado_por_usuario_id` — both come from the session
+ * (backend: app/schemas/venta.py). `cliente_id` is present only for a fiado.
+ */
+export interface VentaCreate {
+  monto: string
+  fecha: string
+  forma_pago: FormaPago
+  cliente_id?: string
+  notas?: string | null
+}
+
+/**
+ * Payload for PATCH /api/ventas/{id} (partial update).
+ *
+ * `cliente_id` is intentionally typed `string` (never `null`) — design.md D4
+ * and the ventas-frontend spec require the edit form to NEVER send
+ * `cliente_id: null`. `PATCH /api/ventas/{id}` reads an absent `cliente_id`
+ * key as "leave it alone"; clearing happens implicitly, as a consequence of
+ * sending a `forma_pago` other than `CUENTA_CORRIENTE`.
+ */
+export interface VentaUpdate {
+  monto?: string
+  fecha?: string
+  forma_pago?: FormaPago
+  cliente_id?: string
+  notas?: string | null
+}
+
+/**
+ * Query params for GET /api/ventas. Only non-empty filters are sent
+ * (design.md D9) — a filtered day is a shareable, reloadable URL.
+ */
+export interface VentasFilters {
+  desde?: string
+  hasta?: string
+  forma_pago?: FormaPago
+  cliente_id?: string
+}
+
+/**
+ * Delete input for the `useDeleteVenta` mutation. Carries `cliente_id` and
+ * `forma_pago` alongside the `id`, following the `PagoDeleteInput` precedent
+ * from C-13: the delete mutation needs to know which customer's cached
+ * account to invalidate, and whether the sale was on account at all, without
+ * an extra `GET` (design.md D4).
+ */
+export interface VentaDeleteInput {
+  id: string
+  cliente_id: string | null
+  forma_pago: FormaPago
+}

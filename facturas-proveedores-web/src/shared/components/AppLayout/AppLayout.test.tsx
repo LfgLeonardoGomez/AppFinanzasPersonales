@@ -56,3 +56,17 @@ describe('AppLayout — entrada de Equipo', () => {
     }
   })
 })
+
+describe('AppLayout — entrada de Ventas (C-34)', () => {
+  // Unlike Equipo, Ventas is not a privileged action — any member of the
+  // negocio records sales, so it must be offered regardless of es_admin.
+  it('se le ofrece a un miembro común', () => {
+    renderLayout(false)
+    expect(screen.getAllByRole('link', { name: /ventas/i }).length).toBeGreaterThan(0)
+  })
+
+  it('se le ofrece también al admin', () => {
+    renderLayout(true)
+    expect(screen.getAllByRole('link', { name: /ventas/i }).length).toBeGreaterThan(0)
+  })
+})

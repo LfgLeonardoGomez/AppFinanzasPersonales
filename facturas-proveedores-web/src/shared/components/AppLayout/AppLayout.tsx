@@ -8,20 +8,21 @@
  *  - Mobile (<lg): slim top bar (logo + avatar link to /perfil) + a
  *    5-item bottom tab bar, sidebar hidden.
  *
- * Routing (`<Outlet/>`) and nav destinations (/, /proveedores, /facturas,
- * /pagos, /perfil) are unchanged from the previous shell. The old
+ * Routing (`<Outlet/>`) and nav destinations (/, /ventas, /proveedores,
+ * /facturas, /pagos, /perfil) are unchanged from the previous shell. The old
  * top-header ThemeToggle/UserMenu dropdown is removed — dark mode already
  * lives in PerfilPage's own toggle (`role="switch"`), and logout is now a
  * direct icon action here instead of a dropdown, matching the new
  * "silent nav" shell (BRAND.md: componentes livianos, sin ruido).
  */
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { Home, Users, Users2, FileText, CreditCard, UserCircle, LogOut } from 'lucide-react'
+import { Home, Users, Users2, FileText, CreditCard, ShoppingCart, UserCircle, LogOut } from 'lucide-react'
 import { useAuthStore } from '@features/auth/store/authStore'
 import { useLogout } from '@features/auth/api/authHooks'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Home', icon: Home, end: true },
+  { to: '/ventas', label: 'Ventas', icon: ShoppingCart, end: false },
   { to: '/proveedores', label: 'Proveedores', icon: Users, end: false },
   { to: '/facturas', label: 'Facturas', icon: FileText, end: false },
   { to: '/pagos', label: 'Pagos', icon: CreditCard, end: false },
