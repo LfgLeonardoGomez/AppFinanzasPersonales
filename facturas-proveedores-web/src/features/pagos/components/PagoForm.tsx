@@ -11,7 +11,7 @@ import { SupplierSearch } from '@shared/components/SupplierSearch/SupplierSearch
 import { FileUploadField } from '@features/facturas/components/FileUploadField'
 import { useCreatePago, useUpdatePago } from '../api/pagosHooks'
 import type { UseMutationResult } from '@tanstack/react-query'
-import { getTodayUTC3 } from '@shared/utils/date'
+import { getTodayInArgentina } from '@shared/utils/date'
 import { InputField } from '@shared/components/InputField/InputField'
 import { Card } from '@shared/components/Card/Card'
 import type {
@@ -148,7 +148,7 @@ export function PagoForm({
     if (!form.fecha) {
       errs.fecha = 'La fecha es requerida.'
     } else {
-      const today = getTodayUTC3()
+      const today = getTodayInArgentina()
       if (form.fecha > today) {
         errs.fecha = 'La fecha no puede ser futura.'
       }

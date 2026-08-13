@@ -10,16 +10,29 @@
  */
 
 /**
- * Return today's date in UTC-3 as a `YYYY-MM-DD` string.
+ * Return today's date in `America/Argentina/Buenos_Aires` as a `YYYY-MM-DD`
+ * string, computed via `Intl.DateTimeFormat` with an explicit `timeZone`
+ * (design.md D10, C-34).
  *
- * The function subtracts 3 hours from the current UTC time and slices the
- * resulting ISO string. This is a pragmatic approximation of the
- * America/Argentina/Buenos_Aires wall clock — good enough for the
- * "not future" check on the client. The backend re-validates with the
- * authoritative timezone-aware computation (Pydantic + ZoneInfo).
+ * This pins the IANA zone name — so it stays correct even if Argentina's
+ * offset ever changes — and, more importantly for this helper's purpose, it
+ * is completely independent of the host's own local timezone: a browser (or
+ * a test's `process.env.TZ`) set to any other zone still yields the Buenos
+ * Aires calendar date, which is what the backend's `datetime.now(ZoneInfo(
+ * "America/Argentina/Buenos_Aires"))` validates against (`venta_service.
+ * _validar_fecha`, and the equivalent checks in `pago_service`/
+ * `factura_service`). Feeds the sales form's default date and `max` on its
+ * date input, and the "not future" client validation shared by
+ * `PagoForm`/`FacturaForm`/`VentaForm` — the app's single source of "today"
+ * on the client (review fix, finding D: this used to coexist with a second,
+ * fixed-offset `getTodayUTC3`, since removed).
  */
-export function getTodayUTC3(): string {
-  const now = new Date()
-  const utc3 = new Date(now.getTime() - 3 * 60 * 60 * 1000)
-  return utc3.toISOString().slice(0, 10)
+export function getTodayInArgentina(): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  return formatter.format(new Date())
 }

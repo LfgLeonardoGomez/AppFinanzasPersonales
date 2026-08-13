@@ -12,7 +12,7 @@ import { ItemsEditor } from './ItemsEditor'
 import { FileUploadField } from './FileUploadField'
 import { useCreateFactura, useUpdateFactura } from '../api/facturasHooks'
 import type { UseMutationResult } from '@tanstack/react-query'
-import { getTodayUTC3 } from '@shared/utils/date'
+import { getTodayInArgentina } from '@shared/utils/date'
 import { InputField } from '@shared/components/InputField/InputField'
 import { Card } from '@shared/components/Card/Card'
 import type {
@@ -149,7 +149,7 @@ export function FacturaForm({
     if (!form.fecha_emision) {
       errs.fecha_emision = 'La fecha de emisión es requerida.'
     } else {
-      const today = getTodayUTC3()
+      const today = getTodayInArgentina()
       if (form.fecha_emision > today) {
         errs.fecha_emision = 'La fecha de emisión no puede ser futura.'
       }
