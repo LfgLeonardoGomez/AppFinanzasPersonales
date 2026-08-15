@@ -67,6 +67,14 @@ class Venta(SoftDeleteMixin, TimestampUUIDMixin, SQLModel, table=True):
 
     notas: Optional[str] = Field(default=None)
 
+    # Retry-safety marker (C-42), NEVER a ledger fact: records which write
+    # created this row, nothing more. Nullable because every sale saved before
+    # this column existed — and every sale saved by a client that omits the
+    # (optional) Idempotency-Key header — has no key. Uniqueness lives in the
+    # database (migration 0012's partial index on (negocio_id,
+    # idempotency_key)), not here; this column only carries the value.
+    idempotency_key: Optional[uuid.UUID] = Field(default=None, nullable=True)
+
     # NOTE: no 'saldo' and no 'estado' — both derived on demand (D-01).
 
 

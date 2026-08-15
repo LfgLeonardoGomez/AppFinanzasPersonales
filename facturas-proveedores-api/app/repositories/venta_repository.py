@@ -97,5 +97,23 @@ class VentaRepository:
         self.session.refresh(venta)
         return venta
 
+    def get_by_idempotency_key(
+        self, negocio_id: uuid.UUID, idempotency_key: uuid.UUID
+    ) -> Optional[Venta]:
+        """
+        The sale that owns this key, scoped to one negocio (C-42, Regla Dura #3).
+
+        Deliberately does NOT filter `deleted_at IS NULL`: the uniqueness the
+        key protects survives a soft delete (design.md D2), so the caller must
+        be able to find a deleted row under its key too — that is exactly the
+        case that turns a would-be replica into a 409 instead of resurrecting
+        a deleted sale as if it were live.
+        """
+        statement = select(Venta).where(
+            Venta.negocio_id == negocio_id,
+            Venta.idempotency_key == idempotency_key,
+        )
+        return self.session.exec(statement).first()
+
 
 __all__ = ["VentaRepository"]

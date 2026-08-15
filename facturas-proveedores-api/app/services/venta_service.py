@@ -13,23 +13,35 @@ the rule is actually true for every path — including ones written later.
 The subtle half is PATCH. The pair is validated **after** applying the changes,
 never field by field: switching `forma_pago` to EFECTIVO without touching
 `cliente_id` has to end with no customer, not with a cash sale dragging one.
+
+C-42 adds an optional idempotency key to `crear`. Same discipline as C-32's
+uniqueness (D-45), spelled out in design.md D3: INSERT first, catch the
+IntegrityError, roll back, then decide. Never a SELECT before the INSERT —
+the window between them is exactly what a double-tap on "Guardar" finds.
 """
 
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.models.enums import FormaPago
 from app.models.venta import Venta
 from app.repositories.cliente_repository import ClienteRepository
 from app.repositories.venta_repository import VentaRepository
+from app.services.idempotencia import nombre_constraint_violada
 
 _TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
+
+# The one constraint this module knows how to translate into a reply instead
+# of a 500. Any other name means the IntegrityError is not idempotency's to
+# handle (task 4.13) — it propagates as-is.
+_UQ_IDEMPOTENCY_KEY = "uq_venta_negocio_idempotency_key"
 
 _VENTA_NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
@@ -56,6 +68,70 @@ _CLIENTE_SIN_FIADO = HTTPException(
         "está cobrada, no corresponde asociarla a una cuenta."
     ),
 )
+
+
+def _conflicto_venta(existente: Venta) -> HTTPException:
+    """
+    409 carrying the existing sale, mirroring `cliente_existente` (C-32,
+    D-45): without the sale the caller has nothing to show but a dead end.
+
+    The message is deliberately neutral about WHO changed what (design.md
+    D4) — the sale may have been edited after being created, in which case
+    the difference this request sees was not introduced by it.
+    """
+    detalle: dict = {
+        "mensaje": "Esta operación ya fue registrada con otros datos.",
+        "venta_existente": {
+            "id": str(existente.id),
+            "monto": str(existente.monto),
+            "fecha": existente.fecha.isoformat(),
+            "forma_pago": existente.forma_pago,
+            "cliente_id": (
+                str(existente.cliente_id) if existente.cliente_id is not None else None
+            ),
+            "notas": existente.notas,
+        },
+    }
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detalle)
+
+
+def _mismos_datos(
+    existente: Venta,
+    monto: Decimal,
+    fecha: date,
+    forma_pago: FormaPago,
+    cliente_id: Optional[uuid.UUID],
+    notas: Optional[str],
+) -> bool:
+    """
+    design.md D4 — comparison happens against the fields of the SAVED sale,
+    after Pydantic's normalization already ran on `notas`. No request hash is
+    stored anywhere; comparing against the real row costs nothing because the
+    row is already in hand.
+    """
+    return (
+        existente.monto == monto
+        and existente.fecha == fecha
+        and existente.forma_pago == forma_pago
+        and existente.cliente_id == cliente_id
+        and existente.notas == notas
+    )
+
+
+class VentaCreada:
+    """
+    Wraps a `Venta` with whether THIS call created it or replayed an existing
+    one (design.md D3/D4). The router uses `es_repeticion` to decide between
+    `201` and `200` + `Idempotent-Replay: true` — that decision does not
+    belong in the service, but the service is the only place that knows it.
+    """
+
+    def __init__(self, venta: Venta, es_repeticion: bool) -> None:
+        self.venta = venta
+        self.es_repeticion = es_repeticion
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.venta, name)
 
 
 class VentaService:
@@ -158,21 +234,74 @@ class VentaService:
         cliente_id: Optional[uuid.UUID] = None,
         notas: Optional[str] = None,
         creado_por_usuario_id: Optional[uuid.UUID] = None,
-    ) -> Venta:
-        """Record one sale. A fiado is just one with forma_pago CUENTA_CORRIENTE."""
+        idempotency_key: Optional[uuid.UUID] = None,
+    ) -> VentaCreada:
+        """
+        Record one sale. A fiado is just one with forma_pago CUENTA_CORRIENTE.
+
+        `idempotency_key` is optional (C-42): when it is None, this method's
+        behavior is byte-for-byte what it was before this change — including
+        that an IntegrityError propagates unhandled, exactly as before. When a
+        key IS given, business validation still runs first (task 4.10): a
+        rejected fiado never touches the database, and its key stays free for
+        a corrected retry.
+
+        The INSERT is attempted before anything is looked up by key (design.md
+        D3) — the alternative, checking first, leaves a window that two
+        concurrent submits of the same key would find.
+        """
         self._validar_monto(monto)
         self._validar_fecha(fecha)
         cliente_final = self._validar_par(negocio_id, forma_pago, cliente_id)
 
-        return self._repo.create(
-            negocio_id=negocio_id,
-            creado_por_usuario_id=creado_por_usuario_id,
-            cliente_id=cliente_final,
-            fecha=fecha,
-            monto=monto,
-            forma_pago=forma_pago,
-            notas=notas,
-        )
+        try:
+            venta = self._repo.create(
+                negocio_id=negocio_id,
+                creado_por_usuario_id=creado_por_usuario_id,
+                cliente_id=cliente_final,
+                fecha=fecha,
+                monto=monto,
+                forma_pago=forma_pago,
+                notas=notas,
+                idempotency_key=idempotency_key,
+            )
+            return VentaCreada(venta, es_repeticion=False)
+        except IntegrityError as err:
+            if idempotency_key is None:
+                # No key means idempotency has no opinion here — propagate
+                # exactly like before this change existed (task 4.1).
+                raise
+
+            if nombre_constraint_violada(err) != _UQ_IDEMPOTENCY_KEY:
+                # A different constraint fired (task 4.13) — not ours to
+                # translate.
+                raise
+
+            # The INSERT poisoned the session; every statement after it raises
+            # PendingRollbackError until this runs (task 4.12).
+            self._session.rollback()
+
+            existente = self._repo.get_by_idempotency_key(negocio_id, idempotency_key)
+            if existente is None:
+                # The unique index says this key is taken, scoped to this
+                # negocio, yet the scoped read found nothing. Unreachable in
+                # practice; re-raising the original error is safer than
+                # inventing a response this branch cannot justify.
+                raise
+
+            if existente.deleted_at is not None:
+                # design.md D4 — the sale behind this key is gone. Replaying
+                # it would pass a deleted row off as live; reporting it as a
+                # fresh 201 would create a second one. Neither is honest, so
+                # this is a conflict (task 4.7).
+                raise _conflicto_venta(existente)
+
+            if _mismos_datos(
+                existente, monto, fecha, forma_pago, cliente_final, notas
+            ):
+                return VentaCreada(existente, es_repeticion=True)
+
+            raise _conflicto_venta(existente)
 
     def actualizar(
         self,
@@ -241,4 +370,4 @@ class VentaService:
         return venta
 
 
-__all__ = ["VentaService"]
+__all__ = ["VentaService", "VentaCreada"]

@@ -5,13 +5,19 @@ No authorization logic here: the service owns it, including the
 (forma_pago, cliente_id) invariant. The router wires HTTP to it.
 
 Collection routes answer on both `""` and `"/"` without a redirect (C-27).
+
+C-42: `crear_venta` accepts the optional `Idempotency-Key` header and, on a
+replay, downgrades the response from `201` to `200` and adds
+`Idempotent-Replay: true`. No decision logic lives here — the service already
+decided; the router only translates that decision into HTTP (design.md D3-D4,
+task 5.6).
 """
 
 import uuid
 from datetime import date
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Header, Query, Response, status
 from sqlmodel import Session
 
 from app.core.deps import get_current_user, get_db
@@ -70,8 +76,20 @@ def listar_ventas(
 )
 def crear_venta(
     body: VentaCreate,
+    response: Response,
     current_user: CurrentUser = ...,
     session: DbSession = ...,
+    idempotency_key: Annotated[
+        Optional[uuid.UUID],
+        Header(
+            alias="Idempotency-Key",
+            description=(
+                "Optional retry-safety key (C-42). A malformed value is "
+                "rejected with 422 by FastAPI's own header validation before "
+                "this body runs."
+            ),
+        ),
+    ] = None,
 ) -> VentaResponse:
     """
     Record one sale.
@@ -79,9 +97,13 @@ def crear_venta(
     A fiado is this same endpoint with `forma_pago = CUENTA_CORRIENTE` and a
     `cliente_id` — there is no separate way to register credit, because the
     sale and the charge are the same fact (D-33).
+
+    Without `Idempotency-Key` this behaves exactly as before C-42. With it, a
+    repeat of the same key and data returns the original sale with `200` and
+    `Idempotent-Replay: true` instead of creating a second one.
     """
     svc = VentaService(session)
-    venta = svc.crear(
+    resultado = svc.crear(
         current_user.negocio_id,
         monto=body.monto,
         fecha=body.fecha,
@@ -89,10 +111,14 @@ def crear_venta(
         cliente_id=body.cliente_id,
         notas=body.notas,
         creado_por_usuario_id=current_user.id,
+        idempotency_key=idempotency_key,
     )
     session.commit()
-    session.refresh(venta)
-    return VentaResponse.model_validate(venta)
+    session.refresh(resultado.venta)
+    if resultado.es_repeticion:
+        response.status_code = status.HTTP_200_OK
+        response.headers["Idempotent-Replay"] = "true"
+    return VentaResponse.model_validate(resultado.venta)
 
 
 @router.get(
