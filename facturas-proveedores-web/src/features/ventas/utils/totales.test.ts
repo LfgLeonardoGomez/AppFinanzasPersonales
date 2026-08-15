@@ -77,9 +77,10 @@ describe('calcularTotalesDelDia', () => {
   // `toCentavos` is the entire implementation of RN-VTA-05 and its fallback
   // path ("a non-numeric monto silently becomes 0 cents") had NO test
   // before this. These cases pin the current, real behaviour of that
-  // boundary — they do not change it. See the negative-amount case below
-  // for one where pinning surfaced an actual defect, reported rather than
-  // silently fixed (out of this review's scope).
+  // boundary — they do not change it. See the negative-amount case below,
+  // where an earlier pass surfaced a real defect (negative amounts were
+  // subtracted instead of rejected) and left the decision to a human; that
+  // decision is now made and pinned there too.
 
   describe('a malformed monto contributes 0, silently (documented fallback)', () => {
     it('treats a non-numeric monto as 0 without throwing', () => {
@@ -115,32 +116,29 @@ describe('calcularTotalesDelDia', () => {
     })
   })
 
-  describe('a negative monto (review finding G — DEFECT, reported not fixed)', () => {
+  describe('a negative monto is rejected, never subtracted (review finding G — decided)', () => {
     // The backend rejects `monto <= 0` (`Field(gt=0)`, venta.py) — a
     // negative amount cannot reach this function through the real API.
-    // But `toCentavos` performs NO sign check, purely as defense in depth
-    // this is a real gap: a negative monto is `Number.isFinite`, so it
-    // sails through the fallback's guard and gets SUBTRACTED from the
-    // day's total instead of being rejected or excluded. That is a
-    // discovered defect in this "load-bearing" boundary, not just a
-    // coverage gap — pinned here as CURRENT behaviour per the review's
-    // explicit instruction not to silently change RN-VTA-05's semantics.
-    // Flagged in the review-fixes report; a real fix (clamp/reject
-    // negative amounts) needs an explicit decision, not a silent patch.
-    it('currently SUBTRACTS a negative monto from the total instead of rejecting it', () => {
+    // A previous pass pinned the old, wrong behaviour here (subtracting the
+    // negative amount from the total) and left the decision to a human. The
+    // decision: treat a negative `monto` exactly like the non-numeric
+    // fallback above — contribute 0 cents, never reduce a total. Silently
+    // subtracting would misstate the day's cash for what is, by contract,
+    // corrupted data.
+    it('a negative monto contributes 0 and does not reduce the total', () => {
+      const result = calcularTotalesDelDia([venta({ monto: '-15.50', forma_pago: 'OTRO' })])
+      expect(result.total).toBe(0)
+      expect(result.porFormaPago.OTRO).toBe(0)
+    })
+
+    it('a negative monto mixed with valid sales leaves their sum intact (triangulation)', () => {
       const ventas = [
         venta({ id: 'v-1', monto: '100.00', forma_pago: 'EFECTIVO' }),
         venta({ id: 'v-2', monto: '-30.00', forma_pago: 'EFECTIVO' }),
       ]
       const result = calcularTotalesDelDia(ventas)
-      expect(result.total).toBe(70)
-      expect(result.porFormaPago.EFECTIVO).toBe(70)
-    })
-
-    it('a wholly negative day yields a negative total (triangulation)', () => {
-      const result = calcularTotalesDelDia([venta({ monto: '-15.50', forma_pago: 'OTRO' })])
-      expect(result.total).toBe(-15.5)
-      expect(result.porFormaPago.OTRO).toBe(-15.5)
+      expect(result.total).toBe(100)
+      expect(result.porFormaPago.EFECTIVO).toBe(100)
     })
   })
 })

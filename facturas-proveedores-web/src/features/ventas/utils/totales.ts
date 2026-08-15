@@ -18,6 +18,15 @@
  * addition of arbitrary decimal amounts cannot drift the way raw
  * floating-point addition can (e.g. 0.10 + 0.20 !== 0.30 in IEEE 754). The
  * public result is converted back to plain decimal numbers for display.
+ *
+ * A malformed (non-numeric) or negative `monto` both contribute 0 cents,
+ * never a subtraction. The backend guarantees `monto > 0` (`Field(gt=0)`,
+ * venta.py) for every sale it persists, so either shape reaching this
+ * function means the data is corrupted, not that a discount or refund is
+ * intended. Silently letting a negative amount subtract would misstate the
+ * day's cash instead of surfacing the corruption — this function must not
+ * throw (it renders the counter screen's daily totals and one bad row must
+ * not take the whole screen down), so it excludes the row instead.
  */
 import type { FormaPago, VentaListItem } from '@shared/api/api'
 
@@ -28,7 +37,7 @@ export interface TotalesDelDia {
 
 function toCentavos(monto: string): number {
   const n = Number(monto)
-  if (!Number.isFinite(n)) return 0
+  if (!Number.isFinite(n) || n < 0) return 0
   return Math.round(n * 100)
 }
 
