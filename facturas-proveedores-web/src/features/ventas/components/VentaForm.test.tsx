@@ -391,6 +391,144 @@ describe('VentaForm — cancelling the warning changes nothing (task 8.3)', () =
   })
 })
 
+// ── C-42 (tasks 9.5-9.10) — result classification in the counter form ──────
+//
+// MSW drives every response here with REAL status codes and REAL headers —
+// no mocking of `idempotency.ts`/`submitOutcome.ts`/`ventasApi.ts` — so
+// these tests exercise the real classification path end to end.
+
+describe('VentaForm — an unconfirmed ("desconocida") outcome (C-42, task 9.5)', () => {
+  it('says it could not confirm the save, offers a safe retry, and keeps every field as typed', async () => {
+    server.use(http.post('/api/ventas', () => HttpResponse.error()))
+    render(<VentaForm onSuccess={vi.fn()} onCancel={vi.fn()} />, { wrapper: createWrapper() })
+    await fillRequiredFields()
+    fireEvent.click(screen.getByRole('button', { name: /guardar/i }))
+
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument())
+    expect(screen.getByRole('status').textContent).toMatch(/no pudimos confirmar/i)
+    expect(screen.getByRole('status').textContent).toMatch(/seguro/i)
+
+    const montoInput = screen.getByLabelText(/monto/i) as HTMLInputElement
+    const fechaInput = document.getElementById('fecha') as HTMLInputElement
+    expect(montoInput.value).toBe('1000')
+    expect(fechaInput.value).toBe('2026-08-10')
+
+    // The primary action relabels to make the retry explicit.
+    expect(screen.getByRole('button', { name: /reintentar/i })).toBeInTheDocument()
+  })
+})
+
+describe('VentaForm — retrying sends the same Idempotency-Key (C-42, task 9.6)', () => {
+  it('the retry after an unconfirmed failure reuses the key from the first attempt', async () => {
+    const capturedKeys: (string | null)[] = []
+    let call = 0
+    server.use(
+      http.post('/api/ventas', async ({ request }) => {
+        call += 1
+        capturedKeys.push(request.headers.get('Idempotency-Key'))
+        if (call === 1) return HttpResponse.error()
+        const body = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json({ ...mockVentaFiada, ...body }, { status: 201 })
+      }),
+    )
+    render(<VentaForm onSuccess={vi.fn()} onCancel={vi.fn()} />, { wrapper: createWrapper() })
+    await fillRequiredFields()
+    fireEvent.click(screen.getByRole('button', { name: /guardar/i }))
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /reintentar/i }))
+    await waitFor(() => expect(capturedKeys).toHaveLength(2))
+
+    expect(capturedKeys[0]).not.toBeNull()
+    expect(capturedKeys[0]).toBe(capturedKeys[1])
+  })
+})
+
+describe('VentaForm — a deduplicated replay reads as success (C-42, task 9.7)', () => {
+  it('reports success with the "already recorded" flag and shows no error', async () => {
+    server.use(
+      http.post('/api/ventas', () =>
+        HttpResponse.json(mockVentaFiada, { status: 200, headers: { 'Idempotent-Replay': 'true' } }),
+      ),
+    )
+    const onSuccess = vi.fn()
+    render(<VentaForm onSuccess={onSuccess} onCancel={vi.fn()} />, { wrapper: createWrapper() })
+    await fillRequiredFields()
+    fireEvent.click(screen.getByRole('button', { name: /guardar/i }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1))
+    expect(onSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({ id: mockVentaFiada.id }),
+      { replay: true },
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('an ordinary 201 creation reports replay: false (triangulation)', async () => {
+    const onSuccess = vi.fn()
+    render(<VentaForm onSuccess={onSuccess} onCancel={vi.fn()} />, { wrapper: createWrapper() })
+    await fillRequiredFields()
+    fireEvent.click(screen.getByRole('button', { name: /guardar/i }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1))
+    expect(onSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({ id: mockVentaFiada.id }),
+      { replay: false },
+    )
+  })
+})
+
+describe('VentaForm — a conflicting key explains itself, not as an unknown outcome (C-42, task 9.9)', () => {
+  it('shows the backend\'s conflict message and never the "desconocida" banner', async () => {
+    server.use(
+      http.post('/api/ventas', () =>
+        HttpResponse.json(
+          {
+            detail: {
+              mensaje: 'Esta operación ya fue registrada con otros datos.',
+              venta_existente: { ...mockVentaFiada },
+            },
+          },
+          { status: 409 },
+        ),
+      ),
+    )
+    render(<VentaForm onSuccess={vi.fn()} onCancel={vi.fn()} />, { wrapper: createWrapper() })
+    await fillRequiredFields()
+    fireEvent.click(screen.getByRole('button', { name: /guardar/i }))
+
+    await waitFor(() =>
+      expect(screen.getByText(/esta operación ya fue registrada con otros datos/i)).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+})
+
+describe('VentaForm — repeated unconfirmed attempts offer the sales list (C-42, task 9.10)', () => {
+  it('does NOT offer the list after a single unconfirmed attempt', async () => {
+    server.use(http.post('/api/ventas', () => HttpResponse.error()))
+    render(<VentaForm onSuccess={vi.fn()} onCancel={vi.fn()} />, { wrapper: createWrapper() })
+    await fillRequiredFields()
+    fireEvent.click(screen.getByRole('button', { name: /guardar/i }))
+
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument())
+    expect(screen.queryByRole('link', { name: /listado de ventas/i })).not.toBeInTheDocument()
+  })
+
+  it('offers the sales list after a second consecutive unconfirmed attempt (triangulation)', async () => {
+    server.use(http.post('/api/ventas', () => HttpResponse.error()))
+    render(<VentaForm onSuccess={vi.fn()} onCancel={vi.fn()} />, { wrapper: createWrapper() })
+    await fillRequiredFields()
+    fireEvent.click(screen.getByRole('button', { name: /guardar/i }))
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /reintentar/i }))
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /listado de ventas/i })).toBeInTheDocument(),
+    )
+  })
+})
+
 describe('VentaForm — editing only the amount of a fiado does not trigger the warning (task 8.6)', () => {
   it('saves directly, without the warning, when forma_pago stays CUENTA_CORRIENTE', async () => {
     render(

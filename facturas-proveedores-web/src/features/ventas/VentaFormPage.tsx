@@ -74,9 +74,17 @@ function EditVentaPage({ id }: { id: string }) {
 function CreateVentaPage() {
   const navigate = useNavigate()
 
-  function handleSuccess(_saved: Venta) {
+  // C-42 — a deduplicated retry (`meta.replay`) is still a success: it
+  // navigates the same way a fresh creation does, but the toast says the
+  // sale was ALREADY recorded instead of claiming a new one was made
+  // (design.md D6 — never show an error for a sale that exists).
+  function handleSuccess(_saved: Venta, meta?: { replay?: boolean }) {
     void navigate('/ventas', {
-      state: { successMessage: 'Venta creada exitosamente.' },
+      state: {
+        successMessage: meta?.replay
+          ? 'Esta venta ya estaba registrada.'
+          : 'Venta creada exitosamente.',
+      },
     })
   }
 

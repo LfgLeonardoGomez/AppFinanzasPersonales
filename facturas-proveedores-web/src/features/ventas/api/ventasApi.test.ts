@@ -152,6 +152,138 @@ describe('updateVenta', () => {
   })
 })
 
+// ── createVenta — Idempotency-Key (C-42, tasks 9.1-9.3, 9.11) ─────────────────
+//
+// These exercise the REAL createVenta → apiClient → MSW path, capturing the
+// `Idempotency-Key` header MSW actually received — not a mock of
+// `idempotency.ts` or `submitOutcome.ts`.
+
+describe('createVenta — Idempotency-Key (C-42)', () => {
+  it('always sends an Idempotency-Key header with a valid UUID (task 9.1)', async () => {
+    let capturedKey: string | null = null
+    server.use(
+      http.post('/api/ventas', async ({ request }) => {
+        capturedKey = request.headers.get('Idempotency-Key')
+        return HttpResponse.json(mockVentaFiada, { status: 201 })
+      }),
+    )
+
+    await createVenta({ monto: '111.00', fecha: '2026-08-10', forma_pago: 'EFECTIVO' })
+
+    expect(capturedKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    )
+  })
+
+  it('reuses the same key on a retry of the same payload after a response-less failure (task 9.2)', async () => {
+    const capturedKeys: (string | null)[] = []
+    let call = 0
+    server.use(
+      http.post('/api/ventas', ({ request }) => {
+        call += 1
+        capturedKeys.push(request.headers.get('Idempotency-Key'))
+        if (call === 1) return HttpResponse.error()
+        return HttpResponse.json(mockVentaFiada, { status: 201 })
+      }),
+    )
+
+    const payload = { monto: '222.00', fecha: '2026-08-11', forma_pago: 'EFECTIVO' as const }
+    await expect(createVenta(payload)).rejects.toBeTruthy()
+    await createVenta(payload)
+
+    expect(capturedKeys).toHaveLength(2)
+    expect(capturedKeys[0]).toBe(capturedKeys[1])
+  })
+
+  it('mints a new key when the amount changes after a failed attempt (task 9.3, triangulation of 9.2)', async () => {
+    const capturedKeys: (string | null)[] = []
+    let call = 0
+    server.use(
+      http.post('/api/ventas', ({ request }) => {
+        call += 1
+        capturedKeys.push(request.headers.get('Idempotency-Key'))
+        if (call === 1) return HttpResponse.error()
+        return HttpResponse.json(mockVentaFiada, { status: 201 })
+      }),
+    )
+
+    await expect(
+      createVenta({ monto: '333.00', fecha: '2026-08-12', forma_pago: 'EFECTIVO' }),
+    ).rejects.toBeTruthy()
+    await createVenta({ monto: '444.00', fecha: '2026-08-12', forma_pago: 'EFECTIVO' })
+
+    expect(capturedKeys).toHaveLength(2)
+    expect(capturedKeys[0]).not.toBe(capturedKeys[1])
+  })
+
+  it('the same reuse-on-retry protection covers a fiado payload (task 9.11 — the debt path stays covered)', async () => {
+    const capturedKeys: (string | null)[] = []
+    let call = 0
+    server.use(
+      http.post('/api/ventas', ({ request }) => {
+        call += 1
+        capturedKeys.push(request.headers.get('Idempotency-Key'))
+        if (call === 1) return HttpResponse.error()
+        return HttpResponse.json(mockVentaFiada, { status: 201 })
+      }),
+    )
+
+    const payload = {
+      monto: '555.00',
+      fecha: '2026-08-13',
+      forma_pago: 'CUENTA_CORRIENTE' as const,
+      cliente_id: 'cliente-1',
+    }
+    await expect(createVenta(payload)).rejects.toBeTruthy()
+    await createVenta(payload)
+
+    expect(capturedKeys).toHaveLength(2)
+    expect(capturedKeys[0]).toBe(capturedKeys[1])
+  })
+
+  it('updateVenta and deleteVenta do NOT send an Idempotency-Key (task 9.4 — out of scope, sending one would suggest a protection that does not exist)', async () => {
+    let patchHeaderSeen: string | null = null
+    let deleteHeaderSeen: string | null = null
+    server.use(
+      http.patch('/api/ventas/:id', async ({ request }) => {
+        patchHeaderSeen = request.headers.get('Idempotency-Key')
+        const body = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json({ ...mockVentaFiada, ...body })
+      }),
+      http.delete('/api/ventas/:id', ({ request }) => {
+        deleteHeaderSeen = request.headers.get('Idempotency-Key')
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    await updateVenta('venta-2', { forma_pago: 'EFECTIVO' })
+    await deleteVenta({ id: 'venta-2', cliente_id: 'cliente-1', forma_pago: 'CUENTA_CORRIENTE' })
+
+    expect(patchHeaderSeen).toBeNull()
+    expect(deleteHeaderSeen).toBeNull()
+  })
+
+  it('resolves { venta, replay: false } on an ordinary 201 creation', async () => {
+    server.use(
+      http.post('/api/ventas', () => HttpResponse.json(mockVentaFiada, { status: 201 })),
+    )
+    const result = await createVenta({ monto: '666.00', fecha: '2026-08-14', forma_pago: 'EFECTIVO' })
+    expect(result.replay).toBe(false)
+    expect(result.venta.id).toBe(mockVentaFiada.id)
+  })
+
+  it('resolves { venta, replay: true } on a 200 + Idempotent-Replay: true response (real MSW header, not a mocked module)', async () => {
+    server.use(
+      http.post('/api/ventas', () =>
+        HttpResponse.json(mockVentaFiada, { status: 200, headers: { 'Idempotent-Replay': 'true' } }),
+      ),
+    )
+    const result = await createVenta({ monto: '777.00', fecha: '2026-08-15', forma_pago: 'EFECTIVO' })
+    expect(result.replay).toBe(true)
+    expect(result.venta.id).toBe(mockVentaFiada.id)
+  })
+})
+
 // ── deleteVenta (task 5.4) ────────────────────────────────────────────────────
 
 describe('deleteVenta', () => {

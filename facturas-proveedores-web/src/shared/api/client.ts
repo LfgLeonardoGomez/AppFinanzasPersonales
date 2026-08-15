@@ -6,6 +6,18 @@
  *    the Vercel rewrite in prod. Same origin, no CORS, SameSite=Lax cookie.
  *  - withCredentials: true → browser attaches the HttpOnly session cookie
  *    automatically. The frontend NEVER reads or stores tokens.
+ *  - timeout: 20000 (C-42, design.md D5) → without a timeout a request can
+ *    hang indefinitely on mobile data, and the person at the counter
+ *    concludes the app is broken. 20s is ~40x the endpoint's hot p99 (all
+ *    indexed, single INSERT/commit) — it only fires on a real stall (lost
+ *    radio, cold container), not on ordinary slowness. A timeout is safe to
+ *    have now specifically BECAUSE C-42 made retrying idempotent: an
+ *    aborted request that actually saved no longer causes a duplicate, so
+ *    this value is tuned for human patience, not correctness.
+ *    IA vision calls (`iaVisionApi.ts`) run on this SAME instance and
+ *    legitimately take tens of seconds — they override this default with an
+ *    explicit higher per-request `timeout`. Never lower this default without
+ *    checking that override still applies.
  *
  * Interceptor (D-C04-3):
  *  401 on a protected route → attempt ONE silent POST /auth/refresh
@@ -82,6 +94,7 @@ function getOrStartRefresh(): Promise<void> {
 export const apiClient = axios.create({
   baseURL: '/api',
   withCredentials: true,
+  timeout: 20_000,
   headers: {
     'Content-Type': 'application/json',
   },

@@ -22,8 +22,26 @@
  * precedent from C-13: cross-feature cache invalidation in `useDeleteVenta`
  * needs to know which customer's cached account to invalidate, and whether
  * the sale was on account at all, without an extra `GET`.
+ *
+ * C-42 — `createVenta` and idempotency (design.md D1/D3/D4/D7):
+ *   - Every call mints or reuses an `Idempotency-Key` via
+ *     `idempotency.ts`, scoped to the `'venta-create'` namespace. Reuse
+ *     (same key on a retry of the same payload) is the entire mechanism —
+ *     see `idempotency.ts` for why.
+ *   - The key is discarded (confirmed) on success — created OR a
+ *     deduplicated replay — and on a `409` conflict. It is deliberately
+ *     KEPT on every other failure (422, network error, 5xx) so a retry of
+ *     the same payload reuses it (design.md D7). A 409 still throws (the
+ *     caller must see it) — only the local pending-key bookkeeping is
+ *     cleared.
+ *   - The resolved `replay` flag comes from `classifySuccess` (real
+ *     status + real `Idempotent-Replay` header), not from guessing at the
+ *     body — the body is identical between a creation and a replay.
  */
+import { isAxiosError } from 'axios'
 import { apiClient } from '@shared/api/client'
+import { getIdempotencyKey, confirmIdempotencyKey } from '@shared/api/idempotency'
+import { classifySuccess } from '@shared/api/submitOutcome'
 import type {
   Venta,
   VentaListItem,
@@ -53,11 +71,43 @@ export async function getVenta(id: string): Promise<Venta> {
   return res.data
 }
 
-// ── Create ────────────────────────────────────────────────────────────────────
+// ── Create (C-42 — idempotent) ─────────────────────────────────────────────
 
-export async function createVenta(data: VentaCreate): Promise<Venta> {
-  const res = await apiClient.post<Venta>('/ventas', data)
-  return res.data
+const VENTA_IDEMPOTENCY_NAMESPACE = 'venta-create'
+
+export interface CreateVentaResult {
+  venta: Venta
+  /** True for a deduplicated replay (200 + Idempotent-Replay) — no new row
+   * was created (design.md D4). False for an ordinary 201 creation. */
+  replay: boolean
+}
+
+/**
+ * Create a sale. Always sends `Idempotency-Key` (task 9.1) — this is the
+ * guard against a call site forgetting it: a POST without the header does
+ * NOT error, so this header's presence is the only signal that a new call
+ * site remembered to go through this function instead of a raw `apiClient`
+ * call.
+ */
+export async function createVenta(data: VentaCreate): Promise<CreateVentaResult> {
+  const idempotencyKey = getIdempotencyKey(VENTA_IDEMPOTENCY_NAMESPACE, data)
+  try {
+    const res = await apiClient.post<Venta>('/ventas', data, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    })
+    confirmIdempotencyKey(VENTA_IDEMPOTENCY_NAMESPACE)
+    const outcome = classifySuccess(res)
+    return { venta: res.data, replay: outcome.kind === 'alreadyRecorded' }
+  } catch (err) {
+    // A 409 means the key already resolved to a DIFFERENT sale — that
+    // attempt is over, so the pending key is discarded too (design.md D7).
+    // Everything else (422, network error, 5xx) keeps the key so a retry
+    // of the same payload reuses it.
+    if (isAxiosError(err) && err.response?.status === 409) {
+      confirmIdempotencyKey(VENTA_IDEMPOTENCY_NAMESPACE)
+    }
+    throw err
+  }
 }
 
 // ── Update (partial) ──────────────────────────────────────────────────────────

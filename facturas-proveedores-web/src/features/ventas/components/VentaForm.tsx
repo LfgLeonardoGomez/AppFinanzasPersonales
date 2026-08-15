@@ -22,19 +22,39 @@
  * D11: client validation (amount > 0, date not future, customer required
  * for a fiado) exists for usability only — the backend's `422 detail` is
  * always what gets shown on a rejected submission.
+ *
+ * C-42 — result classification (design.md D6, escritura-idempotente spec):
+ *   - `createVenta`/`useCreateVenta` resolve to `{ venta, replay }`; a
+ *     `replay: true` is passed up via the second `onSuccess` argument so
+ *     the caller (`VentaFormPage`) can show "already recorded" instead of
+ *     the ordinary success toast, without changing what `onSuccess`'s
+ *     first argument means anywhere else.
+ *   - A rejected submission (422, or 409 — a stale retry landed on a
+ *     changed/deleted sale) still shows the backend's message via
+ *     `errors.backend`, unchanged in spirit from before C-42.
+ *   - An UNKNOWN outcome (no response, or 5xx) is its own state
+ *     (`unknownAttempts`), never folded into `errors.backend`: the form
+ *     says explicitly that it could not confirm the save, that retrying is
+ *     safe (the key is reused automatically — see `ventasApi.ts`), and
+ *     keeps every field as typed. After a second consecutive unknown
+ *     result it also offers the sales list, the only way to check by hand.
  */
 import { useState, useEffect, type FormEvent, type ChangeEvent } from 'react'
 import { X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { isAxiosError } from 'axios'
 import { ClienteAutocomplete, type ClienteRef } from '@shared/components/ClienteAutocomplete/ClienteAutocomplete'
 import { DeudaDesapareceDialog } from './DeudaDesapareceDialog'
 import { useCreateVenta, useUpdateVenta } from '../api/ventasHooks'
+import type { CreateVentaResult } from '../api/ventasApi'
+import { classifyError } from '@shared/api/submitOutcome'
 import type { UseMutationResult } from '@tanstack/react-query'
 import { getTodayInArgentina } from '@shared/utils/date'
 import { InputField } from '@shared/components/InputField/InputField'
 import { Card } from '@shared/components/Card/Card'
 import type { Venta, VentaCreate, VentaUpdate, FormaPago } from '@shared/api/api'
 
-type CreateVentaMutation = UseMutationResult<Venta, Error, VentaCreate>
+type CreateVentaMutation = UseMutationResult<CreateVentaResult, Error, VentaCreate>
 type UpdateVentaMutation = UseMutationResult<
   Venta,
   Error,
@@ -48,11 +68,19 @@ interface FormErrors {
   backend?: string
 }
 
+/** After this many consecutive unconfirmed attempts, offer the sales list
+ * as well — the only way to check by hand (design.md D6, task 9.10). */
+const UNKNOWN_OUTCOME_LIST_THRESHOLD = 2
+
 interface VentaFormProps {
   venta?: Venta
   /** Existing customer to preselect in edit mode (name resolved by the caller). */
   clienteInicial?: ClienteRef | null
-  onSuccess: (saved: Venta) => void
+  /**
+   * `meta.replay` is true when the save was a deduplicated retry (C-42):
+   * nothing new was created, the sale the caller sees is the original one.
+   */
+  onSuccess: (saved: Venta, meta?: { replay?: boolean }) => void
   onCancel: () => void
   externalCreateMutation?: CreateVentaMutation
   externalUpdateMutation?: UpdateVentaMutation
@@ -101,6 +129,10 @@ export function VentaForm({
     wasOnAccount ? (clienteInicial ?? null) : null,
   )
   const [errors, setErrors] = useState<FormErrors>({})
+  // C-42 — count of consecutive unconfirmed ("desconocida") outcomes. Reset
+  // on any confirmed result (success or a real rejection); NOT reset just
+  // by editing the form, since the classification only fires on submit.
+  const [unknownAttempts, setUnknownAttempts] = useState(0)
   // design.md D5, spec "moving a sale out of cuenta corriente warns before
   // saving": when this edit's PATCH would leave a fiado, the warning must
   // appear BEFORE the request is sent. The payload is validated and staged
@@ -177,6 +209,28 @@ export function VentaForm({
     return errs
   }
 
+  // C-42 — shared by create and update: an unconfirmed ("desconocida")
+  // outcome gets its own state, never folded into `errors.backend`; every
+  // other failure shows the backend's message exactly as before C-42.
+  function handleSubmitError(err: unknown) {
+    const outcome = classifyError(
+      isAxiosError(err) && err.response
+        ? { response: { status: err.response.status, data: err.response.data as { detail?: unknown } } }
+        : {},
+    )
+    if (outcome.kind === 'unknown') {
+      setErrors((prev) => {
+        const next = { ...prev }
+        delete next.backend
+        return next
+      })
+      setUnknownAttempts((n) => n + 1)
+    } else {
+      setUnknownAttempts(0)
+      setErrors({ backend: extractBackendError(err) })
+    }
+  }
+
   function submitUpdate(payload: VentaUpdate) {
     if (!venta) return
     updateMutation.mutate(
@@ -184,11 +238,10 @@ export function VentaForm({
       {
         onSuccess: (updated) => {
           setErrors({})
+          setUnknownAttempts(0)
           onSuccess(updated)
         },
-        onError: (err: unknown) => {
-          setErrors({ backend: extractBackendError(err) })
-        },
+        onError: handleSubmitError,
       },
     )
   }
@@ -243,13 +296,12 @@ export function VentaForm({
         ...clienteIdField,
       }
       createMutation.mutate(createPayload, {
-        onSuccess: (created) => {
+        onSuccess: (result) => {
           setErrors({})
-          onSuccess(created)
+          setUnknownAttempts(0)
+          onSuccess(result.venta, { replay: result.replay })
         },
-        onError: (err: unknown) => {
-          setErrors({ backend: extractBackendError(err) })
-        },
+        onError: handleSubmitError,
       })
     }
   }
@@ -345,6 +397,32 @@ export function VentaForm({
           </p>
         )}
 
+        {/* C-42 — the "desconocida" outcome: not an error, not a success.
+            Says explicitly that retrying is safe (the key is reused) and
+            never clears the form. `role="status"` (not "alert") on purpose
+            — this is not a failure. */}
+        {unknownAttempts > 0 && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning ring-1 ring-warning/10"
+          >
+            <p>
+              No pudimos confirmar si la venta se guardó. Reintentar es seguro: esta operación ya
+              quedó identificada, así que no se va a duplicar.
+            </p>
+            {unknownAttempts >= UNKNOWN_OUTCOME_LIST_THRESHOLD && (
+              <p className="mt-2">
+                Si seguís sin poder confirmarlo,{' '}
+                <Link to="/ventas" className="font-semibold underline">
+                  revisá el listado de ventas
+                </Link>
+                .
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="mt-1 flex items-center gap-3">
           <button
             type="button"
@@ -359,7 +437,7 @@ export function VentaForm({
             disabled={isPending}
             className="rounded-full bg-navy-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(10,37,64,0.20)] transition-all duration-200 ease-[var(--ease-out)] hover:bg-navy-600 hover:shadow-[0_6px_20px_rgba(10,37,64,0.28)] active:scale-[0.98] disabled:opacity-50 dark:bg-accent-500 dark:hover:bg-accent-600"
           >
-            {isPending ? 'Guardando…' : 'Guardar'}
+            {isPending ? 'Guardando…' : unknownAttempts > 0 ? 'Reintentar' : 'Guardar'}
           </button>
         </div>
       </form>
@@ -388,6 +466,12 @@ function extractBackendError(err: unknown): string {
     if (Array.isArray(detail) && detail.length > 0) {
       const first = detail[0] as { msg?: string }
       return first?.msg ?? 'Error de validación.'
+    }
+    // C-42 — 409 conflict shape: { mensaje, venta_existente }, mirroring
+    // `cliente_existente` from C-32 (design.md D4).
+    if (typeof detail === 'object' && detail !== null && 'mensaje' in detail) {
+      const mensaje = (detail as { mensaje?: unknown }).mensaje
+      if (typeof mensaje === 'string') return mensaje
     }
   }
   return 'Error al guardar la venta.'

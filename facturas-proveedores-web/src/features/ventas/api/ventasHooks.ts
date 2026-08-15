@@ -19,6 +19,12 @@
  * section 6/8) via `previousFormaPago`, because the PATCH response alone
  * cannot tell us what changed (the server does not echo "was CUENTA_CORRIENTE
  * before this request").
+ *
+ * C-42 — `useCreateVenta`'s mutation resolves to `CreateVentaResult`
+ * (`{ venta, replay }`), not a bare `Venta`: the caller (`VentaForm`) needs
+ * the `replay` flag to tell "already recorded" apart from "just created"
+ * (design.md D6), and `venta.forma_pago` still drives the same
+ * cross-feature cache invalidation as before.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { listVentas, getVenta, createVenta, updateVenta, deleteVenta } from './ventasApi'
@@ -59,11 +65,13 @@ export function useCreateVenta() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (data: VentaCreate) => createVenta(data),
-    onSuccess: (created) => {
+    onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: VENTA_KEYS.all })
       // D6/D7 — a sale created on account changes the customer's cached
-      // balance view; a cash sale touches no customer.
-      if (created.forma_pago === 'CUENTA_CORRIENTE') {
+      // balance view; a cash sale touches no customer. A replay changed
+      // nothing server-side, but invalidating is harmless — the refetch
+      // just confirms the same data that was already there.
+      if (result.venta.forma_pago === 'CUENTA_CORRIENTE') {
         void queryClient.invalidateQueries({ queryKey: CLIENTE_KEYS.all })
       }
     },

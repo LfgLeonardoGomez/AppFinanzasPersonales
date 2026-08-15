@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest'
 import { setupServer } from 'msw/node'
-import { http, HttpResponse } from 'msw'
+import { http, HttpResponse, delay } from 'msw'
 import { apiClient, registerClearSession } from './client'
 
 // ── jsdom base URL fix ────────────────────────────────────────────────────────
@@ -190,6 +190,59 @@ describe('apiClient — 401 with skipAuthRedirect (bootstrap)', () => {
 
     // clearSession must NOT have been called for a bootstrap 401
     expect(clearMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('apiClient — timeout (C-42, task 6.1/6.2, design.md D5)', () => {
+  it('has a default timeout of 20000ms', () => {
+    expect(apiClient.defaults.timeout).toBe(20000)
+  })
+
+  // NOTE on scope: jsdom's XMLHttpRequest shim does not implement the
+  // `timeout` property (it never fires the abort), so a real 20s-vs-slow-
+  // response race cannot be exercised through apiClient in this test
+  // environment — verified empirically (a request configured with
+  // `timeout: 50` against a 400ms-delayed MSW response resolved normally
+  // instead of aborting). That is a jsdom gap, not a statement about real
+  // browsers, where XHR/fetch timeout is a long-standing, independently
+  // tested feature of the platform and of Axios itself.
+  //
+  // What we CAN and DO verify here, with a REAL MSW-triggered failure (not
+  // a hand-built fake error): a timeout's defining trait from the
+  // interceptor's point of view is "rejected with no `.response`" — exactly
+  // what `error.response?.status !== 401` in client.ts's guard checks for.
+  // MSW's `HttpResponse.error()` produces a genuine network-level failure
+  // (ERR_NETWORK) with no `.response`, so this exercises the same guard
+  // path a real ECONNABORTED timeout would take, without depending on
+  // jsdom's broken timer.
+  it('a request with no response (e.g. a timeout) does not trigger the refresh flow', async () => {
+    let refreshCalled = false
+
+    server.use(
+      http.get(`${BASE}/api/unreachable`, () => HttpResponse.error()),
+      http.post(`${BASE}/api/auth/refresh`, () => {
+        refreshCalled = true
+        return HttpResponse.json({ ok: true })
+      }),
+    )
+
+    const error = await apiClient.get('/unreachable').catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(Error)
+    const axiosLikeError = error as { response?: unknown }
+    expect(axiosLikeError.response).toBeUndefined()
+    expect(refreshCalled).toBe(false)
+  })
+
+  it('adding a client timeout does not break an ordinary request that resolves quickly (triangulation)', async () => {
+    server.use(
+      http.get(`${BASE}/api/fast`, async () => {
+        await delay(5)
+        return HttpResponse.json({ ok: true })
+      }),
+    )
+
+    const response = await apiClient.get('/fast', { timeout: 500 })
+    expect(response.data).toEqual({ ok: true })
   })
 })
 

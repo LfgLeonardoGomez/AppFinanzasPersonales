@@ -77,6 +77,11 @@ async function postExtraerIA<T>(endpoint: string, file: File): Promise<T> {
 
   const res = await apiClient.post<T>(endpoint, body, {
     headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+    // C-42 design.md D5: apiClient's shared default is 20s, tuned for a
+    // simple INSERT. A vision-model round trip legitimately takes tens of
+    // seconds, so this call needs its own, much higher ceiling — applied
+    // per-request here so it never drifts if the global default changes.
+    timeout: 120_000,
   })
   return res.data
 }
