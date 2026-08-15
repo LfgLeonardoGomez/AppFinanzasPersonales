@@ -6,7 +6,7 @@ The frontend is a React + TypeScript + Vite PWA with TanStack Query for server s
 
 Two things about the existing codebase shape every decision below:
 
-- **`src/shared/api/api.d.ts` is hand-written**, all 720 lines and 48 named types of it, despite a `npm run generate-types` script and a header comment that reads like it was generated. Running that script rewrites the file into the `openapi-typescript` shape (`paths`/`components`) and breaks the 262 imports that depend on the current named exports. Migrating to generated types is real debt, tracked separately as C-41. **This change adds its types by hand.**
+- **`src/shared/api/api.d.ts` is hand-written**, all 720 lines and 53 named types of it, despite a `npm run generate-types` script and a header comment that reads like it was generated. Running that script rewrites the file into the `openapi-typescript` shape (`paths`/`components`) and breaks the 262 imports that depend on the current named exports. Migrating to generated types is real debt, tracked separately as C-41. **This change adds its types by hand.**
 - **The component `CHANGES.md` calls `ProveedorAutocomplete` is actually `SupplierSearch`**, at `src/shared/components/SupplierSearch/SupplierSearch.tsx`. It already does everything the customer version needs — debounce-free query on ≥2 characters, a `role="combobox"` input, an option list, keyboard traversal, a selected-value chip, and inline creation when nothing matches. `ClienteAutocomplete` is its mirror image, one endpoint over.
 
 ## Goals / Non-Goals
@@ -56,7 +56,7 @@ Totals render from first paint with a loading affordance rather than `$0`. A zer
 
 ### D4 — `api.d.ts` gets hand-written types; `generate-types` is not run
 
-New named exports, matching the style of the 48 already there:
+New named exports, matching the style of the 53 already there:
 
 ```ts
 export type FormaPago = 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA' | 'CUENTA_CORRIENTE' | 'OTRO'

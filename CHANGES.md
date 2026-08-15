@@ -729,7 +729,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `knowledge-base/09_decisiones_y_supuestos.md` D-33, D-34, D-35
 
 ### [C-34] `ventas-clientes-frontend`
-- **Estado**: `[ ]` — **heredado de C-33 (D-54)**: borrar una venta fiada, o sacarla de cuenta corriente, **hace desaparecer una deuda del cliente**. El backend lo permite porque es una corrección legítima; la UI tiene que avisarlo, como el borrado de proveedor avisa de sus dependencias (RN-PROV-04)
+- **Estado**: `[x]` archivado 2026-08-14 (suite 706 passed, 94 files) — **heredado de C-33 (D-54)**: borrar una venta fiada, o sacarla de cuenta corriente, **hace desaparecer una deuda del cliente**. El backend lo permite porque es una corrección legítima; la UI tiene que avisarlo, como el borrado de proveedor avisa de sus dependencias (RN-PROV-04)
 - **Scope**:
   - `src/features/ventas/`: listado filtrable (fecha, forma de pago, cliente) + formulario de carga
   - Formulario optimizado para el mostrador: monto, fecha (default hoy), forma de pago. El campo cliente **aparece solo** si la forma de pago es Cuenta corriente
@@ -906,7 +906,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-32 | clientes-backend | MEDIO | C-28 (archivado 2026-08-11) |
 | C-33 | ventas-backend | ALTO | C-32 (archivado 2026-08-12) |
 | C-35 | cuenta-corriente-clientes-backend | ALTO | C-33 (archivado 2026-08-12) |
-| **C-34** | **ventas-clientes-frontend** | MEDIO | C-30, C-33 |
+| C-34 | ventas-clientes-frontend | MEDIO | C-30, C-33 (archivado 2026-08-14) |
 | **C-35** | **cuenta-corriente-clientes-backend** | ALTO | C-33 |
 | **C-36** | **cuenta-corriente-clientes-frontend** | MEDIO | C-34, C-35 |
 | **C-37** | **estadisticas-backend** | MEDIO | C-33 |
@@ -915,7 +915,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | **C-40** | **dev-setup-lint-guard** | BAJO | — (deuda detectada en C-30) |
 | **C-41** | **api-types-generated** | MEDIO | — (deuda detectada en C-30) |
 
-**Total: 40 entradas (C-01…C-39 + C-15a) · 13 fases · 30 archivadas, 10 pendientes**
+**Total: 40 entradas (C-01…C-39 + C-15a) · 13 fases · 31 archivadas, 9 pendientes**
 
 **Estado del MVP**: completo y archivado desde C-13 (2026-06-27). C-14/C-15 cerraron la IA de visión. C-15a…C-27 fueron housekeeping, fixes y cierre de deudas; el rediseño de UX/UI se entregó fuera de la numeración (ver nota al final de la sección de housekeeping).
 
