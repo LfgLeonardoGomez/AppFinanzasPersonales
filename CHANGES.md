@@ -839,15 +839,15 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 > Los dos surgieron al intentar regenerar los tipos del frontend. Ninguno es urgente, pero los dos tienen **resultado desconocido hasta ejecutarlos**, y por eso no se metieron dentro de un change de pantallas.
 
 ### [C-40] `dev-setup-lint-guard`
-- **Estado**: `[ ]`
-- **Por qué**: `docker-compose.override.yml` no monta `eslint.config.js` ni `facturas-proveedores-web/tests/`. Consecuencias medidas:
-  1. `npm run lint` no puede correr dentro del contenedor: *"ESLint couldn't find an eslint.config.js"*. Reproducido también sobre `HEAD` limpio, así que es preexistente.
-  2. **`tests/frontend-lint.test.ts` nunca se ejecutó.** Es el regression-guard que C-20 escribió para lockear `npm run lint` en exit 0 (D-24). Como el directorio no está montado, la suite del contenedor corre 72 archivos y ese no está entre ellos. **Un guard que existe en el repo y no guarda nada.**
+- **Estado**: `[x]` archivado 2026-08-15
+- **Por qué**: `docker-compose.override.yml` no montaba `eslint.config.js` ni `facturas-proveedores-web/tests/`. Consecuencias medidas:
+  1. `npm run lint` no podía correr dentro del contenedor: *"ESLint couldn't find an eslint.config.js"*. Reproducido también sobre `HEAD` limpio, así que era preexistente.
+  2. **`tests/frontend-lint.test.ts` nunca se había ejecutado.** Es el regression-guard que C-20 escribió para lockear `npm run lint` en exit 0 (D-24). Como el directorio no estaba montado, la suite del contenedor corría 92 archivos (no 72 — esa cifra quedó desactualizada desde que se registró la deuda en C-30) y ese no estaba entre ellos. **Un guard que existía en el repo y no guardaba nada.**
+- **Resultado medido**: 0 errores / 0 warnings en los 206 archivos de `src` — no había deuda de lint acumulada. Ambos guards (`frontend-lint.test.ts` y `design-system-guard.test.ts`, agregado por C-34) pasan sin modificar. La suite del contenedor subió de **92 archivos / 703 tests a 94 archivos / 706 tests**. Se probó además que ambos guards fallan de verdad ante una violación real (chequeo negativo introducido y revertido), no solo que quedaron coleccionados.
 - **Scope**:
   - Agregar los dos montajes al override del servicio `web`.
-  - Correr el guard **por primera vez** y arreglar lo que aparezca.
+  - Correr el guard **por primera vez** y arreglar lo que aparezca. *(No apareció nada que arreglar.)*
   - Verificar que el conteo de la suite suba (el archivo pasa a ejecutarse).
-- **Riesgo**: el alcance real es desconocido hasta correrlo. Puede ser cero o puede destapar lint acumulado desde C-20.
 - **Dependencias**: ninguna
 - **Governance**: BAJO
 - **Leer antes**: `knowledge-base/09_decisiones_y_supuestos.md` D-24 (baseline de lint), `docker-compose.override.yml`

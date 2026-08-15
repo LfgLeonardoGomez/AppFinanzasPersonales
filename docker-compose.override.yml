@@ -31,6 +31,27 @@
 #   "rm + npm ci dentro del contenedor" es la única viable con
 #   docker-compose-only changes (cambiar el Dockerfile sería una
 #   modificación del subrepo web).
+#
+# C-40-dev-setup-lint-guard:
+#   El target `dev` del Dockerfile de facturas-proveedores-web no tiene
+#   NINGÚN `COPY` (solo el target `builder` copia fuentes). Por lo tanto
+#   `/app` dentro del contenedor `web` es EXACTAMENTE el conjunto de
+#   `volumes:` declarado abajo, más el `node_modules` que instala el
+#   `npm ci` del `command:`. Cualquier path que un quality gate del
+#   frontend necesite leer y no esté en `volumes:` es invisible dentro
+#   del contenedor, de forma permanente (no es un problema de imagen
+#   vieja).
+#
+#   REGLA: toda vez que se agregue un archivo de configuración raíz
+#   nuevo (ej. un futuro tailwind.config.js) o un nuevo directorio de
+#   tests, hay que agregarlo explícitamente a `volumes:` del servicio
+#   `web`, o el guard correspondiente quedará "coleccionado" en el
+#   repo pero nunca ejecutado dentro del contenedor — exactamente el
+#   bug que este change corrigió para `eslint.config.js` y `tests/`.
+#
+#   Los cambios de `volumes:` requieren `docker compose up -d` (recrea
+#   el contenedor); un `restart` NO alcanza porque no vuelve a leer el
+#   compose file.
 ###############################################################################
 
 services:
@@ -82,6 +103,15 @@ services:
       # package-lock.json es necesario para `npm ci`. NO se monta
       # node_modules: se borra y se reinstala dentro del contenedor.
       - ./facturas-proveedores-web/package-lock.json:/app/package-lock.json:ro
+      # C-40: sin este mount, `npm run lint` no puede resolver su
+      # configuración dentro del contenedor (ESLint couldn't find an
+      # eslint.config.js file).
+      - ./facturas-proveedores-web/eslint.config.js:/app/eslint.config.js:ro
+      # C-40: sin este mount, Vitest no colecciona ningún archivo de
+      # este directorio y los regression-guards que viven ahí
+      # (frontend-lint.test.ts, design-system-guard.test.ts) quedan
+      # invisibles para la suite del contenedor.
+      - ./facturas-proveedores-web/tests:/app/tests:ro
     environment:
       VITE_API_URL: http://api:8000
 
