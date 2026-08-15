@@ -18,6 +18,17 @@
 |---|---|---|---|
 | Q-06 | 🟡 | **¿Cuándo se resuelve el lint roto del frontend (`facturas-proveedores-web`)?** | ESLint v10 vs config v9, carry-over de c-13. Documentado como D-24 en `09_decisiones_y_supuestos.md` (deferido, fuera de alcance para cualquier change posterior). Pregunta abierta: ¿se arregla en un housekeeping futuro o se acepta el estado actual? |
 
+## Preguntas nuevas — C-42 (idempotencia de registro de venta)
+
+| # | Prioridad | Pregunta | Contexto |
+|---|---|---|---|
+| Q-07 | 🟡 | **¿20 segundos es el tiempo correcto de espera para alguien atendiendo el mostrador?** | `apiClient` tiene `timeout: 20000` (D-66), razonado contra el perfil del endpoint (~40x su p99 en caliente), no medido contra el VPS real bajo datos móviles. Si en uso real aparece que 20s es largo (la persona ya se cansó y reintentó a mano antes de que el timeout dispare) o corto (se corta una request que iba a salir bien), ajustar con evidencia real, no con otra estimación. |
+| Q-08 | 🟢 | **¿La persistencia de la clave de idempotencia en `sessionStorage` (D-62) vale su complejidad?** | Cubre el caso de un reload de pestaña o una pestaña matada por el sistema operativo entre el intento fallido y el reintento — parte del escenario que motivó C-42 — a cambio de un módulo aparte (`src/shared/api/idempotency.ts`) y su manejo de errores. Está deliberadamente aislado en su propio grupo de tasks para poder sacarse sin desarmar el resto del mecanismo; sacarlo reabre esa ventana (solo el reload/cierre de pestaña, no el caso general de reintento con la app abierta). |
+
+## Deuda técnica descubierta (no es de C-42, pero se encontró mirándolo)
+
+- **El backend no le pone `timeout` a la llamada al proveedor de visión.** Hasta ahora no había techo de ningún lado (ni cliente ni servidor); después de C-42 el frontend le puso 120s (D-66), pero el SDK del proveedor de IA en el backend sigue sin límite propio. Si el proveedor se cuelga, la request del backend puede quedar viva más allá de los 120s que el frontend está dispuesto a esperar — el frontend simplemente reportaría "desconocida" y el backend seguiría procesando. No bloquea nada; queda para cuando se toque `app/services/vision_provider` (o equivalente) de nuevo.
+
 ## Inconsistencias / puntos a vigilar
 
 - **Filtro por estado en SQL:** el estado de factura NO es columna; el filtro debe aplicarse en el service layer tras calcular FIFO (RN-FAC-09). Riesgo de que un implementador intente un `WHERE estado=...` directo. **Vigilar en code review.**

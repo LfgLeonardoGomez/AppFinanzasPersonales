@@ -140,6 +140,7 @@ Es una vista **distinta** del estado FIFO (RN-FIFO): muestra la evolución de la
 | **RN-VTA-04** | **Un cobro de cuenta corriente NO es una venta** y no escribe en `venta` (D-34). La venta se registra cuando sale la mercadería; el cobro, cuando entra la plata. Contar el cobro como venta duplicaría la facturación y rompería el contraste compras-vs-ventas. |
 | **RN-VTA-05** | Los totales por período (día / semana / mes) y su desglose por `forma_pago` son **agregaciones calculadas on-demand**, nunca columnas persistidas. Coherente con D-01. |
 | **RN-VTA-06** | La granularidad de carga es libre: el esquema admite tanto una fila por operación como una fila agregada al cierre del día. Es decisión de UX, no de modelo (D-35). |
+| **RN-VTA-07** | **Reintentar el registro de una venta no crea una segunda operación** (C-42, D-62 a D-65). `POST /api/ventas` acepta un header opcional `Idempotency-Key` (UUID); repetir la misma clave devuelve la venta original en vez de duplicarla. Existe porque una venta fiada duplicada **es** un cargo duplicado en la cuenta corriente del cliente (RN-VTA-02) — un doble-tap en "Guardar" sobre datos móviles inestables no puede convertirse en una deuda que no corresponde. |
 
 ## Dominio: Cuenta corriente de clientes *(D-37)*
 
