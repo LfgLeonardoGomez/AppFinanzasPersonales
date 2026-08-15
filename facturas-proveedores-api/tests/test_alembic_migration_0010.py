@@ -120,6 +120,16 @@ class TestLaCadenaSigueCorriendo:
         _run_alembic("upgrade", "head")
         assert "venta" in inspect(migration_engine_0010).get_table_names()
 
+        # Deja el motor pinneado en 0010 de nuevo (D-21). `alembic upgrade`
+        # nunca retrocede, así que sin este downgrade el `upgrade 0010` de la
+        # fixture `migrated` (usada por TestSchema más abajo) queda como
+        # no-op y las aserciones de columnas exactas de esta clase terminan
+        # viendo el esquema de `head`, no el de 0010 — exactamente lo que
+        # pasó cuando 0012 (C-42) le agregó una columna a `venta` y este test
+        # corrió primero. Antes de esa migración el bug era invisible porque
+        # ninguna revisión posterior a 0010 tocaba las columnas de `venta`.
+        _run_alembic("downgrade", "0010")
+
     def test_las_tablas_anteriores_siguen_ahi(self, migrated):
         """Un enum es un objeto de base, no de tabla: romperlo tumba todo."""
         tablas = set(inspect(migrated).get_table_names())
