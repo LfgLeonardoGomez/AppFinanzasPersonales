@@ -563,3 +563,79 @@ describe('PagoForm — comprobante upload (Task 6)', () => {
     }
   })
 })
+
+// ── Review fix (finding 2, WARNING) — interim mitigation for an ambiguous
+// outcome ─────────────────────────────────────────────────────────────────
+//
+// Same rationale as FacturaForm's equivalent block: D-67 flags pagos as
+// having zero deduplication, and C-42's 20s global timeout makes an
+// ambiguous outcome here MORE dangerous, not less. This form must point at
+// the payments list before retrying instead of offering a bare retry as
+// the only path forward.
+
+describe('PagoForm — ambiguous outcome points at the list, not a bare retry (C-42 review fix, finding 2)', () => {
+  it('on a network error (no response), tells the user to check the list before retrying — and does NOT claim it is safe to retry', async () => {
+    server.use(http.post('/api/pagos', () => HttpResponse.error()))
+    render(
+      <PagoForm
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+        initialSelectedProveedor={mockProveedor}
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    const fechaInput = document.getElementById('fecha') as HTMLInputElement
+    fireEvent.change(fechaInput, { target: { value: '2026-05-01' } })
+    const montoInput = screen.getByLabelText(/monto/i) as HTMLInputElement
+    fireEvent.change(montoInput, { target: { value: '1500' } })
+    const metodoSelect = screen.getByLabelText(/método|metodo/i) as HTMLSelectElement
+    fireEvent.change(metodoSelect, { target: { value: 'EFECTIVO' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /guardar/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toBeInTheDocument()
+    })
+    const bannerText = screen.getByRole('status').textContent ?? ''
+    expect(bannerText).toMatch(/no pudimos confirmar/i)
+    expect(bannerText).not.toMatch(/es seguro|no se va a duplicar/i)
+
+    expect(screen.getByRole('link', { name: /listado de pagos/i })).toBeInTheDocument()
+    expect(screen.queryByText(/error al guardar el pago/i)).not.toBeInTheDocument()
+  })
+
+  it('a real 422 rejection still shows the ordinary backend error, unchanged (triangulation)', async () => {
+    server.use(
+      http.post('/api/pagos', () =>
+        HttpResponse.json(
+          { detail: [{ loc: ['body', 'monto'], msg: 'must be greater than 0', type: 'value_error' }] },
+          { status: 422 },
+        ),
+      ),
+    )
+    render(
+      <PagoForm
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+        initialSelectedProveedor={mockProveedor}
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    const fechaInput = document.getElementById('fecha') as HTMLInputElement
+    fireEvent.change(fechaInput, { target: { value: '2026-05-01' } })
+    const montoInput = screen.getByLabelText(/monto/i) as HTMLInputElement
+    fireEvent.change(montoInput, { target: { value: '1500' } })
+    const metodoSelect = screen.getByLabelText(/método|metodo/i) as HTMLSelectElement
+    fireEvent.change(metodoSelect, { target: { value: 'EFECTIVO' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /guardar/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /listado de pagos/i })).not.toBeInTheDocument()
+  })
+})

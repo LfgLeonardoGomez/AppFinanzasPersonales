@@ -34,10 +34,21 @@
  *     `errors.backend`, unchanged in spirit from before C-42.
  *   - An UNKNOWN outcome (no response, or 5xx) is its own state
  *     (`unknownAttempts`), never folded into `errors.backend`: the form
- *     says explicitly that it could not confirm the save, that retrying is
- *     safe (the key is reused automatically — see `ventasApi.ts`), and
- *     keeps every field as typed. After a second consecutive unknown
- *     result it also offers the sales list, the only way to check by hand.
+ *     says explicitly that it could not confirm the save, that retrying
+ *     should be safe (the key is reused automatically — see
+ *     `ventasApi.ts`), and keeps every field as typed. After a second
+ *     consecutive unknown result it also offers the sales list, the only
+ *     way to check by hand.
+ *   - Review fix (finding 1, CRITICAL): the retry-safety claim is hedged,
+ *     not absolute — it explicitly excludes "closed or reloaded the page
+ *     since the failed attempt", the one state where the client-side
+ *     pending-key bookkeeping in `idempotency.ts` can genuinely be lost
+ *     (sessionStorage unavailable + memory wiped by the reload). Nav is
+ *     also blocked globally while a create is pending (AppLayout.tsx via
+ *     `useIsMutating(VENTA_CREATE_MUTATION_KEY)`) so the user cannot start
+ *     a second, different sale that would overwrite this one's pending
+ *     slot — and even if it did, `confirmIdempotencyKey` is identity-aware
+ *     and would not clear a slot it does not own.
  */
 import { useState, useEffect, type FormEvent, type ChangeEvent } from 'react'
 import { X } from 'lucide-react'
@@ -408,8 +419,9 @@ export function VentaForm({
             className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning ring-1 ring-warning/10"
           >
             <p>
-              No pudimos confirmar si la venta se guardó. Reintentar es seguro: esta operación ya
-              quedó identificada, así que no se va a duplicar.
+              No pudimos confirmar si la venta se guardó. Reintentar debería ser seguro — la
+              operación ya quedó identificada — salvo que hayas cerrado o recargado la página
+              mientras tanto: en ese caso, mejor revisá el listado antes de reintentar.
             </p>
             {unknownAttempts >= UNKNOWN_OUTCOME_LIST_THRESHOLD && (
               <p className="mt-2">

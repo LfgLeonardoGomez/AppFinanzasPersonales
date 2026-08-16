@@ -15,10 +15,13 @@
  * direct icon action here instead of a dropdown, matching the new
  * "silent nav" shell (BRAND.md: componentes livianos, sin ruido).
  */
+import type { MouseEvent } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
+import { useIsMutating } from '@tanstack/react-query'
 import { Home, Users, Users2, FileText, CreditCard, ShoppingCart, UserCircle, LogOut } from 'lucide-react'
 import { useAuthStore } from '@features/auth/store/authStore'
 import { useLogout } from '@features/auth/api/authHooks'
+import { VENTA_CREATE_MUTATION_KEY } from '@features/ventas/api/ventasHooks'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Home', icon: Home, end: true },
@@ -58,6 +61,20 @@ function LogoMark() {
   )
 }
 
+// C-42 review fix (finding 1, CRITICAL) — the cross-submission race started
+// with the user navigating AWAY from a hung "Nueva venta" submit and
+// starting a DIFFERENT sale on return, which overwrote the shared
+// per-namespace idempotency slot (idempotency.ts). That module's
+// identity-aware `confirmIdempotencyKey` stops the overwrite from
+// corrupting data, but the shell should also stop the user from walking
+// into the situation at all: while a sale create is in flight, main
+// navigation is disabled everywhere (both the desktop sidebar and the
+// mobile bottom tab bar share this same list, per LAYOUT.md's "una única
+// definición de navegación").
+function useIsNavBlocked(): boolean {
+  return useIsMutating({ mutationKey: VENTA_CREATE_MUTATION_KEY }) > 0
+}
+
 export function AppLayout() {
   const isActive = useIsActive()
   const user = useAuthStore((s) => s.user)
@@ -66,6 +83,11 @@ export function AppLayout() {
   const navItems = user?.es_admin ? [...NAV_ITEMS, ...NAV_ITEMS_ADMIN] : NAV_ITEMS
   const logoutMutation = useLogout()
   const initial = user?.nombre?.charAt(0).toUpperCase() ?? 'U'
+  const navBlocked = useIsNavBlocked()
+
+  function handleNavClick(e: MouseEvent<HTMLAnchorElement>) {
+    if (navBlocked) e.preventDefault()
+  }
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-page font-inter lg:flex-row">
@@ -84,9 +106,13 @@ export function AppLayout() {
                 key={to}
                 to={to}
                 aria-current={active ? 'page' : undefined}
+                aria-disabled={navBlocked ? 'true' : undefined}
+                tabIndex={navBlocked ? -1 : undefined}
+                onClick={handleNavClick}
                 className={`
                   flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm transition-colors duration-160 ease-[var(--ease-out)]
                   ${active ? 'bg-violet-50 font-semibold text-violet-900' : 'font-medium text-ink-soft-2 hover:bg-black/[0.03]'}
+                  ${navBlocked ? 'pointer-events-none opacity-50' : ''}
                 `}
               >
                 <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-violet-500' : 'text-ink-soft'}`} />
@@ -142,7 +168,10 @@ export function AppLayout() {
               key={to}
               to={to}
               aria-current={active ? 'page' : undefined}
-              className="flex flex-col items-center gap-1 px-2 py-1"
+              aria-disabled={navBlocked ? 'true' : undefined}
+              tabIndex={navBlocked ? -1 : undefined}
+              onClick={handleNavClick}
+              className={`flex flex-col items-center gap-1 px-2 py-1 ${navBlocked ? 'pointer-events-none opacity-50' : ''}`}
             >
               <Icon className={`h-[18px] w-[18px] ${active ? 'text-violet-500' : 'text-ink-soft'}`} />
               <span className={`text-[10.5px] font-semibold ${active ? 'text-violet-900' : 'text-ink-soft'}`}>

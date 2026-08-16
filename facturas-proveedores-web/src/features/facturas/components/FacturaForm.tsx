@@ -4,13 +4,30 @@
  * Premium card layout with InputField wrappers. All original test contracts
  * preserved: label names, id="fecha_emision", data-testid="proveedor-readonly",
  * button names, alert roles.
+ *
+ * C-42 review fix (finding 2, WARNING) — interim mitigation for an
+ * ambiguous outcome (knowledge-base D-67): unlike ventas (C-42), this
+ * endpoint has NO idempotency protection — that is C-43, explicitly out of
+ * scope here. C-42's 20s global Axios timeout makes an ambiguous outcome
+ * MORE dangerous for this form, not less: it turns a request that may have
+ * already committed server-side into "an explicit error that invites
+ * retrying over something that doesn't dedupe." So an ambiguous outcome
+ * (`classifyError` from `submitOutcome.ts` — no response, or any 5xx) gets
+ * its own `role="status"` banner that tells the user to check the invoices
+ * list BEFORE retrying, and never claims retrying is safe (it isn't — there
+ * is no key to reuse). A real rejection (4xx other than what
+ * `classifyError` treats as ambiguous) keeps the exact prior behavior:
+ * `errors.backend`, unchanged.
  */
 import { useState, useEffect, useRef, type FormEvent, type ChangeEvent } from 'react'
 import { X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { isAxiosError } from 'axios'
 import { SupplierSearch } from '@shared/components/SupplierSearch/SupplierSearch'
 import { ItemsEditor } from './ItemsEditor'
 import { FileUploadField } from './FileUploadField'
 import { useCreateFactura, useUpdateFactura } from '../api/facturasHooks'
+import { classifyError } from '@shared/api/submitOutcome'
 import type { UseMutationResult } from '@tanstack/react-query'
 import { getTodayInArgentina } from '@shared/utils/date'
 import { InputField } from '@shared/components/InputField/InputField'
@@ -119,6 +136,11 @@ export function FacturaForm({
 
   const [errors, setErrors] = useState<FormErrors>({})
   const [itemsSumMismatchAfterSave, setItemsSumMismatchAfterSave] = useState(false)
+  // C-42 review fix (finding 2) — an ambiguous ("no pudimos confirmar")
+  // outcome is its own state, never folded into `errors.backend`: this
+  // endpoint does not dedupe, so the message points at the list instead of
+  // offering a "safe" retry.
+  const [ambiguousOutcome, setAmbiguousOutcome] = useState(false)
 
   const createMutationInternal = useCreateFactura()
   const updateMutationInternal = useUpdateFactura()
@@ -157,6 +179,28 @@ export function FacturaForm({
     return errs
   }
 
+  // C-42 review fix (finding 2) — classifies the failure via the shared
+  // `classifyError` (no duplicated logic). An ambiguous outcome sets its
+  // own state; a real rejection keeps exactly the prior behavior.
+  function handleSubmitError(err: unknown, fallbackMessage: string) {
+    const outcome = classifyError(
+      isAxiosError(err) && err.response
+        ? { response: { status: err.response.status, data: err.response.data as { detail?: unknown } } }
+        : {},
+    )
+    if (outcome.kind === 'unknown') {
+      setAmbiguousOutcome(true)
+      setErrors((prev) => {
+        const next = { ...prev }
+        delete next.backend
+        return next
+      })
+    } else {
+      setAmbiguousOutcome(false)
+      setErrors({ backend: fallbackMessage })
+    }
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setItemsSumMismatchAfterSave(false)
@@ -183,12 +227,11 @@ export function FacturaForm({
         {
           onSuccess: (updated) => {
             setErrors({})
+            setAmbiguousOutcome(false)
             if (updated.items_sum_mismatch) setItemsSumMismatchAfterSave(true)
             onSuccess(updated)
           },
-          onError: () => {
-            setErrors({ backend: 'Error al actualizar la factura.' })
-          },
+          onError: (err) => handleSubmitError(err, 'Error al actualizar la factura.'),
         },
       )
     } else {
@@ -200,12 +243,11 @@ export function FacturaForm({
       createMutation.mutate(createPayload, {
         onSuccess: (created) => {
           setErrors({})
+          setAmbiguousOutcome(false)
           if (created.items_sum_mismatch) setItemsSumMismatchAfterSave(true)
           onSuccess(created)
         },
-        onError: () => {
-          setErrors({ backend: 'Error al crear la factura.' })
-        },
+        onError: (err) => handleSubmitError(err, 'Error al crear la factura.'),
       })
     }
   }
@@ -346,6 +388,27 @@ export function FacturaForm({
           <p role="alert" aria-live="assertive" className="text-sm text-danger">
             {errors.backend}
           </p>
+        )}
+
+        {/* C-42 review fix (finding 2) — ambiguous outcome: this endpoint
+            does NOT dedupe, so the copy must never say retrying is safe.
+            `role="status"` (not "alert") — mirrors VentaForm's convention
+            for a non-failure, unconfirmed state. */}
+        {ambiguousOutcome && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning ring-1 ring-warning/10"
+          >
+            <p>
+              No pudimos confirmar si la factura se guardó. Esta operación no queda identificada
+              para evitar duplicados, así que antes de reintentar,{' '}
+              <Link to="/facturas" className="font-semibold underline">
+                revisá el listado de facturas
+              </Link>{' '}
+              para asegurarte de que no quedó cargada.
+            </p>
+          </div>
         )}
 
         {!anyError && itemsSumMismatchAfterSave && (

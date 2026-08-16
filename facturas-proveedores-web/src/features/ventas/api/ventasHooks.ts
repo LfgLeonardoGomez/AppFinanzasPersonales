@@ -61,9 +61,17 @@ export function useVenta(id: string) {
 
 // ── useCreateVenta ────────────────────────────────────────────────────────────
 
+// C-42 review fix (finding 1) — a stable, matchable key so `useIsMutating`
+// can gate app navigation while a sale create is in flight (AppLayout.tsx).
+// Starting a second, different create attempt before the first resolves is
+// what causes the cross-submission race idempotency.ts's identity-aware
+// confirm closes; this key lets the shell prevent the situation itself.
+export const VENTA_CREATE_MUTATION_KEY = ['ventas', 'create'] as const
+
 export function useCreateVenta() {
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: VENTA_CREATE_MUTATION_KEY,
     mutationFn: (data: VentaCreate) => createVenta(data),
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: VENTA_KEYS.all })

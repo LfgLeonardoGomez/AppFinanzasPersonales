@@ -65,17 +65,33 @@ describe('classifyError — unknown, no response (task 8.4)', () => {
   })
 })
 
-// ── 8.5 — 5xx → unknown, NOT rejected ───────────────────────────────────────
+// ── 8.5 — every 5xx → unknown, NOT rejected (any status >= 500) ────────────
+//
+// Review fix (finding 3): the docstring and this describe block always said
+// "a 5xx classifies as unknown" — the whole 500-599 range a WAF or reverse
+// proxy can legitimately emit — but the implementation only enumerated
+// {500, 502, 503, 504}. A 501/505/507/511 fell through to `rejected` and
+// was shown to the counter person as a hard backend error, contradicting
+// the stated intent. Fixed by matching on `status >= 500` instead of an
+// enumeration, so code and comment agree.
 
 describe('classifyError — 5xx is unknown, not rejected (task 8.5)', () => {
-  it.each([500, 502, 503, 504])('a %i classifies as unknown', (status) => {
-    const outcome = classifyError({ response: { status, data: { detail: 'Bad gateway' } } })
-    expect(outcome).toEqual({ kind: 'unknown' })
-  })
+  it.each([500, 501, 502, 503, 504, 505, 507, 511, 599])(
+    'a %i classifies as unknown',
+    (status) => {
+      const outcome = classifyError({ response: { status, data: { detail: 'Bad gateway' } } })
+      expect(outcome).toEqual({ kind: 'unknown' })
+    },
+  )
 
   it('a 500 does NOT carry a detail (triangulation — it is not treated as a rejection at all)', () => {
     const outcome = classifyError({ response: { status: 500, data: { detail: 'nope' } } })
     expect(outcome.kind).toBe('unknown')
     expect('detail' in outcome).toBe(false)
+  })
+
+  it('a 499 (client closed request, NOT a 5xx) still classifies as rejected (triangulation — the boundary is 500, not "look 5xx-ish")', () => {
+    const outcome = classifyError({ response: { status: 499, data: { detail: 'client closed' } } })
+    expect(outcome.kind).toBe('rejected')
   })
 })

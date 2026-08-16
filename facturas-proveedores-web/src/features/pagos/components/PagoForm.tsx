@@ -4,12 +4,28 @@
  * Premium card layout with InputField wrappers. All original test contracts
  * preserved: label names, id="fecha", data-testid="proveedor-readonly",
  * button names, alert roles, RN-PAG-01 note.
+ *
+ * C-42 review fix (finding 2, WARNING) — interim mitigation for an
+ * ambiguous outcome (knowledge-base D-67): unlike ventas (C-42), this
+ * endpoint has NO idempotency protection — that is C-43, explicitly out of
+ * scope here. C-42's 20s global Axios timeout makes an ambiguous outcome
+ * MORE dangerous for this form, not less: it turns a request that may have
+ * already committed server-side into "an explicit error that invites
+ * retrying over something that doesn't dedupe." So an ambiguous outcome
+ * (`classifyError` from `submitOutcome.ts` — no response, or any 5xx) gets
+ * its own `role="status"` banner that tells the user to check the payments
+ * list BEFORE retrying, and never claims retrying is safe (it isn't — there
+ * is no key to reuse). A real rejection keeps the exact prior behavior:
+ * `errors.backend` via `extractBackendError`, unchanged.
  */
 import { useState, useEffect, useRef, type FormEvent, type ChangeEvent } from 'react'
 import { X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { isAxiosError } from 'axios'
 import { SupplierSearch } from '@shared/components/SupplierSearch/SupplierSearch'
 import { FileUploadField } from '@features/facturas/components/FileUploadField'
 import { useCreatePago, useUpdatePago } from '../api/pagosHooks'
+import { classifyError } from '@shared/api/submitOutcome'
 import type { UseMutationResult } from '@tanstack/react-query'
 import { getTodayInArgentina } from '@shared/utils/date'
 import { InputField } from '@shared/components/InputField/InputField'
@@ -118,6 +134,11 @@ export function PagoForm({
   }, [prefillFromProposal])
 
   const [errors, setErrors] = useState<FormErrors>({})
+  // C-42 review fix (finding 2) — an ambiguous ("no pudimos confirmar")
+  // outcome is its own state, never folded into `errors.backend`: this
+  // endpoint does not dedupe, so the message points at the list instead of
+  // offering a "safe" retry.
+  const [ambiguousOutcome, setAmbiguousOutcome] = useState(false)
 
   const createMutationInternal = useCreatePago()
   const updateMutationInternal = useUpdatePago()
@@ -159,6 +180,28 @@ export function PagoForm({
     return errs
   }
 
+  // C-42 review fix (finding 2) — classifies the failure via the shared
+  // `classifyError` (no duplicated logic). An ambiguous outcome sets its
+  // own state; a real rejection keeps exactly the prior behavior.
+  function handleSubmitError(err: unknown) {
+    const outcome = classifyError(
+      isAxiosError(err) && err.response
+        ? { response: { status: err.response.status, data: err.response.data as { detail?: unknown } } }
+        : {},
+    )
+    if (outcome.kind === 'unknown') {
+      setAmbiguousOutcome(true)
+      setErrors((prev) => {
+        const next = { ...prev }
+        delete next.backend
+        return next
+      })
+    } else {
+      setAmbiguousOutcome(false)
+      setErrors({ backend: extractBackendError(err) })
+    }
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     const errs = validate()
@@ -179,11 +222,10 @@ export function PagoForm({
         {
           onSuccess: (updated) => {
             setErrors({})
+            setAmbiguousOutcome(false)
             onSuccess(updated)
           },
-          onError: (err: unknown) => {
-            setErrors({ backend: extractBackendError(err) })
-          },
+          onError: handleSubmitError,
         },
       )
     } else {
@@ -198,11 +240,10 @@ export function PagoForm({
       createMutation.mutate(createPayload, {
         onSuccess: (created) => {
           setErrors({})
+          setAmbiguousOutcome(false)
           onSuccess(created)
         },
-        onError: (err: unknown) => {
-          setErrors({ backend: extractBackendError(err) })
-        },
+        onError: handleSubmitError,
       })
     }
   }
@@ -343,6 +384,27 @@ export function PagoForm({
           <p role="alert" aria-live="assertive" className="text-sm text-danger">
             {errors.backend}
           </p>
+        )}
+
+        {/* C-42 review fix (finding 2) — ambiguous outcome: this endpoint
+            does NOT dedupe, so the copy must never say retrying is safe.
+            `role="status"` (not "alert") — mirrors VentaForm's convention
+            for a non-failure, unconfirmed state. */}
+        {ambiguousOutcome && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning ring-1 ring-warning/10"
+          >
+            <p>
+              No pudimos confirmar si el pago se guardó. Esta operación no queda identificada para
+              evitar duplicados, así que antes de reintentar,{' '}
+              <Link to="/pagos" className="font-semibold underline">
+                revisá el listado de pagos
+              </Link>{' '}
+              para asegurarte de que no quedó cargado.
+            </p>
+          </div>
         )}
 
         <div className="mt-1 flex items-center gap-3">

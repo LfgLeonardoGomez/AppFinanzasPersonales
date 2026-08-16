@@ -333,3 +333,84 @@ describe('FacturaForm — triangulate', () => {
     }, { timeout: 3000 })
   })
 })
+
+// ── Review fix (finding 2, WARNING) — interim mitigation for an ambiguous
+// outcome ─────────────────────────────────────────────────────────────────
+//
+// D-67 (knowledge-base/09_decisiones_y_supuestos.md): facturas/pagos/cobros
+// have zero deduplication. C-42's 20s global Axios timeout makes an
+// ambiguous outcome (timeout/network/5xx) MORE dangerous here than before
+// — a client timeout invites retrying over an endpoint that cannot tell a
+// retry from a duplicate. This was supposed to ship WITH C-42 and did not:
+// every failure collapsed into the same generic backend error with the
+// button just re-enabled. Fixed by classifying the outcome (reusing
+// `submitOutcome.ts`, not duplicating the logic) and, for an ambiguous
+// one, pointing the user at the list INSTEAD of a bare retry — this
+// endpoint does not dedupe, so the copy must never say retrying is safe.
+
+describe('FacturaForm — ambiguous outcome points at the list, not a bare retry (C-42 review fix, finding 2)', () => {
+  it('on a network error (no response), tells the user to check the list before retrying — and does NOT claim it is safe to retry', async () => {
+    server.use(http.post('/api/facturas', () => HttpResponse.error()))
+    render(
+      <FacturaForm
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+        initialSelectedProveedor={mockProveedor}
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    const fechaInput = document.getElementById('fecha_emision') as HTMLInputElement
+    fireEvent.change(fechaInput, { target: { value: '2026-05-01' } })
+    const montoInput = screen.getByLabelText(/monto/i)
+    fireEvent.change(montoInput, { target: { value: '1500' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /guardar/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toBeInTheDocument()
+    })
+    const bannerText = screen.getByRole('status').textContent ?? ''
+    expect(bannerText).toMatch(/no pudimos confirmar/i)
+    expect(bannerText).not.toMatch(/es seguro|no se va a duplicar/i)
+
+    // Points at the invoices list before retrying.
+    expect(screen.getByRole('link', { name: /listado de facturas/i })).toBeInTheDocument()
+
+    // The generic backend-rejection alert must NOT also be showing — the
+    // two states are mutually exclusive.
+    expect(screen.queryByText(/error al crear la factura/i)).not.toBeInTheDocument()
+  })
+
+  it('a real 422 rejection still shows the ordinary backend error, unchanged (triangulation)', async () => {
+    server.use(
+      http.post('/api/facturas', () =>
+        HttpResponse.json(
+          { detail: [{ loc: ['body', 'monto_total'], msg: 'must be greater than 0', type: 'value_error' }] },
+          { status: 422 },
+        ),
+      ),
+    )
+    render(
+      <FacturaForm
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+        initialSelectedProveedor={mockProveedor}
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    const fechaInput = document.getElementById('fecha_emision') as HTMLInputElement
+    fireEvent.change(fechaInput, { target: { value: '2026-05-01' } })
+    const montoInput = screen.getByLabelText(/monto/i)
+    fireEvent.change(montoInput, { target: { value: '1500' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /guardar/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /listado de facturas/i })).not.toBeInTheDocument()
+  })
+})

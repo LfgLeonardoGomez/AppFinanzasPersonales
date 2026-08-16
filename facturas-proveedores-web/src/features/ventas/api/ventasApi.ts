@@ -34,6 +34,11 @@
  *     the same payload reuses it (design.md D7). A 409 still throws (the
  *     caller must see it) — only the local pending-key bookkeeping is
  *     cleared.
+ *   - Confirmation always passes `idempotencyKey` back to
+ *     `confirmIdempotencyKey` (review fix, finding 1): confirmation is
+ *     identity-aware, so a slow request's confirm can never wipe a
+ *     DIFFERENT, newer attempt that already overwrote the shared
+ *     'venta-create' slot while this one was still in flight.
  *   - The resolved `replay` flag comes from `classifySuccess` (real
  *     status + real `Idempotent-Replay` header), not from guessing at the
  *     body — the body is identical between a creation and a replay.
@@ -95,7 +100,11 @@ export async function createVenta(data: VentaCreate): Promise<CreateVentaResult>
     const res = await apiClient.post<Venta>('/ventas', data, {
       headers: { 'Idempotency-Key': idempotencyKey },
     })
-    confirmIdempotencyKey(VENTA_IDEMPOTENCY_NAMESPACE)
+    // Identity-aware (review fix, finding 1): confirms ONLY if the slot
+    // still holds `idempotencyKey` — a slow response landing after a
+    // different, newer sale already overwrote the shared slot must NOT
+    // wipe that newer attempt's bookkeeping.
+    confirmIdempotencyKey(VENTA_IDEMPOTENCY_NAMESPACE, idempotencyKey)
     const outcome = classifySuccess(res)
     return { venta: res.data, replay: outcome.kind === 'alreadyRecorded' }
   } catch (err) {
@@ -104,7 +113,7 @@ export async function createVenta(data: VentaCreate): Promise<CreateVentaResult>
     // Everything else (422, network error, 5xx) keeps the key so a retry
     // of the same payload reuses it.
     if (isAxiosError(err) && err.response?.status === 409) {
-      confirmIdempotencyKey(VENTA_IDEMPOTENCY_NAMESPACE)
+      confirmIdempotencyKey(VENTA_IDEMPOTENCY_NAMESPACE, idempotencyKey)
     }
     throw err
   }

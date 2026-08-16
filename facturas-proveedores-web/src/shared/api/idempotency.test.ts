@@ -87,9 +87,63 @@ describe('confirmIdempotencyKey — discard on confirmation (task 7.4)', () => {
   it('a payload requested again after confirmation gets a different key', () => {
     const payload = { monto: '250.00', fecha: '2026-08-11' }
     const first = getIdempotencyKey('ns-7.4', payload)
-    confirmIdempotencyKey('ns-7.4')
+    confirmIdempotencyKey('ns-7.4', first)
     const second = getIdempotencyKey('ns-7.4', { ...payload })
     expect(second).not.toBe(first)
+  })
+})
+
+// ── Review fix (finding 1, CRITICAL) — identity-aware confirmation ─────────
+//
+// `confirmIdempotencyKey` used to take only a `namespace` and clear
+// whatever attempt was currently in the slot, unconditionally. Per
+// namespace there is exactly ONE pending-attempt slot (module doc,
+// lines 13-19) — so a cross-submission race wipes a still-pending key:
+//
+//   1. Sale A submitted -> keyA minted, slot = {keyA, payloadA}. Hangs.
+//   2. A DIFFERENT sale B is submitted before A resolves -> payload
+//      mismatch -> keyB minted, slot overwritten to {keyB, payloadB}.
+//   3. A's slow request finally resolves and confirms with keyA -> the
+//      old code deleted the slot unconditionally, wiping B's still-
+//      pending bookkeeping even though B has nothing to do with keyA.
+//   4. B's own attempt comes back ambiguous (timeout/5xx) -> the retry
+//      can no longer find a pending entry for payloadB -> it mints a
+//      NEW key instead of reusing keyB -> the "safe to retry" banner is
+//      now a lie: if B's first attempt actually committed server-side,
+//      the retry creates a duplicate sale (a double charge for a fiado).
+//
+// Fix: `confirmIdempotencyKey(namespace, key)` only clears the slot when
+// it still holds THAT key — a stale confirmation from a superseded
+// attempt becomes a safe no-op instead of clobbering a newer attempt.
+
+describe('confirmIdempotencyKey — identity-aware confirmation (review fix, finding 1)', () => {
+  it('does NOT clear a newer pending attempt when a stale (superseded) key confirms — reproduces the cross-submission race', () => {
+    // 1. Sale A is submitted; its key is minted and becomes the pending slot.
+    const payloadA = { monto: '100.00', fecha: '2026-08-10', forma_pago: 'EFECTIVO' }
+    const keyA = getIdempotencyKey('ns-race', payloadA)
+
+    // 2. Before A resolves, a DIFFERENT sale B is submitted — the payload
+    // mismatch mints a new key and overwrites the shared slot.
+    const payloadB = { monto: '200.00', fecha: '2026-08-10', forma_pago: 'EFECTIVO' }
+    const keyB = getIdempotencyKey('ns-race', payloadB)
+    expect(keyB).not.toBe(keyA)
+
+    // 3. A's slow request finally resolves and confirms with ITS OWN
+    // (now stale/superseded) key. This must be a no-op for B's slot.
+    confirmIdempotencyKey('ns-race', keyA)
+
+    // 4/5. B's bookkeeping must have survived: requesting B's payload
+    // again (the retry) must reuse keyB, NOT mint a fresh key.
+    const keyBRetry = getIdempotencyKey('ns-race', payloadB)
+    expect(keyBRetry).toBe(keyB)
+  })
+
+  it('DOES clear the slot when confirming with the key that is actually pending (triangulation — confirmation still works for the honest case)', () => {
+    const payload = { monto: '300.00', fecha: '2026-08-10', forma_pago: 'TRANSFERENCIA' }
+    const key = getIdempotencyKey('ns-race-2', payload)
+    confirmIdempotencyKey('ns-race-2', key)
+    const next = getIdempotencyKey('ns-race-2', { ...payload })
+    expect(next).not.toBe(key)
   })
 })
 

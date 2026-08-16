@@ -282,6 +282,61 @@ describe('createVenta — Idempotency-Key (C-42)', () => {
     expect(result.replay).toBe(true)
     expect(result.venta.id).toBe(mockVentaFiada.id)
   })
+
+  // ── Review fix (finding 1, CRITICAL) — cross-submission race through the
+  // real createVenta call sites, not just idempotency.ts in isolation. ──────
+  it('a slow sale A resolving AFTER a different sale B overwrote the slot does not stop B from reusing its own key on retry', async () => {
+    let releaseA: (() => void) | undefined
+    const capturedKeys: { a?: string | null; bFirst?: string | null; bRetry?: string | null } = {}
+
+    server.use(
+      http.post('/api/ventas', async ({ request }) => {
+        const key = request.headers.get('Idempotency-Key')
+        // Sale A's request: identified by its own distinctive amount,
+        // hangs until the test explicitly releases it — simulating the
+        // "request hangs" step of the race (finding 1, step 1).
+        const body = (await request.json()) as Record<string, unknown>
+        if (body.monto === '900.00') {
+          capturedKeys.a = key
+          await new Promise<void>((resolve) => {
+            releaseA = () => resolve()
+          })
+          return HttpResponse.json(mockVentaFiada, { status: 201 })
+        }
+        // Sale B's own first attempt: comes back ambiguous (network error)
+        // so the form would offer a retry (finding 1, step 4).
+        capturedKeys.bFirst = key
+        return HttpResponse.error()
+      }),
+    )
+
+    // Step 1 — Sale A submitted, request hangs (does not await yet).
+    const payloadA = { monto: '900.00', fecha: '2026-08-10', forma_pago: 'EFECTIVO' as const }
+    const promiseA = createVenta(payloadA)
+
+    // Step 2 — a DIFFERENT sale B submitted before A resolves; its own
+    // attempt comes back ambiguous.
+    const payloadB = { monto: '901.00', fecha: '2026-08-10', forma_pago: 'EFECTIVO' as const }
+    await expect(createVenta(payloadB)).rejects.toBeTruthy()
+
+    // Step 3 — release A now; it resolves 201 and confirms with ITS OWN
+    // key, which by now is stale (B's slot has already superseded it).
+    releaseA?.()
+    await promiseA
+
+    // Step 5 — B's retry (same payload) must reuse its OWN key, not mint a
+    // fresh one — proving A's stale confirm did not wipe B's bookkeeping.
+    server.use(
+      http.post('/api/ventas', ({ request }) => {
+        capturedKeys.bRetry = request.headers.get('Idempotency-Key')
+        return HttpResponse.json(mockVentaFiada, { status: 201 })
+      }),
+    )
+    await createVenta(payloadB)
+
+    expect(capturedKeys.bRetry).toBe(capturedKeys.bFirst)
+    expect(capturedKeys.bRetry).not.toBe(capturedKeys.a)
+  })
 })
 
 // ── deleteVenta (task 5.4) ────────────────────────────────────────────────────

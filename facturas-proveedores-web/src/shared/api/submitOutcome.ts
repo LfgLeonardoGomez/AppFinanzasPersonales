@@ -11,10 +11,15 @@
  * to unit test and to reuse for pagos/facturas/cobros (C-43) without
  * dragging this module's dependents along.
  *
- * A 5xx classifies as `unknown`, deliberately NOT `rejected`: a 502/504
- * from a proxy can arrive AFTER the app already committed, and treating
- * that as "nothing was saved" invites the exact duplicate this change
- * exists to prevent.
+ * ANY 5xx (`status >= 500`) classifies as `unknown`, deliberately NOT
+ * `rejected`: a 502/504 from a proxy can arrive AFTER the app already
+ * committed, and treating that as "nothing was saved" invites the exact
+ * duplicate this change exists to prevent. This is a range check, not an
+ * enumeration of the codes we happened to think of first — a WAF or
+ * reverse proxy can legitimately emit 501, 505, 507, 511, etc., and every
+ * one of them carries the exact same "we don't know what happened
+ * server-side" uncertainty as 500/502/503/504. Only 4xx (a real answer
+ * from the application) counts as `rejected`.
  */
 
 export type SubmitOutcome =
@@ -35,7 +40,7 @@ interface ErrorLike {
   }
 }
 
-const UNKNOWN_STATUSES = new Set([500, 502, 503, 504])
+const UNKNOWN_STATUS_FLOOR = 500
 
 /** Case-insensitive header lookup — Axios normalizes to lowercase, but this
  * module takes only a duck-typed shape, so it does not assume that. */
@@ -68,7 +73,7 @@ export function classifySuccess(response: ResponseLike): SubmitOutcome {
  */
 export function classifyError(error: ErrorLike): SubmitOutcome {
   const status = error.response?.status
-  if (status === undefined || UNKNOWN_STATUSES.has(status)) {
+  if (status === undefined || status >= UNKNOWN_STATUS_FLOOR) {
     return { kind: 'unknown' }
   }
   return { kind: 'rejected', detail: error.response?.data?.detail }

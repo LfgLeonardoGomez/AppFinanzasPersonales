@@ -416,6 +416,28 @@ describe('VentaForm — an unconfirmed ("desconocida") outcome (C-42, task 9.5)'
     // The primary action relabels to make the retry explicit.
     expect(screen.getByRole('button', { name: /reintentar/i })).toBeInTheDocument()
   })
+
+  // Review fix (finding 1, CRITICAL) — the old copy claimed unconditionally
+  // that retrying "no se va a duplicar" ("will not duplicate"). Even with
+  // the identity-aware confirm fix, the client-side pending-key bookkeeping
+  // can still be lost (sessionStorage unavailable AND the tab is closed or
+  // reloaded before the retry) — a state the module's own docstring already
+  // documents (idempotency.ts: "degrades silently to memory-only"). The
+  // banner must not promise something it cannot guarantee in every state.
+  it('hedges the "safe to retry" claim instead of promising it unconditionally (review fix)', async () => {
+    server.use(http.post('/api/ventas', () => HttpResponse.error()))
+    render(<VentaForm onSuccess={vi.fn()} onCancel={vi.fn()} />, { wrapper: createWrapper() })
+    await fillRequiredFields()
+    fireEvent.click(screen.getByRole('button', { name: /guardar/i }))
+
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument())
+    const bannerText = screen.getByRole('status').textContent ?? ''
+    // The claim must be conditioned on not having closed/reloaded the page
+    // — the one state where the client-side bookkeeping can genuinely be
+    // lost — not asserted as an absolute guarantee.
+    expect(bannerText).toMatch(/cerr|recarg/i)
+    expect(bannerText).not.toMatch(/no se va a duplicar/i)
+  })
 })
 
 describe('VentaForm — retrying sends the same Idempotency-Key (C-42, task 9.6)', () => {

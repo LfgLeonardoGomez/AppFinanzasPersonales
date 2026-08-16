@@ -17,11 +17,22 @@
  *   - `getIdempotencyKey(namespace, payload)` reuses the pending key when
  *     `payload` matches what was minted for; otherwise it mints a new key
  *     and replaces the pending attempt.
- *   - `confirmIdempotencyKey(namespace)` discards the pending attempt. The
- *     caller decides WHEN a result counts as confirmed — design.md D7:
- *     created, already-recorded, or rejected-with-conflict (409). Never on
- *     an unknown outcome (timeout / network / 5xx): the retry must keep
- *     reusing the same key, or the whole mechanism is a header nobody uses.
+ *   - `confirmIdempotencyKey(namespace, key)` discards the pending attempt
+ *     — but ONLY if the slot still holds THAT key. The caller decides WHEN
+ *     a result counts as confirmed — design.md D7: created, already-
+ *     recorded, or rejected-with-conflict (409). Never on an unknown
+ *     outcome (timeout / network / 5xx): the retry must keep reusing the
+ *     same key, or the whole mechanism is a header nobody uses.
+ *
+ *     Identity-aware by design (review fix, C-42 finding 1, CRITICAL): a
+ *     slow request's `.then` can resolve AFTER a second, different submit
+ *     already overwrote the shared per-namespace slot with a newer
+ *     attempt. An unconditional confirm would wipe that newer attempt's
+ *     still-pending bookkeeping — the exact bug this signature prevents.
+ *     A stale confirmation (its key no longer matches what's pending) is
+ *     simply a no-op; only a confirmation that matches the current slot
+ *     clears it. This makes `getIdempotencyKey`'s return value load-
+ *     bearing for every caller, not just informational.
  *
  * Storage: mirrored to `sessionStorage` so a killed tab / reload between
  * the failed attempt and the retry does not reopen the duplicate-charge
@@ -130,9 +141,13 @@ function writeToStorage(namespace: string, attempt: PendingAttempt | null): void
  * for `namespace` when `payload` matches what it was minted for; otherwise
  * mints a fresh key and replaces the pending attempt.
  */
+function getPending(namespace: string): PendingAttempt | null {
+  return memoryState.get(namespace) ?? readFromStorage(namespace)
+}
+
 export function getIdempotencyKey(namespace: string, payload: unknown): string {
   const payloadJson = stableStringify(payload)
-  const pending = memoryState.get(namespace) ?? readFromStorage(namespace)
+  const pending = getPending(namespace)
 
   if (pending && pending.payloadJson === payloadJson) {
     memoryState.set(namespace, pending)
@@ -146,11 +161,22 @@ export function getIdempotencyKey(namespace: string, payload: unknown): string {
 }
 
 /**
- * Discard the pending attempt for `namespace`. Call this once the outcome
- * is confirmed — created, already recorded, or rejected with a 409
- * conflict — never on an unknown outcome (design.md D7).
+ * Discard the pending attempt for `namespace` — but only if it still holds
+ * `key`. Call this once the outcome is confirmed — created, already
+ * recorded, or rejected with a 409 conflict — never on an unknown outcome
+ * (design.md D7).
+ *
+ * `key` MUST be the value `getIdempotencyKey` returned for the request
+ * being confirmed (review fix, finding 1). A confirmation whose key no
+ * longer matches the current pending attempt is stale — a newer submit
+ * for this namespace already superseded it — and is a safe no-op instead
+ * of wiping that newer attempt's bookkeeping.
  */
-export function confirmIdempotencyKey(namespace: string): void {
+export function confirmIdempotencyKey(namespace: string, key: string): void {
+  const pending = getPending(namespace)
+  if (!pending || pending.key !== key) {
+    return
+  }
   memoryState.delete(namespace)
   writeToStorage(namespace, null)
 }
