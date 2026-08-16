@@ -872,13 +872,13 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 > A diferencia de C-40/C-41, esta no es una molestia de tooling: termina en la deuda duplicada de un cliente real. El alcance **sí** es conocido y está diseñado.
 
 ### [C-42] `idempotencia-registro-venta`
-- **Estado**: `[ ]`
+- **Estado**: `[x]` archivado 2026-08-16
 - **Por qué**: `POST /api/ventas` no puede reconocer que dos requests son el mismo intento. Se apilan cuatro hechos medidos sobre el código archivado: `createVenta` postea sin clave de idempotencia (`ventasApi.ts:58`); las mutaciones corren con `retry: 0` (`main.tsx:35-37`), lo cual es correcto pero deja a la app sin forma de distinguir "no llegó" de "llegó y se perdió la respuesta"; la instancia de Axios **no tiene `timeout`** (`client.ts:82-88`), así que sobre datos móviles una request puede colgarse indefinidamente; y ante el error el formulario muestra un mensaje genérico con el botón rehabilitado y los datos intactos (`VentaForm.tsx:245-253`), de modo que la única jugada visible es volver a apretar "Guardar". El resultado es una segunda fila en `venta` — y si la venta era fiada, esa fila **es** el cargo en la cuenta corriente (D-33): al cliente se le cobra dos veces. Borrar el duplicado después no lo arregla: quita el cargo y deja los cobros imputados, dejando el saldo negativo (D-58).
 - **Scope**:
   - Backend: header opcional `Idempotency-Key` en `POST /api/ventas`; columna `venta.idempotency_key` + índice único parcial `(negocio_id, idempotency_key)`; migración **0012** (reservada por adelantado, D-46). La desduplicación la garantiza la base, no un `SELECT` previo.
   - Repetición con los mismos datos → **la venta original** con `200` y header `Idempotent-Replay: true`. Misma clave con datos distintos → **409** con la venta existente en el `detail` (forma de `cliente_existente`, D-45). La clave **no vence**.
   - Nuevo `app/services/idempotencia.py`: reconocer **cuál** índice único fue violado. Es la trampa que hoy tiene `cliente_service` (captura un `IntegrityError` pelado).
-  - Frontend: la clave se acuña por intento y **se reutiliza en el reintento del mismo payload** — sin eso el header es decorativo. `timeout` global de 20s con override de 120s en las llamadas de IA (que hoy corren sin techo sobre la misma instancia). Clasificación del resultado en creada / ya registrada / rechazada / **desconocida**, con el estado desconocido diciendo que reintentar es seguro.
+  - Frontend: la clave se acuña por intento y **se reutiliza en el reintento del mismo payload** — sin eso el header es decorativo. `timeout` global de 20s con override de 120s en las llamadas de IA (que hoy corren sin techo sobre la misma instancia). Clasificación del resultado en creada / ya registrada / rechazada / **desconocida**, con el estado desconocido diciendo que reintentar **debería** ser seguro, salvo que la página se haya cerrado o recargado mientras tanto (la bitácora de la clave vive solo en ese contexto). Confirmación de clave identity-aware: `confirmIdempotencyKey` solo limpia el slot si todavía contiene esa clave, para que un intento lento no borre la bitácora de un intento posterior distinto (hallazgo CRITICAL de la revisión adversarial); navegación principal deshabilitada mientras una venta está en curso.
   - Tests: reintento no duplica el fiado, dos requests concurrentes con la misma clave dejan una sola venta, misma clave en dos negocios no cruza datos, la clave de una venta borrada no se recicla, y el guard de que `createVenta` siempre manda la clave.
 - **Riesgo**: el `timeout` global protege a todos y la idempotencia solo a ventas, así que un timeout en `/api/pagos` pasa a ser un error explícito que invita a reintentar sobre un endpoint que no desduplica. Por eso C-43 va inmediatamente después.
 - **Dependencias**: `C-34` (archivado)
@@ -890,11 +890,12 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 
 ### [C-43] `idempotencia-resto-de-escrituras`
 - **Estado**: `[ ]`
-- **Por qué**: `POST /api/pagos`, `/api/facturas` y `/api/cobros` tienen exactamente la misma exposición que C-42 arregla en ventas. Un pago duplicado infla lo pagado a un proveedor y, vía FIFO, marca como `PAGADA` una factura que no lo está; un cobro duplicado acredita de más y puede empujar el saldo del cliente a negativo (D-58). C-42 deja el mecanismo listo y **no** los cubre, así que hasta que este change entre siguen expuestos.
+- **Por qué**: `POST /api/pagos`, `/api/facturas` y `/api/cobros` tienen exactamente la misma exposición que C-42 arregla en ventas — y la revisión adversarial de C-42 confirmó que ahora están **más** expuestos, no menos: el `timeout` global de 20s que C-42 sumó al cliente Axios compartido convierte los fallos ambiguos de estos tres endpoints en un error explícito, que invita a reintentar sobre endpoints que todavía no desduplican nada. Un pago duplicado infla lo pagado a un proveedor y, vía FIFO, marca como `PAGADA` una factura que no lo está; un cobro duplicado acredita de más y puede empujar el saldo del cliente a negativo (D-58). C-42 deja el mecanismo listo y **no** los cubre, así que hasta que este change entre siguen expuestos.
 - **Scope**:
   - Repetir la receta de C-42 (columna + índice único parcial + rama en el service) sobre `pago`, `factura` y `cobro_cliente`, con su migración.
   - Arreglar el `except IntegrityError` pelado de `cliente_service.crear` usando `app/services/idempotencia.py`: hoy funciona porque `cliente` tiene un solo índice único, y deja de funcionar en cuanto tenga dos.
-  - Frontend: la clave en `pagosApi`, `facturasApi` y el de cobros; hasta entonces, el copy del estado desconocido en esos formularios dice "revisá el listado antes de volver a intentar" y **no** ofrece el reintento como acción principal.
+  - Frontend: la clave de idempotencia en `pagosApi` y `facturasApi` (dedup real, todavía pendiente) y en el de cobros cuando exista ese formulario — **hoy no existe** (D-34: el cobro de cuenta corriente aún no tiene UI propia).
+  - **Ya shippeado como mitigación interina** (commit `eb9e980`, parte de la revisión de C-42, no de este change): `PagoForm` y `FacturaForm` clasifican el resultado desconocido igual que `VentaForm`, pero su copy dice explícitamente que hay que revisar el listado antes de reintentar y **no** ofrece el reintento como acción principal ni afirma que sea seguro — porque sin clave de idempotencia todavía no lo es.
 - **Dependencias**: `C-42`
 - **Governance**: ALTO
 - **Leer antes**: `openspec/specs/escritura-idempotente/spec.md` (el contrato que C-42 deja escrito)
@@ -947,10 +948,10 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | **C-39** | **exportacion-pdf-xls** | MEDIO | C-36 |
 | C-40 | dev-setup-lint-guard | BAJO | — (deuda detectada en C-30, archivado 2026-08-15) |
 | **C-41** | **api-types-generated** | MEDIO | — (deuda detectada en C-30) |
-| **C-42** | **idempotencia-registro-venta** | ALTO | C-34 (deuda detectada revisando C-34) |
+| C-42 | idempotencia-registro-venta | ALTO | C-34 (deuda detectada revisando C-34, archivado 2026-08-16) |
 | **C-43** | **idempotencia-resto-de-escrituras** | ALTO | C-42 |
 
-**Total: 44 entradas (C-01…C-43 + C-15a) · 13 fases · 37 archivadas, 7 pendientes**
+**Total: 44 entradas (C-01…C-43 + C-15a) · 13 fases · 38 archivadas, 6 pendientes**
 
 **Estado del MVP**: completo y archivado desde C-13 (2026-06-27). C-14/C-15 cerraron la IA de visión. C-15a…C-27 fueron housekeeping, fixes y cierre de deudas; el rediseño de UX/UI se entregó fuera de la numeración (ver nota al final de la sección de housekeeping).
 

@@ -36,7 +36,7 @@ The sales form SHALL present a distinct outcome for a created sale, a deduplicat
 
 Today a lost response, a stalled connection and a validation failure all render the same message with the button re-enabled and the typed data intact, so the only visible move is to press "Guardar" again. That is exactly the sequence that creates the duplicate charge.
 
-When the outcome is unknown the form SHALL say that it could not confirm whether the sale was recorded, SHALL offer retrying as the primary action while stating that retrying is safe, and SHALL keep every entered value. After repeated unconfirmed attempts it SHALL also offer going to the sales list, which is the only way the person can check with their own eyes.
+When the outcome is unknown the form SHALL say that it could not confirm whether the sale was recorded, SHALL offer retrying as the primary action while stating that retrying **should** be safe, and SHALL keep every entered value. That statement SHALL NOT be unconditional: it SHALL name the one case it does not cover — the page having been closed or reloaded between the attempt and the retry, which genuinely loses the client-side key bookkeeping this promise depends on. After repeated unconfirmed attempts it SHALL also offer going to the sales list, which is the only way the person can check with their own eyes.
 
 When the response is a deduplicated replay the form SHALL report success, stating that the sale was **already** recorded, and SHALL NOT show an error for a sale that exists.
 
@@ -47,8 +47,13 @@ When the response is a deduplicated replay the form SHALL report success, statin
 
 #### Scenario: an unconfirmed outcome is named, not disguised as an error
 
+- **WHEN** the submission times out or fails with a network error, and the page stayed open
+- **THEN** the form states that it could not confirm whether the sale was saved, says that retrying should be safe, and keeps the amount, date, payment method and customer as entered
+
+#### Scenario: the safe-retry promise does not cover a closed or reloaded page
+
 - **WHEN** the submission times out or fails with a network error
-- **THEN** the form states that it could not confirm whether the sale was saved, says that retrying is safe, and keeps the amount, date, payment method and customer as entered
+- **THEN** the message names the one case the safe-retry guarantee does not cover — the page having been closed or reloaded in the meantime, since the pending key lived only in that context
 
 #### Scenario: a validation rejection still shows the backend's message
 

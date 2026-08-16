@@ -168,7 +168,7 @@ Hoy los cuatro se ven igual —un mensaje genérico de error con el botón habil
 
 Una respuesta `5xx` SHALL clasificarse como **desconocido**, no como rechazo: un `502` o un `504` de un proxy puede llegar después de que la aplicación commiteó, y tratarlo como "no se guardó" invita al mismo duplicado por otro camino.
 
-Ante un resultado **desconocido** el cliente SHALL decir que no se pudo confirmar si la operación se guardó, SHALL ofrecer el reintento como acción principal indicando que es seguro, y SHALL conservar todo lo cargado en el formulario. Ante **ya registrado** SHALL informar éxito señalando que la operación ya estaba registrada, y SHALL NOT mostrar un error.
+Ante un resultado **desconocido** el cliente SHALL decir que no se pudo confirmar si la operación se guardó, SHALL ofrecer el reintento como acción principal indicando que **debería** ser seguro, y SHALL conservar todo lo cargado en el formulario. Esa promesa SHALL NOT ser incondicional: SHALL excluir explícitamente el caso en que la página se cerró o recargó entre el intento y el reintento, porque ahí la bitácora de la clave del lado del cliente se pierde de verdad y el reintento ya no está garantizado. Ante **ya registrado** SHALL informar éxito señalando que la operación ya estaba registrada, y SHALL NOT mostrar un error.
 
 #### Scenario: una creación confirmada
 
@@ -187,8 +187,13 @@ Ante un resultado **desconocido** el cliente SHALL decir que no se pudo confirma
 
 #### Scenario: un timeout no se presenta como fallo
 
+- **WHEN** la request se corta por `timeout` o por error de red, y la página siguió abierta
+- **THEN** se informa que no se pudo confirmar si se guardó, se aclara que volver a intentar debería ser seguro, y el reintento queda como acción principal
+
+#### Scenario: la promesa de reintento seguro no cubre una página cerrada o recargada
+
 - **WHEN** la request se corta por `timeout` o por error de red
-- **THEN** se informa que no se pudo confirmar si se guardó, se aclara que volver a intentar es seguro, y el reintento queda como acción principal
+- **THEN** el mensaje aclara que la garantía de reintento seguro no aplica si la página se cerró o recargó mientras tanto, porque la clave pendiente vivía solo en ese contexto
 
 #### Scenario: un 502 se trata como desconocido
 
