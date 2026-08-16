@@ -23,7 +23,7 @@ the window between them is exactly what a double-tap on "Guardar" finds.
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Any, Optional, Sequence
+from typing import Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
@@ -124,14 +124,17 @@ class VentaCreada:
     one (design.md D3/D4). The router uses `es_repeticion` to decide between
     `201` and `200` + `Idempotent-Replay: true` — that decision does not
     belong in the service, but the service is the only place that knows it.
+
+    Deliberately NOT a transparent proxy to `venta`: every call site reads
+    `.venta` and `.es_repeticion` explicitly, and a bare `resultado.<campo>`
+    is always a mistake (a typo, or code that forgot the `.venta` step) that
+    should raise `AttributeError` immediately instead of silently resolving
+    against the wrapped row.
     """
 
     def __init__(self, venta: Venta, es_repeticion: bool) -> None:
         self.venta = venta
         self.es_repeticion = es_repeticion
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.venta, name)
 
 
 class VentaService:

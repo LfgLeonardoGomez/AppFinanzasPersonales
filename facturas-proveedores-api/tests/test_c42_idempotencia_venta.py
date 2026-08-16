@@ -13,8 +13,10 @@ Three layers, matching tasks.md groups 2/4/5:
   including the one genuine concurrency test in this change: two OS threads,
   two DB sessions, two Postgres transactions (4.11).
 - `TestEndpoint`     — the same behaviors through the HTTP surface, plus what
-  only the router owns: the header, the status code, CORS-adjacent wiring is
-  covered separately in test_main_cors.py-style assertions here (group 5).
+  only the router owns: the header, the status code, and a real CORS
+  preflight against `/api/ventas` confirming `Idempotency-Key` survives a
+  browser's actual OPTIONS request, not just the CORSMiddleware constructor
+  call (group 5, `TestCorsHeaders`).
 """
 
 import threading
@@ -171,6 +173,35 @@ class TestModelo:
         columnas = {c["name"] for c in inspect(engine).get_columns("venta")}
         assert "saldo" not in columnas
         assert "estado" not in columnas
+
+
+# ── VentaCreada — el wrapper no delega atributos desconocidos ──────────────────
+
+
+class TestVentaCreadaNoEsProxy:
+    def test_un_atributo_inexistente_explota_en_vez_de_delegar_a_la_venta(self, session):
+        """
+        VentaCreada expone `.venta` y `.es_repeticion` explícitamente — todo
+        el código real (router, este mismo archivo) llama a esos dos
+        nombres, nunca a un atributo suelto de la venta a través del
+        wrapper. Sin `__getattr__`, pedir cualquier otro nombre (incluido un
+        typo como `vneta`) tiene que fallar fuerte con AttributeError, no
+        resolver en silencio contra `self.venta`.
+        """
+        negocio = crear_negocio(session)
+        session.commit()
+
+        svc = VentaService(session)
+        resultado = svc.crear(
+            negocio.id, monto=Decimal("500.00"), fecha=_HOY, forma_pago=FormaPago.EFECTIVO
+        )
+        session.commit()
+
+        with pytest.raises(AttributeError):
+            resultado.vneta  # typo deliberado — no debe resolver contra self.venta
+
+        with pytest.raises(AttributeError):
+            resultado.monto  # ni siquiera un nombre real de columna de Venta
 
 
 # ── 4.x — VentaService ───────────────────────────────────────────────────────────
@@ -617,6 +648,9 @@ class TestCarreraReal:
         resultados: dict[str, dict] = {}
         errores: dict[str, Exception] = {}
         listo_para_b = threading.Event()
+        pids: dict[str, int] = {}
+        bloqueo_detectado = threading.Event()
+        detener_watcher = threading.Event()
 
         def hilo_a():
             session_a = Session(engine)
@@ -652,10 +686,22 @@ class TestCarreraReal:
             assert listo_para_b.wait(timeout=10), "A nunca insertó"
             session_b = Session(engine)
             try:
+                # Fija la conexión física de esta transacción y expone su PID
+                # de backend ANTES del INSERT real, para que hilo_watcher
+                # pueda vigilar exactamente esta conexión en pg_stat_activity.
+                # SQLAlchemy mantiene la misma conexión/transacción para todos
+                # los statements siguientes hasta el próximo commit/rollback,
+                # así que el INSERT de más abajo corre sobre este mismo PID.
+                pids["b"] = session_b.execute(
+                    text("SELECT pg_backend_pid()")
+                ).scalar()
+
                 svc_b = VentaService(session_b)
                 # Este INSERT choca contra la fila sin commitear de A: Postgres
                 # lo bloquea hasta que la transacción de A termine (commit o
-                # rollback). El bloqueo es real, no simulado.
+                # rollback). El bloqueo es real, no simulado — y hilo_watcher
+                # lo confirma consultando el estado real del backend en vez de
+                # asumirlo por un umbral de tiempo.
                 resultado = svc_b.crear(
                     negocio_id,
                     monto=Decimal("500.00"),
@@ -673,12 +719,66 @@ class TestCarreraReal:
             finally:
                 session_b.close()
 
+        def hilo_watcher():
+            """
+            Prueba autoverificadora del finding 2 del review adversarial:
+            en vez de confiar en que `time.sleep(1.0)` alcanza para que B
+            llegue a bloquearse (una carrera perdible en un runner cargado,
+            que dejaría este test pasando en silencio sobre una ejecución
+            secuencial y no sobre contención real), este hilo consulta
+            `pg_stat_activity` — la fuente de verdad del propio Postgres, no
+            un umbral de wall-clock — para el PID exacto del backend de B, y
+            solo da el test por bueno si en algún momento observó ese backend
+            realmente esperando un lock (`wait_event_type = 'Lock'`).
+
+            Si el runner está tan cargado que B llega tarde y A ya commiteó
+            para cuando B intenta insertar, nunca se observa el lock: la
+            aserción final de este test falla fuerte en lugar de dejar pasar
+            una "carrera" que en los hechos corrió en secuencia.
+
+            El polling es rápido (10ms) contra una ventana de contención de
+            ~1s controlada por hilo_a, así que la probabilidad de un
+            falso negativo por muestreo (bloqueo real que ocurre pero nunca
+            se observa) es despreciable frente a la de un verdadero degrade
+            del entorno — que es exactamente lo que este test debe reportar.
+            """
+            assert listo_para_b.wait(timeout=10), "A nunca insertó"
+            deadline = time.monotonic() + 15
+            session_w = Session(engine)
+            try:
+                while time.monotonic() < deadline and not detener_watcher.is_set():
+                    pid = pids.get("b")
+                    if pid is not None:
+                        fila = session_w.execute(
+                            text(
+                                "SELECT wait_event_type FROM pg_stat_activity "
+                                "WHERE pid = :pid"
+                            ),
+                            {"pid": pid},
+                        ).first()
+                        # Lectura de solo consulta contra una vista de
+                        # sistema — se cierra la transacción implícita en
+                        # cada vuelta para no dejar nada abierto de más.
+                        session_w.rollback()
+                        if fila is not None and fila[0] == "Lock":
+                            bloqueo_detectado.set()
+                            return
+                    time.sleep(0.01)
+            except Exception as exc:  # pragma: no cover
+                errores["watcher"] = exc
+            finally:
+                session_w.close()
+
         t_a = threading.Thread(target=hilo_a)
         t_b = threading.Thread(target=hilo_b)
+        t_w = threading.Thread(target=hilo_watcher)
         t_a.start()
         t_b.start()
+        t_w.start()
         t_a.join(timeout=20)
         t_b.join(timeout=20)
+        detener_watcher.set()
+        t_w.join(timeout=5)
 
         assert not errores, f"error inesperado en la carrera: {errores}"
         assert "a" in resultados and "b" in resultados, "algún hilo no terminó"
@@ -694,6 +794,21 @@ class TestCarreraReal:
                 )
             ).all()
         assert len(filas) == 1
+
+        # La aserción que hace autoverificadora a toda esta carrera: sin
+        # esto, todas las aserciones de arriba también pasarían si B
+        # hubiera llegado tarde y corrido en secuencia contra la fila ya
+        # commiteada de A — el mismo camino que ya cubre
+        # TestSesionDespuesDeLaViolacion, no la contención real de Postgres
+        # que este test existe para probar.
+        assert bloqueo_detectado.is_set(), (
+            "nunca se observó al backend de B esperando un lock en "
+            "pg_stat_activity: la 'carrera' corrió en secuencia (A ya había "
+            "commiteado cuando B insertó), probablemente porque el runner "
+            "está sobrecargado y B tardó más de lo que A esperó. Esto NO es "
+            "el escenario que el test dice cubrir — es un degrade silencioso "
+            "de C-42, y por eso este test tiene que fallar en vez de pasar."
+        )
 
 
 # ── 5.x — schema, router, CORS ────────────────────────────────────────────────
@@ -776,13 +891,51 @@ class TestEndpointReplay:
 
 
 class TestCorsHeaders:
-    def test_idempotency_key_esta_en_allow_headers(self):
-        """5.7"""
+    def test_preflight_real_devuelve_idempotency_key_en_allow_headers(self):
+        """
+        5.7 — comportamiento real, no el argumento del constructor. Un
+        preflight CORS de verdad (`OPTIONS` con `Access-Control-Request-*`)
+        contra `/api/ventas`, asertando sobre el header de RESPUESTA que un
+        navegador real vería. Inspeccionar `cors_mw.kwargs["allow_headers"]`
+        solo prueba que el argumento se pasó al constructor: no prueba que
+        Starlette lo sirva de vuelta en un preflight. Si esto se rompe, todo
+        reintento de POST /api/ventas con Idempotency-Key falla en el
+        navegador antes de llegar al backend.
+        """
         from app.main import app
-        from fastapi.middleware.cors import CORSMiddleware
 
-        cors_mw = next(
-            m for m in app.user_middleware if m.cls is CORSMiddleware
-        )
-        allow_headers = cors_mw.kwargs.get("allow_headers", [])
-        assert "Idempotency-Key" in allow_headers
+        with TestClient(app) as client:
+            respuesta = client.options(
+                "/api/ventas",
+                headers={
+                    "Origin": "http://localhost:5173",
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "Idempotency-Key",
+                },
+            )
+
+        assert respuesta.status_code == 200, respuesta.text
+        allow_headers = respuesta.headers.get("access-control-allow-headers", "")
+        assert "idempotency-key" in allow_headers.lower()
+
+    def test_preflight_rechaza_un_header_no_permitido(self):
+        """
+        Triangulación del caso anterior: el mismo mecanismo de preflight,
+        pero pidiendo un header que NO está en `allow_headers`. Si esto
+        también devolviera 200, el test de arriba no probaría nada — un
+        preflight que acepta cualquier header no distingue
+        `Idempotency-Key` de ningún otro.
+        """
+        from app.main import app
+
+        with TestClient(app) as client:
+            respuesta = client.options(
+                "/api/ventas",
+                headers={
+                    "Origin": "http://localhost:5173",
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "X-No-Deberia-Existir",
+                },
+            )
+
+        assert respuesta.status_code == 400
