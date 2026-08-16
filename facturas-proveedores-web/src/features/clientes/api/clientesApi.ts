@@ -17,6 +17,19 @@ export async function listClientes(): Promise<ClienteListItem[]> {
 }
 
 /**
+ * Single-customer read (C-36, design.md D5).
+ *
+ * ⚠️ `GET /api/clientes/{id}` always reports `saldo: null` — the backend
+ * populates it ONLY on the plain listing (a single aggregate query it does
+ * not pay for here). Callers must never read `.saldo` off this response;
+ * the balance comes from `getCuentaCorrienteCliente` instead.
+ */
+export async function getCliente(id: string): Promise<Cliente> {
+  const res = await apiClient.get<Cliente>(`/clientes/${id}`)
+  return res.data
+}
+
+/**
  * Autocomplete search (RN-CLI-02). The backend returns the exact normalized
  * match first, then partial matches — this function does NOT re-sort,
  * re-rank, or filter the response.

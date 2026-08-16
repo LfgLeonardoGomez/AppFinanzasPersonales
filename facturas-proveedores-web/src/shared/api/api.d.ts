@@ -880,3 +880,122 @@ export interface VentaDeleteInput {
   cliente_id: string | null
   forma_pago: FormaPago
 }
+
+// ---------------------------------------------------------------------------
+// Cuenta-corriente de clientes + cobros domain types (C-35 backend, C-36
+// frontend, design.md D9)
+//
+// Hand-written, matching the style of every other block in this file — NOT
+// produced by `npm run generate-types` (C-41 owns that migration).
+//
+// The number/string split below is deliberate, not an oversight:
+//   - Ledger READS (`saldo`, `VentaConEstado.monto`,
+//     `EntradaHistorialCliente.monto` / `saldo_acumulado`) are typed
+//     `number` — parsed at the API boundary exactly like
+//     `CuentaCorrienteResponse`, because the screen formats and compares
+//     those values.
+//   - The cobro WRITE (`CobroCliente.monto`, `CobroClienteCreate.monto`) is
+//     typed `string` — raw wire, exactly like `Venta.monto` — because the
+//     amount is typed by a human and sent back untouched; parsing it into a
+//     float and re-serializing it is where a cent goes missing.
+// ---------------------------------------------------------------------------
+
+/**
+ * Cobro payment method (backend: app/models/enums.py MetodoCobro).
+ *
+ * Its own enum — neither `MetodoPago` (money going OUT to suppliers, has
+ * `MERCADOPAGO`) nor `FormaPago` (has `CUENTA_CORRIENTE` — debt is not
+ * cancelled with debt).
+ */
+export type MetodoCobro = 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA' | 'OTRO'
+
+/**
+ * FIFO state of a fiado (backend: app/models/enums.py EstadoVentaFiada).
+ *
+ * Deliberately NOT `PAGADA` (the supplier-side `EstadoFactura` value) — a
+ * customer's sale reported as "paid" would read as though the shop had paid
+ * it (C-35's stated reason).
+ */
+export type EstadoVentaFiada = 'PENDIENTE' | 'PARCIAL' | 'COBRADA'
+
+/** Row type in the customer history — `VENTA` (debe) or `COBRO` (haber). */
+export type EntradaHistorialClienteTipo = 'VENTA' | 'COBRO'
+
+/**
+ * A fiado (`Venta` with `forma_pago = CUENTA_CORRIENTE`) annotated with its
+ * on-demand FIFO `estado` from the C-35 service layer (RN-FIFO). No
+ * `numero`, no `fecha_vencimiento`, no `origen` — a fiado is a `Venta`, not
+ * a `Factura`, and has none of them (design.md D3).
+ */
+export interface VentaConEstado {
+  id: string
+  negocio_id: string
+  cliente_id: string
+  fecha: string
+  monto: number
+  forma_pago: FormaPago
+  notas?: string | null
+  estado: EstadoVentaFiada
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * Single row in the customer's `historial` array. The C-35 service orders
+ * chronologically and computes `saldo_acumulado` as a running sum in the
+ * same walk — the frontend renders the array verbatim, never re-sorted
+ * (RN-HIST, mirrors `EntradaHistorial`).
+ */
+export interface EntradaHistorialCliente {
+  id: string
+  tipo: EntradaHistorialClienteTipo
+  fecha: string
+  monto: number
+  saldo_acumulado: number
+  archivo_url?: string | null
+}
+
+/**
+ * Response shape of `GET /api/clientes/{id}/cuenta-corriente` (C-35). The
+ * frontend consumes the triple verbatim — `saldo`, each fiado's `estado`,
+ * and each history row's `saldo_acumulado` are NEVER recomputed on the
+ * client (RN-SALDO, RN-FIFO, RN-HIST, design.md D1).
+ */
+export interface CuentaCorrienteClienteResponse {
+  cliente_id: string
+  saldo: number
+  ventas_con_estado: VentaConEstado[]
+  historial: EntradaHistorialCliente[]
+}
+
+/**
+ * A cobro as the app sees it (backend: app/schemas/cobro.py). `monto` is a
+ * raw Decimal-string on the wire — see the block comment above for why it
+ * is never parsed to `number` here.
+ */
+export interface CobroCliente {
+  id: string
+  negocio_id: string
+  cliente_id: string
+  monto: string
+  fecha: string
+  metodo: MetodoCobro
+  comprobante_url?: string | null
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * Payload for POST /api/cobros (create).
+ *
+ * NO `venta_id` (RN-CCC-03 — a cobro is not linked to a specific sale), NO
+ * `negocio_id`, NO `creado_por_usuario_id` — both come from the session.
+ * `extra="forbid"` on the backend schema rejects any of them.
+ */
+export interface CobroClienteCreate {
+  cliente_id: string
+  monto: string
+  fecha: string
+  metodo: MetodoCobro
+  comprobante_url?: string | null
+}

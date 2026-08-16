@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { buscarClientes, crearCliente, listClientes } from './clientesApi'
+import { buscarClientes, crearCliente, listClientes, getCliente } from './clientesApi'
 import type { Cliente, ClienteListItem } from '@shared/api/api'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -54,6 +54,11 @@ const server = setupServer(
   }),
 
   http.get('/api/clientes', () => HttpResponse.json([mockPenia, mockPena])),
+
+  http.get('/api/clientes/:id', ({ params }) => {
+    if (params.id === 'cliente-1') return HttpResponse.json(mockPenia)
+    return HttpResponse.json({ detail: 'Not Found' }, { status: 404 })
+  }),
 
   http.post('/api/clientes', async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>
@@ -127,6 +132,19 @@ describe('listClientes', () => {
     const results = await listClientes()
     expect(results).toHaveLength(2)
     expect(results.map((c) => c.id)).toEqual(['cliente-1', 'cliente-2'])
+  })
+})
+
+// ── getCliente (C-36, design.md D5 — task 6) ────────────────────────────────
+
+describe('getCliente', () => {
+  it('fetches a single customer by id', async () => {
+    const result = await getCliente('cliente-1')
+    expect(result.nombre).toBe('María Peña')
+  })
+
+  it('propagates a 404 for a customer that does not exist (triangulation)', async () => {
+    await expect(getCliente('cliente-missing')).rejects.toBeTruthy()
   })
 })
 
