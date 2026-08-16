@@ -48,7 +48,7 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 
 ## Roadmap de Changes
 
-40 entradas en 13 fases — índice completo en [`CHANGES.md`](CHANGES.md). **28 archivadas, 12 pendientes.**
+44 entradas en 13 fases — índice completo en [`CHANGES.md`](CHANGES.md). **38 archivadas, 6 pendientes.**
 
 **MVP (C-01 → C-27): COMPLETO.** El sistema es funcional en producción desde C-13 (cuenta corriente de proveedores). C-14/C-15 cerraron la IA de visión; C-15a…C-27 fueron housekeeping, fixes y cierre de deudas. El rediseño de UX/UI se entregó fuera de la numeración de changes.
 
@@ -56,9 +56,11 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 
 **Camino crítico de la etapa:** `C-28 negocio-scoping → C-32 clientes-back → C-33 ventas-back → C-34 ventas-front → C-35 cc-clientes-back → C-36 cc-clientes-front → C-39 exportación`, con `C-29/C-30/C-31` (equipo + recuperación de contraseña) y `C-37/C-38` (estadísticas) en paralelo.
 
-**Próximo change:** `C-28-negocio-scoping-backend` → `/opsx:propose C-28-negocio-scoping-backend`.
+**Próximo change:** `C-36-cuenta-corriente-clientes-frontend` → `/opsx:propose C-36-cuenta-corriente-clientes-frontend`. Sus dos dependencias (C-34 y C-35) están archivadas, así que el gate está abierto.
 
-> ⚠️ **C-28 es CRÍTICO y bloquea la etapa entera**: cambia el eje de aislamiento de todo el sistema (`usuario_id` → `negocio_id`). Requiere aprobación humana explícita antes de escribir código. **No arrancar C-32 antes de que C-28 esté archivado** — las tablas nuevas tienen que nacer con `negocio_id`.
+> ✅ **C-28 archivado el 2026-08-09**: el eje de aislamiento ya es `negocio_id` en todo el sistema. Lo sostiene el test estructural `tests/test_c28_scoping_axis_guard.py`, que recorre el AST de `services/` y `repositories/` y falla si `usuario_id` reaparece como filtro fuera de la lista blanca. Ese guard está parametrizado sobre los archivos que encuentra: agregar o quitar un archivo en esos directorios **cambia el conteo de tests colectados**, y no es un error.
+
+> ⚠️ **Pendiente de C-43**: `pagos`, `facturas` y `cobros` **no deduplican**. C-42 dejó ventas a salvo y agregó un timeout de 20s que empeora la exposición de esos tres — hoy solo los cubre una copia interina que avisa de revisar el listado antes de reintentar.
 
 ## Reglas Duras (específicas del proyecto)
 
