@@ -7,7 +7,8 @@
  *
  * Route map:
  *  Public  → /login, /registro
- *  Private → / (home), /ventas (C-34), /proveedores (C-07), /proveedores/:id (C-13),
+ *  Private → / (home), /ventas (C-34), /clientes, /clientes/:id (C-36),
+ *            /proveedores (C-07), /proveedores/:id (C-13),
  *            /facturas (C-09), /pagos (C-11), /perfil (C-05)
  *
  * Post-login redirect → /
@@ -23,6 +24,8 @@ import { HomePage } from './HomePage'
 import { AuthenticatedLayout } from './AuthenticatedLayout'
 import VentasPage from '@features/ventas/VentasPage'
 import VentaFormPage from '@features/ventas/VentaFormPage'
+import ClientesPage from '@features/clientes/ClientesPage'
+import ClienteDetailPage from '@features/clientes/ClienteDetailPage'
 import ProveedoresPage from '@features/proveedores/ProveedoresPage'
 import ProveedorDetailPage from '@features/proveedores/ProveedorDetailPage'
 import FacturasPage from '@features/facturas/FacturasPage'
@@ -51,6 +54,10 @@ export const router = createBrowserRouter([
       { path: '/ventas', element: <VentasPage /> },
       { path: '/ventas/nueva', element: <VentaFormPage /> },
       { path: '/ventas/:id/editar', element: <VentaFormPage /> },
+
+      // ── Clientes routes (C-36) ──────────────────────────────────────────────
+      { path: '/clientes', element: <ClientesPage /> },
+      { path: '/clientes/:id', element: <ClienteDetailPage /> },
 
       { path: '/proveedores', element: <ProveedoresPage /> },
       // C-13 — supplier detail page (cuenta-corriente integration).

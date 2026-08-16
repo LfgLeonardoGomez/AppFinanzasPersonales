@@ -121,6 +121,20 @@ describe('AppLayout — entrada de Ventas (C-34)', () => {
   })
 })
 
+describe('AppLayout — entrada de Clientes (C-36)', () => {
+  // Not a privileged action, like Ventas — any member of the negocio views
+  // the customer ledger, so it must be offered regardless of es_admin.
+  it('se le ofrece a un miembro común', () => {
+    renderLayout(false)
+    expect(screen.getAllByRole('link', { name: /clientes/i }).length).toBeGreaterThan(0)
+  })
+
+  it('se le ofrece también al admin', () => {
+    renderLayout(true)
+    expect(screen.getAllByRole('link', { name: /clientes/i }).length).toBeGreaterThan(0)
+  })
+})
+
 // ── Review fix (finding 1, CRITICAL) — nav gated while a sale create is
 // pending ───────────────────────────────────────────────────────────────
 //
