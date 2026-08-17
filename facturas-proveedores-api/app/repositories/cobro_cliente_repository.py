@@ -103,5 +103,27 @@ class CobroClienteRepository(BaseRepository[CobroCliente]):
 
         return items, total
 
+    def get_by_idempotency_key(
+        self, negocio_id: uuid.UUID, idempotency_key: uuid.UUID
+    ) -> Optional[CobroCliente]:
+        """
+        The payment that owns this key, scoped to one negocio (C-43, Regla
+        Dura #3).
+
+        Deliberately does NOT filter `deleted_at IS NULL` — mirrors
+        PagoRepository/VentaRepository (design.md D5): a deleted cobro under
+        this key must still resolve to 409, not a resurrection.
+
+        This is the read the fast path (design.md D2) calls BEFORE the
+        balance validation — it decides whether the write even needs to run
+        RN-CCC-04, never whether the key is free (the unique index alone
+        decides that).
+        """
+        statement = select(CobroCliente).where(
+            CobroCliente.negocio_id == negocio_id,
+            CobroCliente.idempotency_key == idempotency_key,
+        )
+        return self.session.exec(statement).first()
+
 
 __all__ = ["CobroClienteRepository"]

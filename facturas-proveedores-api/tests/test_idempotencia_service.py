@@ -16,7 +16,7 @@ DB round trip cannot exercise "the attribute is absent" on demand.
 
 from sqlalchemy.exc import IntegrityError
 
-from app.services.idempotencia import nombre_constraint_violada
+from app.services.idempotencia import es_violacion_de, nombre_constraint_violada
 
 
 class _FakeDiag:
@@ -52,3 +52,49 @@ class TestNombreConstraintViolada:
 
         err = IntegrityError("INSERT", {}, _OrigSinDiag())
         assert nombre_constraint_violada(err) is None
+
+
+class TestEsViolacionDe:
+    """C-43 (3.1-3.2) — the predicate the four services write by hand today
+    (`nombre_constraint_violada(err) != _UQ_...`), promoted to a shared
+    helper so the comparison cannot be written backwards by accident
+    (design.md D1). Sugar, not architecture."""
+
+    def test_devuelve_true_cuando_la_constraint_coincide(self):
+        err = IntegrityError("INSERT", {}, _FakeOrig("uq_pago_negocio_idempotency_key"))
+        assert es_violacion_de(err, "uq_pago_negocio_idempotency_key") is True
+
+    def test_devuelve_false_cuando_la_constraint_es_otra(self):
+        """3.1 — triangulación con una constraint distinta."""
+        err = IntegrityError("INSERT", {}, _FakeOrig("ck_venta_fiado_tiene_cliente"))
+        assert es_violacion_de(err, "uq_pago_negocio_idempotency_key") is False
+
+    def test_devuelve_false_cuando_no_se_puede_determinar_el_nombre(self):
+        err = IntegrityError("INSERT", {}, None)
+        assert es_violacion_de(err, "uq_pago_negocio_idempotency_key") is False
+
+    def test_nunca_lanza_sin_orig(self):
+        """3.2 — degrada a False en vez de explotar."""
+        err = IntegrityError("INSERT", {}, None)
+        assert es_violacion_de(err, "cualquier_constraint") is False
+
+    def test_nunca_lanza_sin_diag(self):
+        """3.2 — triangulación: .orig presente pero sin .diag."""
+
+        class _OrigSinDiag:
+            pass
+
+        err = IntegrityError("INSERT", {}, _OrigSinDiag())
+        assert es_violacion_de(err, "cualquier_constraint") is False
+
+    def test_nunca_lanza_sin_constraint_name(self):
+        """3.2 — triangulación: .diag presente pero sin .constraint_name."""
+
+        class _DiagSinNombre:
+            pass
+
+        class _OrigSinNombre:
+            diag = _DiagSinNombre()
+
+        err = IntegrityError("INSERT", {}, _OrigSinNombre())
+        assert es_violacion_de(err, "cualquier_constraint") is False

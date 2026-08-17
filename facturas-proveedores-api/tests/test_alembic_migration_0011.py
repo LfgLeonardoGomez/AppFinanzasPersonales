@@ -60,7 +60,17 @@ def _run_alembic(*args: str) -> None:
 
 @pytest.fixture(scope="module")
 def migrated(migration_engine_0011):
-    _run_alembic("upgrade", "head")
+    """
+    Pinned to "0011", not "head" (D-21 — this file's own docstring already
+    claimed this and up to C-43 it happened to be true by coincidence, since
+    every later migration through 0012 left `cobro_cliente`'s columns alone).
+    C-43's migration 0013 is the first one to touch `cobro_cliente` again
+    (it adds `idempotency_key`), which is exactly the class of drift a
+    "head"-pinned fixture in a per-revision schema test cannot survive:
+    `TestSchema.test_columnas` asserts the EXACT column set as of 0011, so
+    it must migrate to exactly 0011, never further.
+    """
+    _run_alembic("upgrade", "0011")
     return migration_engine_0011
 
 
@@ -90,8 +100,24 @@ def _cliente(conn, negocio_id) -> uuid.UUID:
 
 class TestLaCadenaSigueCorriendo:
     def test_upgrade_head_completo(self, migration_engine_0011):
+        """
+        Proves the chain from 0011 onward still applies cleanly — NOT proof
+        that `cobro_cliente` looks like 0011 forever (that is `TestSchema`'s
+        job, against the `migrated` fixture pinned to exactly "0011").
+
+        Restores the revision back to "0011" afterward. `migration_engine_0011`
+        is a module-scoped container shared by every test below via the
+        `migrated` fixture; leaving it advanced past 0011 here would make
+        that fixture's own `_run_alembic("upgrade", "0011")` a silent no-op
+        (alembic upgrade never downgrades), so every later "as of 0011"
+        assertion would actually run against head instead. That drift was
+        invisible until C-43's migration 0013 (the first one since 0011 to
+        touch `cobro_cliente` again) started adding `idempotency_key` to the
+        set `TestSchema.test_columnas` checks.
+        """
         _run_alembic("upgrade", "head")
         assert "cobro_cliente" in inspect(migration_engine_0011).get_table_names()
+        _run_alembic("downgrade", "0011")
 
     def test_las_tablas_anteriores_siguen_ahi(self, migrated):
         tablas = set(inspect(migrated).get_table_names())

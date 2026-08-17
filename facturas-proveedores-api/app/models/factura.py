@@ -57,6 +57,14 @@ class Factura(SoftDeleteMixin, TimestampUUIDMixin, SQLModel, table=True):
     archivo_url: Optional[str] = Field(default=None)
     origen: OrigenDocumento = Field(nullable=False)
 
+    # C-43 Fase A: retry-safety marker, not a ledger fact. Nullable because
+    # the header is optional and every pre-existing row has none. Lives here
+    # and NOT on FacturaItem — the operation deduplicated is "register an
+    # invoice with its detail", one intention, not one per line (design.md
+    # D5). Does NOT participate in the FIFO calculation — see
+    # uq_factura_negocio_idempotency_key (migration 0013).
+    idempotency_key: Optional[uuid.UUID] = Field(default=None, nullable=True)
+
     # NOTE: no 'estado' field — PENDIENTE/PARCIAL/PAGADA derived on-demand (D-01)
     # NOTE: no 'saldo' field — derived on-demand via GROUP BY (D-C02-6)
 
