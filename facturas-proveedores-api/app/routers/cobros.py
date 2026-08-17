@@ -15,7 +15,7 @@ Mirrors app/routers/pagos.py exactly, one level down the same ledger shape:
 import uuid
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Header, Query, Response, status
 from pydantic import BaseModel, ConfigDict
 from sqlmodel import Session
 
@@ -144,8 +144,20 @@ def list_cobros(
 )
 def create_cobro(
     body: CobroClienteCreate,
+    response: Response,
     current_user: CurrentUser = ...,
     session: DbSession = ...,
+    idempotency_key: Annotated[
+        Optional[uuid.UUID],
+        Header(
+            alias="Idempotency-Key",
+            description=(
+                "Optional retry-safety key (C-43). A malformed value is "
+                "rejected with 422 by FastAPI's own header validation before "
+                "this body runs."
+            ),
+        ),
+    ] = None,
 ) -> CobroClienteResponse:
     """
     Record a payment for a customer owned by the negocio.
@@ -154,15 +166,26 @@ def create_cobro(
     - NO venta_id is accepted — RN-CCC-03.
     - Returns 404 if the cliente belongs to another negocio or is soft-deleted.
     - Returns 422 if fecha is in the future (UTC-3), monto <= 0, or the
-      payment would push the customer's balance below zero (RN-CCC-04).
+      payment would push the customer's balance below zero (RN-CCC-04) — the
+      last of those SHALL NOT fire on a legitimate replay of an already-saved
+      payment (design.md D2).
+    - Without `Idempotency-Key` this behaves exactly as before C-43. With it,
+      a repeat of the same key and data returns the original payment with
+      `200` and `Idempotent-Replay: true` instead of creating a second one.
     """
     svc = CobroClienteService(session)
-    cobro = svc.crear(
-        current_user.negocio_id, body, creado_por_usuario_id=current_user.id
+    resultado = svc.crear(
+        current_user.negocio_id,
+        body,
+        creado_por_usuario_id=current_user.id,
+        idempotency_key=idempotency_key,
     )
     session.commit()
-    session.refresh(cobro)
-    return _to_response(cobro)
+    session.refresh(resultado.cobro)
+    if resultado.es_repeticion:
+        response.status_code = status.HTTP_200_OK
+        response.headers["Idempotent-Replay"] = "true"
+    return _to_response(resultado.cobro)
 
 
 # ── GET /{id} — read payment ──────────────────────────────────────────────────
