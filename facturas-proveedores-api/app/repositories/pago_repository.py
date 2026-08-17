@@ -98,6 +98,26 @@ class PagoRepository(BaseRepository[Pago]):
 
         return items, total
 
+    def get_by_idempotency_key(
+        self, negocio_id: uuid.UUID, idempotency_key: uuid.UUID
+    ) -> Optional[Pago]:
+        """
+        The payment that owns this key, scoped to one negocio (C-43, Regla
+        Dura #3).
+
+        Deliberately does NOT filter `deleted_at IS NULL`: the uniqueness the
+        key protects survives a soft delete (design.md D5, mirrors
+        VentaRepository.get_by_idempotency_key from C-42), so the caller must
+        be able to find a deleted row under its key too — that is exactly the
+        case that turns a would-be replay into a 409 instead of resurrecting
+        a deleted payment as if it were live.
+        """
+        statement = select(Pago).where(
+            Pago.negocio_id == negocio_id,
+            Pago.idempotency_key == idempotency_key,
+        )
+        return self.session.exec(statement).first()
+
     def list_recientes(self, negocio_id: uuid.UUID, limit: int) -> list[Pago]:
         """
         Return the `limit` most recent active pagos for a user.

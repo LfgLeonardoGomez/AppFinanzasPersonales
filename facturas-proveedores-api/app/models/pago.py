@@ -52,6 +52,12 @@ class Pago(SoftDeleteMixin, TimestampUUIDMixin, SQLModel, table=True):
     comprobante_url: Optional[str] = Field(default=None)
     origen: OrigenDocumento = Field(nullable=False)
 
+    # C-43 Fase A: retry-safety marker, not a ledger fact. Nullable because
+    # the header is optional and every pre-existing row has none. Does NOT
+    # participate in the FIFO pool or any other calculation — see
+    # uq_pago_negocio_idempotency_key (migration 0013).
+    idempotency_key: Optional[uuid.UUID] = Field(default=None, nullable=True)
+
     # NOTE: no 'factura_id' — payment is supplier-scoped, not invoice-scoped (RN-PAG-01)
 
 

@@ -55,6 +55,13 @@ class CobroCliente(SoftDeleteMixin, TimestampUUIDMixin, SQLModel, table=True):
     metodo: MetodoCobro = Field(nullable=False)
     comprobante_url: Optional[str] = Field(default=None)
 
+    # C-43 Fase A: retry-safety marker, not a ledger fact. Nullable because
+    # the header is optional and every pre-existing row has none. Does NOT
+    # participate in the balance or FIFO calculation — see
+    # uq_cobro_cliente_negocio_idempotency_key (migration 0013). Adding this
+    # does NOT authorize persisting which fiado a cobro was applied to.
+    idempotency_key: Optional[uuid.UUID] = Field(default=None, nullable=True)
+
     # NOTE: no 'venta_id' — payment is customer-scoped, not sale-scoped (RN-CCC-03).
     # NOTE: no 'saldo' and no 'estado' — both derived on demand (D-01).
 

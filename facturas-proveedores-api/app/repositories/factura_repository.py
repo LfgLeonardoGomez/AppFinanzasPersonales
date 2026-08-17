@@ -145,13 +145,21 @@ class FacturaRepository(BaseRepository[Factura]):
         fecha_vencimiento: Optional[date] = None,
         archivo_url: Optional[str] = None,
         creado_por_usuario_id: Optional[uuid.UUID] = None,
+        idempotency_key: Optional[uuid.UUID] = None,
     ) -> Factura:
         """
         Create a Factura and its FacturaItems atomically (same flush).
 
         - items_data: list of dicts with keys: descripcion, cantidad, precio_unitario.
         - creado_por_usuario_id is authorship only (D4) — never a filter.
+        - idempotency_key is optional (C-43) — the header's row-level marker,
+          scoped by the unique index in migration 0013.
         - Caller commits; this method only flushes.
+
+        The `factura` header flushes BEFORE any item (unchanged ordering) —
+        that is exactly what makes a genuine idempotency-key race collide on
+        the header row, never leave an orphaned item behind (design.md,
+        Risks/Trade-offs).
         """
         factura = Factura(
             negocio_id=negocio_id,
@@ -163,6 +171,7 @@ class FacturaRepository(BaseRepository[Factura]):
             numero=numero,
             fecha_vencimiento=fecha_vencimiento,
             archivo_url=archivo_url,
+            idempotency_key=idempotency_key,
         )
         self.session.add(factura)
         self.session.flush()
@@ -210,6 +219,27 @@ class FacturaRepository(BaseRepository[Factura]):
                 item_repo.create(factura_id=factura.id, **item_dict)
 
         return factura
+
+    # ── Idempotency ────────────────────────────────────────────────────────────
+
+    def get_by_idempotency_key(
+        self, negocio_id: uuid.UUID, idempotency_key: uuid.UUID
+    ) -> Optional[Factura]:
+        """
+        The invoice that owns this key, scoped to one negocio (C-43, Regla
+        Dura #3).
+
+        Deliberately does NOT filter `deleted_at IS NULL` — mirrors
+        PagoRepository/VentaRepository's own `get_by_idempotency_key`
+        (design.md D5): the uniqueness the key protects survives a soft
+        delete, so a deleted invoice under this key must still resolve to a
+        409, not a resurrection.
+        """
+        statement = select(Factura).where(
+            Factura.negocio_id == negocio_id,
+            Factura.idempotency_key == idempotency_key,
+        )
+        return self.session.exec(statement).first()
 
     # ── Thin wrappers ─────────────────────────────────────────────────────────
 

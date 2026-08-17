@@ -2,14 +2,20 @@
 Shared helper for services that trade an IntegrityError for a friendlier
 response (C-42).
 
-The trap this module exists to close: `cliente_service.crear` catches a bare
-`IntegrityError` and assumes it is the name-duplicate violation — true only
-while `cliente` carries a single unique index. The moment a second one is
-added (C-43 is expected to add idempotency to `cliente` too), that assumption
-breaks silently: an unrelated constraint violation would be misreported as
-"duplicate name" instead of propagating as the 500 it actually is. Naming the
-constraint that fired is the only way to tell the two apart, so `venta_service`
-uses this from the start instead of repeating the trap.
+The trap this module exists to close: `cliente_service.crear` used to catch
+a bare `IntegrityError` and assume it was the name-duplicate violation — true
+only while `cliente` carried a single unique index. C-43 (design.md D6)
+closed that `except` using `es_violacion_de` below, comparing against
+`uq_cliente_negocio_nombre_normalizado_activo` by name and re-raising
+anything else. Naming the constraint that fired is the only way to tell two
+violations apart, so `venta_service`, `pago_service`, `factura_service` and
+`cobro_cliente_service` all use this module from the start instead of
+repeating the trap.
+
+**Not** what C-43 does to `cliente`: it does NOT add idempotency there.
+`cliente` is already deduplicated by its own name index (C-32) — a double
+submit correctly answers 409 with the existing customer, which is the right
+behavior. C-43 only closes the `except`; the alta itself is untouched.
 
 `err.orig.diag.constraint_name` is a psycopg2-specific diagnostic field,
 populated straight from the Postgres error response. Every level is read
@@ -38,4 +44,22 @@ def nombre_constraint_violada(err: IntegrityError) -> Optional[str]:
     return getattr(diag, "constraint_name", None)
 
 
-__all__ = ["nombre_constraint_violada"]
+def es_violacion_de(err: IntegrityError, constraint: str) -> bool:
+    """
+    True when `err` was raised by exactly `constraint` violating.
+
+    Sugar over `nombre_constraint_violada`, added in C-43 (design.md D1) once
+    a fourth service needed the same comparison the first three (venta,
+    C-42) were already writing by hand: `nombre_constraint_violada(err) !=
+    _UQ_...`. Not a new mechanism — it exists so that comparison cannot be
+    written inverted by accident in any one of the four call sites, nothing
+    more.
+
+    Degrades to False whenever the constraint name cannot be determined
+    (delegated to `nombre_constraint_violada`'s own defensive reads) — never
+    raises on top of the IntegrityError it is inspecting.
+    """
+    return nombre_constraint_violada(err) == constraint
+
+
+__all__ = ["nombre_constraint_violada", "es_violacion_de"]
