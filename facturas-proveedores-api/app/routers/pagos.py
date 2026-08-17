@@ -28,8 +28,10 @@ from fastapi import (
     APIRouter,
     Depends,
     File,
+    Header,
     HTTPException,
     Query,
+    Response,
     UploadFile,
     status,
 )
@@ -219,8 +221,20 @@ def list_pagos(
 )
 def create_pago(
     body: PagoCreate,
+    response: Response,
     current_user: CurrentUser = ...,
     session: DbSession = ...,
+    idempotency_key: Annotated[
+        Optional[uuid.UUID],
+        Header(
+            alias="Idempotency-Key",
+            description=(
+                "Optional retry-safety key (C-43). A malformed value is "
+                "rejected with 422 by FastAPI's own header validation before "
+                "this body runs."
+            ),
+        ),
+    ] = None,
 ) -> PagoResponse:
     """
     Create a payment for a supplier owned by the authenticated user.
@@ -234,16 +248,25 @@ def create_pago(
          attempting to send it.
     - Returns 404 if the proveedor belongs to another user or is soft-deleted.
     - Returns 422 if fecha is in the future (UTC-3) or monto <= 0.
+    - Without `Idempotency-Key` this behaves exactly as before C-43. With it,
+      a repeat of the same key and data returns the original payment with
+      `200` and `Idempotent-Replay: true` instead of creating a second one.
     """
     svc = PagoService(session)
-    pago = svc.crear(
-        current_user.negocio_id, body, creado_por_usuario_id=current_user.id
+    resultado = svc.crear(
+        current_user.negocio_id,
+        body,
+        creado_por_usuario_id=current_user.id,
+        idempotency_key=idempotency_key,
     )
     session.commit()
-    session.refresh(pago)
+    session.refresh(resultado.pago)
     # C-18 (FE-005): populate proveedor_nombre for the response.
-    proveedor_nombre = _resolve_proveedor_nombre(session, pago.proveedor_id)
-    return _to_response(pago, proveedor_nombre=proveedor_nombre)
+    proveedor_nombre = _resolve_proveedor_nombre(session, resultado.pago.proveedor_id)
+    if resultado.es_repeticion:
+        response.status_code = status.HTTP_200_OK
+        response.headers["Idempotent-Replay"] = "true"
+    return _to_response(resultado.pago, proveedor_nombre=proveedor_nombre)
 
 
 # ── POST /extraer-ia — extract payment header from image (C-14) ────────────────

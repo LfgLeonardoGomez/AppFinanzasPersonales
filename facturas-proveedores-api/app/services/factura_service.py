@@ -19,15 +19,24 @@ Hard rules enforced here:
 - Raises HTTPException(404) on foreign or missing/deleted resource.
 - NEVER persists estado or saldo.
 - NEVER filters by estado in SQL (RN-FAC-09); filters in Python after FIFO.
+
+C-43 Fase A adds an optional idempotency key to `crear`. Same INSERT-first
+discipline as pago/venta (design.md D3): nothing here reads what the write
+itself changes, so no fast-path lookup is needed. What IS different from
+pago/venta (design.md D4): the replay branch recomputes the FIFO `estado`
+and rereads the items at response time, by the SAME path as a creation —
+never a frozen copy of the original response. And the "same data" comparison
+(design.md D3) includes the items, compared as an ordered list.
 """
 
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.models.enums import EstadoFactura, OrigenDocumento
@@ -37,8 +46,13 @@ from app.repositories.pago_repository import PagoRepository
 from app.repositories.proveedor_repository import ProveedorRepository
 from app.schemas.factura import FacturaCreate, FacturaUpdate
 from app.services.cuenta_corriente_engine import Movimiento, asignar_fifo
+from app.services.idempotencia import es_violacion_de
 
 _TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
+
+# The one constraint this module knows how to translate into a reply instead
+# of a 500 (task 6.13, mirrors venta_service / pago_service).
+_UQ_IDEMPOTENCY_KEY = "uq_factura_negocio_idempotency_key"
 
 _NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
@@ -49,6 +63,88 @@ _PROVEEDOR_NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
     detail="Proveedor not found",
 )
+
+
+def _conflicto_factura(existente: Factura, items: list["FacturaItem"]) -> HTTPException:
+    """409 carrying the existing invoice — design.md D3, mirrors _conflicto_pago."""
+    detalle: dict = {
+        "mensaje": "Esta operación ya fue registrada con otros datos.",
+        "factura_existente": {
+            "id": str(existente.id),
+            "proveedor_id": str(existente.proveedor_id),
+            "fecha_emision": existente.fecha_emision.isoformat(),
+            "monto_total": str(existente.monto_total),
+            "numero": existente.numero,
+            "fecha_vencimiento": (
+                existente.fecha_vencimiento.isoformat()
+                if existente.fecha_vencimiento is not None
+                else None
+            ),
+            "archivo_url": existente.archivo_url,
+            "origen": existente.origen,
+            "items": [
+                {
+                    "descripcion": i.descripcion,
+                    "cantidad": str(i.cantidad),
+                    "precio_unitario": str(i.precio_unitario),
+                }
+                for i in items
+            ],
+        },
+    }
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detalle)
+
+
+def _items_iguales(guardados: list["FacturaItem"], pedidos: list[dict]) -> bool:
+    """
+    design.md D3 — items compared as an ORDERED list of
+    (descripcion, cantidad, precio_unitario). A reordering, an addition, or a
+    single changed field is a real correction and SHALL be a conflict, not a
+    replay (task 6.5).
+    """
+    if len(guardados) != len(pedidos):
+        return False
+    guardados_tuplas = [
+        (i.descripcion, i.cantidad, i.precio_unitario) for i in guardados
+    ]
+    pedidos_tuplas = [
+        (
+            p["descripcion"],
+            Decimal(str(p["cantidad"])),
+            Decimal(str(p["precio_unitario"])),
+        )
+        for p in pedidos
+    ]
+    return guardados_tuplas == pedidos_tuplas
+
+
+def _mismos_datos(
+    existente: Factura,
+    items_existentes: list["FacturaItem"],
+    proveedor_id: uuid.UUID,
+    fecha_emision: date,
+    monto_total: Decimal,
+    numero: Optional[str],
+    fecha_vencimiento: Optional[date],
+    archivo_url: Optional[str],
+    origen: OrigenDocumento,
+    items_data: list[dict],
+) -> bool:
+    """
+    design.md D3 — comparison against the fields of the SAVED row, items
+    included. `items_sum_mismatch` deliberately does NOT enter here: it is a
+    derived output, not an input (task 6.6).
+    """
+    return (
+        existente.proveedor_id == proveedor_id
+        and existente.fecha_emision == fecha_emision
+        and existente.monto_total == monto_total
+        and existente.numero == numero
+        and existente.fecha_vencimiento == fecha_vencimiento
+        and existente.archivo_url == archivo_url
+        and existente.origen == origen
+        and _items_iguales(items_existentes, items_data)
+    )
 
 
 # ── Pure FIFO algorithm (D1, RN-FIFO) ────────────────────────────────────────
@@ -118,6 +214,12 @@ class FacturaConEstado:
     Combines a Factura ORM entity with its computed estado and items.
 
     Used so callers can map directly to FacturaResponse.model_validate(obj).
+
+    C-43: `es_repeticion` tells the router whether THIS call created the row
+    or replayed an existing one (design.md D3/D4), mirroring VentaCreada's
+    role for ventas. Defaults to False so every pre-C-43 call site
+    (crear/get/listar/actualizar, none of which know about replays) keeps
+    working unchanged.
     """
 
     def __init__(
@@ -126,11 +228,13 @@ class FacturaConEstado:
         estado: EstadoFactura,
         items: list[FacturaItem],
         items_sum_mismatch: bool = False,
+        es_repeticion: bool = False,
     ) -> None:
         self._factura = factura
         self.estado = estado
         self.items = items
         self.items_sum_mismatch = items_sum_mismatch
+        self.es_repeticion = es_repeticion
 
     def __getattr__(self, name: str):
         return getattr(self._factura, name)
@@ -244,6 +348,31 @@ class FacturaService:
         pagos = self._pago_repo.list_by_proveedor(negocio_id, proveedor_id)
         return sum((p.monto for p in pagos), Decimal("0"))
 
+    def _con_estado_actual(
+        self,
+        negocio_id: uuid.UUID,
+        factura: Factura,
+        items_sum_mismatch: bool,
+        es_repeticion: bool,
+    ) -> FacturaConEstado:
+        """
+        design.md D4 — builds the response by the SAME path for a creation
+        and for a replay: recompute the FIFO estado and reread the items
+        right now, never a frozen copy. Consequence accepted explicitly: a
+        replay's estado can differ from the original creation's if a payment
+        landed on this proveedor in between (task 6.10) — that is correct,
+        not a bug, because estado is derived and never persisted (D-01).
+        """
+        pool = self._get_payment_pool(negocio_id, factura.proveedor_id)
+        all_facturas = self._repo.list_by_proveedor(negocio_id, factura.proveedor_id)
+        estado_map = _compute_estado_fifo(all_facturas, pool)
+        estado = estado_map.get(factura.id, EstadoFactura.PENDIENTE)
+
+        items = self._item_repo.list_by_factura(factura.id)
+        return FacturaConEstado(
+            factura, estado, items, items_sum_mismatch, es_repeticion=es_repeticion
+        )
+
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def crear(
@@ -251,6 +380,7 @@ class FacturaService:
         negocio_id: uuid.UUID,
         datos: FacturaCreate,
         creado_por_usuario_id: uuid.UUID | None = None,
+        idempotency_key: Optional[uuid.UUID] = None,
     ) -> FacturaConEstado:
         """
         Create a new invoice for a supplier owned by negocio_id.
@@ -263,6 +393,13 @@ class FacturaService:
 
         Sets origen=MANUAL (RN-FAC-08 — service sets automatically).
         negocio_id taken from arg, never from payload (HARD RULE).
+
+        `idempotency_key` is optional (C-43): validation runs first, same as
+        pago/venta — nothing here depends on state this write changes, so
+        there is no fast-path lookup (that is cobros' exception, design.md
+        D2). On a genuine race, `create_with_items` flushes the `factura` row
+        BEFORE any item — the unique-index collision fires there, so the
+        losing thread never gets to insert a single item (task 6.12).
         """
         proveedor = self._get_owned_proveedor(negocio_id, datos.proveedor_id)
         self._validate_fecha_emision(datos.fecha_emision)
@@ -277,28 +414,77 @@ class FacturaService:
         ]
 
         items_sum_mismatch = self._check_items_sum(datos.monto_total, items_data)
+        origen_resuelto = datos.origen or OrigenDocumento.MANUAL
 
-        factura = self._repo.create_with_items(
-            negocio_id=negocio_id,
-            creado_por_usuario_id=creado_por_usuario_id,
-            proveedor_id=proveedor.id,
-            fecha_emision=datos.fecha_emision,
-            monto_total=datos.monto_total,
-            origen=datos.origen or OrigenDocumento.MANUAL,
-            items_data=items_data,
-            numero=datos.numero,
-            fecha_vencimiento=datos.fecha_vencimiento,
-            archivo_url=datos.archivo_url,
-        )
+        try:
+            factura = self._repo.create_with_items(
+                negocio_id=negocio_id,
+                creado_por_usuario_id=creado_por_usuario_id,
+                proveedor_id=proveedor.id,
+                fecha_emision=datos.fecha_emision,
+                monto_total=datos.monto_total,
+                origen=origen_resuelto,
+                items_data=items_data,
+                numero=datos.numero,
+                fecha_vencimiento=datos.fecha_vencimiento,
+                archivo_url=datos.archivo_url,
+                idempotency_key=idempotency_key,
+            )
+            return self._con_estado_actual(
+                negocio_id, factura, items_sum_mismatch, es_repeticion=False
+            )
+        except IntegrityError as err:
+            if idempotency_key is None:
+                raise
 
-        # Compute FIFO estado for this new factura
-        pool = self._get_payment_pool(negocio_id, proveedor.id)
-        all_facturas = self._repo.list_by_proveedor(negocio_id, proveedor.id)
-        estado_map = _compute_estado_fifo(all_facturas, pool)
-        estado = estado_map.get(factura.id, EstadoFactura.PENDIENTE)
+            if not es_violacion_de(err, _UQ_IDEMPOTENCY_KEY):
+                raise
 
-        items = self._item_repo.list_by_factura(factura.id)
-        return FacturaConEstado(factura, estado, items, items_sum_mismatch)
+            # The failed INSERT poisoned the session (task 6.13).
+            self._session.rollback()
+
+            existente = self._repo.get_by_idempotency_key(negocio_id, idempotency_key)
+            if existente is None:
+                raise
+
+            items_existentes = self._item_repo.list_by_factura(existente.id)
+
+            if existente.deleted_at is not None:
+                # design.md D3 — the invoice behind this key is gone; replay
+                # would pass a deleted row off as live (task 6.7).
+                raise _conflicto_factura(existente, items_existentes)
+
+            if _mismos_datos(
+                existente,
+                items_existentes,
+                proveedor.id,
+                datos.fecha_emision,
+                datos.monto_total,
+                datos.numero,
+                datos.fecha_vencimiento,
+                datos.archivo_url,
+                origen_resuelto,
+                items_data,
+            ):
+                items_sum_mismatch_existente = self._check_items_sum(
+                    existente.monto_total,
+                    [
+                        {
+                            "descripcion": i.descripcion,
+                            "cantidad": i.cantidad,
+                            "precio_unitario": i.precio_unitario,
+                        }
+                        for i in items_existentes
+                    ],
+                )
+                return self._con_estado_actual(
+                    negocio_id,
+                    existente,
+                    items_sum_mismatch_existente,
+                    es_repeticion=True,
+                )
+
+            raise _conflicto_factura(existente, items_existentes)
 
     def get(
         self,

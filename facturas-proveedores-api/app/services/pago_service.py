@@ -21,15 +21,22 @@ Hard rules enforced here:
 - All authorization lives HERE; router just wires Depends(get_current_user).
 - Raises HTTPException(404) on foreign/missing/deleted resource.
 - NEVER persists saldo or estado.
+
+C-43 Fase A adds an optional idempotency key to `crear`. Same discipline as
+`venta_service` (C-42, design.md D3): validate first, INSERT, catch the
+IntegrityError, roll back, then decide. Never a SELECT before the INSERT —
+pagos have no validation that reads what the write itself changes, so the
+fast-path exception carved out for cobros (design.md D2) does not apply here.
 """
 
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.models.enums import OrigenDocumento
@@ -38,8 +45,14 @@ from app.models.proveedor import Proveedor
 from app.repositories.pago_repository import PagoRepository
 from app.repositories.proveedor_repository import ProveedorRepository
 from app.schemas.pago import PagoCreate, PagoUpdate
+from app.services.idempotencia import es_violacion_de
 
 _TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
+
+# The one constraint this module knows how to translate into a reply instead
+# of a 500. Any other name means the IntegrityError is not idempotency's to
+# handle — it propagates as-is (task 4.11, mirrors venta_service task 4.13).
+_UQ_IDEMPOTENCY_KEY = "uq_pago_negocio_idempotency_key"
 
 _NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
@@ -60,6 +73,74 @@ _NON_POSITIVE_MONTO = HTTPException(
     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
     detail="monto must be greater than zero",
 )
+
+
+def _conflicto_pago(existente: Pago) -> HTTPException:
+    """409 carrying the existing payment (design.md D3, mirrors _conflicto_venta)."""
+    detalle: dict = {
+        "mensaje": "Esta operación ya fue registrada con otros datos.",
+        "pago_existente": {
+            "id": str(existente.id),
+            "proveedor_id": str(existente.proveedor_id),
+            "monto": str(existente.monto),
+            "fecha": existente.fecha.isoformat(),
+            "metodo": existente.metodo,
+            "comprobante_url": existente.comprobante_url,
+            "origen": existente.origen,
+        },
+    }
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detalle)
+
+
+def _mismos_datos(
+    existente: Pago,
+    proveedor_id: uuid.UUID,
+    monto: Decimal,
+    fecha: date,
+    metodo,
+    comprobante_url: Optional[str],
+    origen: OrigenDocumento,
+) -> bool:
+    """
+    design.md D3 — comparison happens against the fields of the SAVED row.
+    `origen` is compared RESOLVED (MANUAL when the payload omits it), never
+    against the raw payload — a repeat that omits origen would otherwise
+    conflict against its own row (task 4.5).
+    """
+    return (
+        existente.proveedor_id == proveedor_id
+        and existente.monto == monto
+        and existente.fecha == fecha
+        and existente.metodo == metodo
+        and existente.comprobante_url == comprobante_url
+        and existente.origen == origen
+    )
+
+
+class PagoCreado:
+    """
+    Wraps a `Pago` with whether THIS call created it or replayed an existing
+    one (C-43, mirrors VentaCreada from C-42). The router uses `es_repeticion`
+    to decide between `201` and `200` + `Idempotent-Replay: true`.
+
+    Unlike VentaCreada, this wrapper DOES proxy unknown attribute access to
+    the wrapped Pago via `__getattr__`. VentaCreada could afford to be a
+    strict wrapper because idempotency was net-new for ventas — no call site
+    existed yet that read a bare attribute off `crear()`'s return value. Here
+    `PagoService.crear` already had callers (test_pago_service.py, and
+    anything built on top of it) written against "crear returns a Pago", so
+    breaking that contract would fail task 1.2's requirement that those
+    suites stay green WITHOUT being edited. Proxying keeps `result.monto`,
+    `result.proveedor_id`, etc. working exactly as before; `.pago` and
+    `.es_repeticion` are the two names new code should read explicitly.
+    """
+
+    def __init__(self, pago: Pago, es_repeticion: bool) -> None:
+        self.pago = pago
+        self.es_repeticion = es_repeticion
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.pago, name)
 
 
 class PagoService:
@@ -144,7 +225,8 @@ class PagoService:
         negocio_id: uuid.UUID,
         datos: PagoCreate,
         creado_por_usuario_id: uuid.UUID | None = None,
-    ) -> Pago:
+        idempotency_key: Optional[uuid.UUID] = None,
+    ) -> PagoCreado:
         """
         Create a new payment for a supplier owned by negocio_id.
 
@@ -155,22 +237,70 @@ class PagoService:
 
         Stamps origen=MANUAL automatically (D5, RN-PAG-04). negocio_id is
         taken from the arg — never from the payload.
+
+        `idempotency_key` is optional (C-43): when it is None, this method's
+        behavior is byte-for-byte what it was before this change — including
+        that an IntegrityError propagates unhandled (task 4.1). When a key IS
+        given, business validation still runs first: a rejected payment never
+        touches the database, and its key stays free for a corrected retry
+        (task 4.8). No fast-path lookup — unlike cobros (design.md D2),
+        nothing here reads what this write itself changes.
         """
         proveedor = self._get_owned_proveedor(negocio_id, datos.proveedor_id)
         self._validate_fecha_not_future(datos.fecha)
         self._validate_monto_positive(datos.monto)
 
-        pago = self._repo.create(
-            negocio_id=negocio_id,
-            creado_por_usuario_id=creado_por_usuario_id,
-            proveedor_id=proveedor.id,
-            monto=datos.monto,
-            fecha=datos.fecha,
-            metodo=datos.metodo,
-            comprobante_url=datos.comprobante_url,
-            origen=datos.origen or OrigenDocumento.MANUAL,
-        )
-        return pago
+        origen_resuelto = datos.origen or OrigenDocumento.MANUAL
+
+        try:
+            pago = self._repo.create(
+                negocio_id=negocio_id,
+                creado_por_usuario_id=creado_por_usuario_id,
+                proveedor_id=proveedor.id,
+                monto=datos.monto,
+                fecha=datos.fecha,
+                metodo=datos.metodo,
+                comprobante_url=datos.comprobante_url,
+                origen=origen_resuelto,
+                idempotency_key=idempotency_key,
+            )
+            return PagoCreado(pago, es_repeticion=False)
+        except IntegrityError as err:
+            if idempotency_key is None:
+                raise
+
+            if not es_violacion_de(err, _UQ_IDEMPOTENCY_KEY):
+                raise
+
+            # The INSERT poisoned the session; every statement after it
+            # raises PendingRollbackError until this runs (task 4.10).
+            self._session.rollback()
+
+            existente = self._repo.get_by_idempotency_key(negocio_id, idempotency_key)
+            if existente is None:
+                # The unique index says this key is taken, scoped to this
+                # negocio, yet the scoped read found nothing. Unreachable in
+                # practice; re-raising is safer than inventing a response
+                # this branch cannot justify.
+                raise
+
+            if existente.deleted_at is not None:
+                # The payment behind this key is gone. Replaying it would
+                # pass a deleted row off as live (task 4.6).
+                raise _conflicto_pago(existente)
+
+            if _mismos_datos(
+                existente,
+                proveedor.id,
+                datos.monto,
+                datos.fecha,
+                datos.metodo,
+                datos.comprobante_url,
+                origen_resuelto,
+            ):
+                return PagoCreado(existente, es_repeticion=True)
+
+            raise _conflicto_pago(existente)
 
     def listar(
         self,
@@ -266,4 +396,4 @@ class PagoService:
         return {"id": pago_id}
 
 
-__all__ = ["PagoService"]
+__all__ = ["PagoService", "PagoCreado"]

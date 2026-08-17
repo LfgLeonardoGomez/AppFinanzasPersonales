@@ -17,7 +17,17 @@ import uuid
 from datetime import date
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from sqlmodel import Session
 
 from app.core.deps import get_current_user, get_db
@@ -187,8 +197,20 @@ def list_facturas(
 )
 def create_factura(
     body: FacturaCreate,
+    response: Response,
     current_user: CurrentUser = ...,
     session: DbSession = ...,
+    idempotency_key: Annotated[
+        Optional[uuid.UUID],
+        Header(
+            alias="Idempotency-Key",
+            description=(
+                "Optional retry-safety key (C-43). A malformed value is "
+                "rejected with 422 by FastAPI's own header validation before "
+                "this body runs."
+            ),
+        ),
+    ] = None,
 ) -> FacturaResponse:
     """
     Create an invoice for a supplier owned by the authenticated user.
@@ -196,14 +218,24 @@ def create_factura(
     negocio_id is taken from the session — the payload cannot override it.
     origen is set to MANUAL automatically (RN-FAC-08).
     Returns 404 if the proveedor belongs to another user.
+    Without `Idempotency-Key` this behaves exactly as before C-43. With it, a
+    repeat of the same key and data returns the original invoice with `200`
+    and `Idempotent-Replay: true` — its `estado` and `items` recomputed at
+    this moment, never a frozen copy (design.md D4).
     """
     svc = FacturaService(session)
     result = svc.crear(
-        current_user.negocio_id, body, creado_por_usuario_id=current_user.id
+        current_user.negocio_id,
+        body,
+        creado_por_usuario_id=current_user.id,
+        idempotency_key=idempotency_key,
     )
     session.commit()
     # c-26 (D1): populate proveedor_nombre for the response.
     proveedor_nombre = _resolve_proveedor_nombre(session, result.proveedor_id)
+    if result.es_repeticion:
+        response.status_code = status.HTTP_200_OK
+        response.headers["Idempotent-Replay"] = "true"
     return _to_response(result, proveedor_nombre=proveedor_nombre)
 
 
