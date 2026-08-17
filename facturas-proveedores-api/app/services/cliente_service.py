@@ -31,6 +31,12 @@ from sqlmodel import Session
 from app.core.normalizacion import normalizar_nombre
 from app.models.cliente import Cliente
 from app.repositories.cliente_repository import ClienteRepository
+from app.services.idempotencia import es_violacion_de
+
+# The only constraint `crear`/`actualizar` know how to translate into a 409
+# instead of a 500 (C-43, design.md D6). Any other name is not theirs to
+# handle and propagates as-is.
+_UQ_NOMBRE = "uq_cliente_negocio_nombre_normalizado_activo"
 
 _CLIENTE_NO_ENCONTRADO = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
@@ -139,7 +145,16 @@ class ClienteService:
                 telefono=telefono,
                 notas=notas,
             )
-        except IntegrityError:
+        except IntegrityError as err:
+            if not es_violacion_de(err, _UQ_NOMBRE):
+                # C-43 (design.md D6): a bare `except IntegrityError` used to
+                # assume every violation here meant a duplicate name — true
+                # only while `cliente` carried a single unique index. Any
+                # other constraint is not this branch's to translate; it
+                # propagates as the real error it is instead of a
+                # misleading 409.
+                raise
+
             # Lost the race against a concurrent alta. Roll back so the session
             # is usable, then answer like any other duplicate.
             self._session.rollback()
@@ -177,7 +192,9 @@ class ClienteService:
         self._session.add(cliente)
         try:
             self._session.flush()
-        except IntegrityError:
+        except IntegrityError as err:
+            if not es_violacion_de(err, _UQ_NOMBRE):
+                raise
             self._session.rollback()
             raise _conflicto(None)
 
