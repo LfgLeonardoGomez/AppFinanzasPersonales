@@ -771,10 +771,10 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `knowledge-base/09_decisiones_y_supuestos.md` D-37
 
 ### [C-36] `cuenta-corriente-clientes-frontend`
-- **Estado**: `[ ]`
+- **Estado**: `[x]` archivado 2026-08-16 (suite 843 passed) — **reutilizó en lugar de generalizar**: `HistorialCronologico` es vocabulary-agnostic (R2, D-57); `SaldoBadge` se importó directo. TablaFacturasConEstado (supplier-specific, línea de detalle, monto_total) no se reutilizó porque es diferente de TablaVentasFiadas (customer-specific, ventas fiadas, solo monto) — generalizar habría hecho ambas semiútiles.
 - **Scope**:
   - `src/features/clientes/`: listado de clientes ordenable por saldo + `ClienteDetailPage` con saldo, ventas fiadas con estado e historial
-  - Reutilizar `SaldoBadge`, `TablaFacturasConEstado` y `HistorialCronologico` de C-13 (generalizar en lugar de duplicar)
+  - Reutilizar `SaldoBadge`, `HistorialCronologico` de C-13; tabla de ventas fiadas separada con su propio diseño (no generalización de TablaFacturasConEstado)
   - Acción "Registrar cobro" desde la ficha del cliente, con tope visible en el saldo pendiente (RN-CCC-04)
   - Invalidación de cache al crear/editar ventas fiadas o cobros del mismo cliente
   - Tests: saldo con signo, estados de venta fiada, cobro que excede el saldo bloqueado en UI **y** validado en backend, invalidación de cache
@@ -951,7 +951,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-42 | idempotencia-registro-venta | ALTO | C-34 (deuda detectada revisando C-34, archivado 2026-08-16) |
 | **C-43** | **idempotencia-resto-de-escrituras** | ALTO | C-42 |
 
-**Total: 44 entradas (C-01…C-43 + C-15a) · 13 fases · 38 archivadas, 6 pendientes**
+**Total: 44 entradas (C-01…C-43 + C-15a) · 13 fases · 39 archivadas, 5 pendientes**
 
 **Estado del MVP**: completo y archivado desde C-13 (2026-06-27). C-14/C-15 cerraron la IA de visión. C-15a…C-27 fueron housekeeping, fixes y cierre de deudas; el rediseño de UX/UI se entregó fuera de la numeración (ver nota al final de la sección de housekeeping).
 
