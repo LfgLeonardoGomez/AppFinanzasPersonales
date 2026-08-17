@@ -942,7 +942,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-33 | ventas-backend | ALTO | C-32 (archivado 2026-08-12) |
 | C-35 | cuenta-corriente-clientes-backend | ALTO | C-33 (archivado 2026-08-12) |
 | C-34 | ventas-clientes-frontend | MEDIO | C-30, C-33 (archivado 2026-08-14) |
-| **C-36** | **cuenta-corriente-clientes-frontend** | MEDIO | C-34, C-35 |
+| C-36 | cuenta-corriente-clientes-frontend | MEDIO | C-34, C-35 (archivado 2026-08-16) |
 | **C-37** | **estadisticas-backend** | MEDIO | C-33 |
 | **C-38** | **estadisticas-frontend** | BAJO | C-34, C-37 |
 | **C-39** | **exportacion-pdf-xls** | MEDIO | C-36 |
