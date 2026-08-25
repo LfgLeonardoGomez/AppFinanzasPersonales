@@ -45,6 +45,9 @@ afterEach(() => {
   server.resetHandlers()
   capturedBody = null
   capturedMethod = ''
+  // C-43 Fase B — the pending-attempt slot is mirrored to sessionStorage,
+  // so it must be cleared between tests or a minted key leaks forward.
+  window.sessionStorage.clear()
 })
 
 const PAYLOAD: CobroClienteCreate = {
@@ -102,6 +105,118 @@ describe('crearCobro — a rejection propagates (task 5.4)', () => {
       ),
     )
     await expect(crearCobro(PAYLOAD)).rejects.toBeTruthy()
+  })
+})
+
+// ── C-43 Fase B — Idempotency-Key (tasks 12.2, 12.3) ────────────────────────
+
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+describe('crearCobro — Idempotency-Key (C-43 Fase B)', () => {
+  /** TASK 12.2 — the guard, same reasoning as `createPago`'s: a POST
+   * without the header does NOT error, so this is the only signal that a
+   * new call site went through `crearCobro`. */
+  it('always sends an Idempotency-Key header with a valid UUID (task 12.2)', async () => {
+    let capturedKey: string | null = null
+    server.use(
+      http.post('/api/cobros', ({ request }) => {
+        capturedKey = request.headers.get('Idempotency-Key')
+        return HttpResponse.json(RAW_COBRO, { status: 201 })
+      }),
+    )
+
+    await crearCobro(PAYLOAD)
+
+    expect(capturedKey).toMatch(UUID_V4)
+  })
+
+  it('reuses the same key on a retry of the same cobro after a response-less failure (task 12.3)', async () => {
+    const keys: (string | null)[] = []
+    server.use(
+      http.post('/api/cobros', ({ request }) => {
+        keys.push(request.headers.get('Idempotency-Key'))
+        if (keys.length === 1) return HttpResponse.error()
+        return HttpResponse.json(RAW_COBRO, { status: 201 })
+      }),
+    )
+
+    await expect(crearCobro(PAYLOAD)).rejects.toBeTruthy()
+    await crearCobro(PAYLOAD)
+
+    expect(keys).toHaveLength(2)
+    // Asserted BEFORE the equality: without this, `null === null` would
+    // make this test pass against an implementation that sends no header
+    // at all — the exact thing it exists to catch.
+    expect(keys[0]).toMatch(UUID_V4)
+    expect(keys[0]).toBe(keys[1])
+  })
+
+  it('mints a NEW key when the amount changes between attempts (task 12.3, triangulation)', async () => {
+    const keys: (string | null)[] = []
+    server.use(
+      http.post('/api/cobros', ({ request }) => {
+        keys.push(request.headers.get('Idempotency-Key'))
+        if (keys.length === 1) return HttpResponse.error()
+        return HttpResponse.json(RAW_COBRO, { status: 201 })
+      }),
+    )
+
+    await expect(crearCobro(PAYLOAD)).rejects.toBeTruthy()
+    await crearCobro({ ...PAYLOAD, monto: '250.00' })
+
+    expect(keys[0]).not.toBe(keys[1])
+  })
+
+  it('uses a namespace of its own — a pending cobro key survives an unrelated confirmed write', async () => {
+    const keys: (string | null)[] = []
+    server.use(
+      http.post('/api/cobros', ({ request }) => {
+        keys.push(request.headers.get('Idempotency-Key'))
+        // Both attempts fail ambiguously, so the pending key must persist.
+        return HttpResponse.error()
+      }),
+    )
+
+    await expect(crearCobro(PAYLOAD)).rejects.toBeTruthy()
+    await expect(crearCobro(PAYLOAD)).rejects.toBeTruthy()
+
+    expect(keys[0]).toMatch(UUID_V4)
+    expect(keys[0]).toBe(keys[1])
+  })
+
+  /**
+   * TASK 12.5 (API half) — the scenario that motivated design.md D2.
+   * Paying off the WHOLE balance, losing the response, then retrying must
+   * come back as an already-recorded success — never a 422 for
+   * insufficient balance. On the backend that works because the lookup by
+   * key runs BEFORE the stateful balance validation; from this layer, the
+   * observable contract is: same key on the retry, and a 200 +
+   * Idempotent-Replay classified as a replay, not an error.
+   */
+  it('a retry of a full-balance payoff reuses the key and reports a replay, never a rejection (task 12.5)', async () => {
+    const keys: (string | null)[] = []
+    server.use(
+      http.post('/api/cobros', ({ request }) => {
+        keys.push(request.headers.get('Idempotency-Key'))
+        // 1st attempt: the request commits server-side but the response is
+        // lost. 2nd attempt: the backend recognises the key and replays.
+        if (keys.length === 1) return HttpResponse.error()
+        return HttpResponse.json(RAW_COBRO, {
+          status: 200,
+          headers: { 'Idempotent-Replay': 'true' },
+        })
+      }),
+    )
+
+    const payoff: CobroClienteCreate = { ...PAYLOAD, monto: '500.00' }
+
+    await expect(crearCobro(payoff)).rejects.toBeTruthy()
+    const result = await crearCobro(payoff)
+
+    expect(keys[0]).toMatch(UUID_V4)
+    expect(keys[0]).toBe(keys[1])
+    expect(result.replay).toBe(true)
+    expect(result.cobro.id).toBe('cobro-1')
   })
 })
 

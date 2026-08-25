@@ -10,8 +10,28 @@
  * invalidation in `useDeleteFactura` can target the right
  * `cuenta-corriente.detail(proveedorId)` key without an extra
  * GET /api/facturas/{id} round-trip.
+ *
+ * C-43 Fase B — `createFactura` and idempotency (design.md D1/D3/D7).
+ * Same recipe as `createPago` / `createVenta`, deliberately repeated per
+ * entity rather than abstracted (design.md D1) so the ONE real difference
+ * stays visible: an invoice's identity INCLUDES its items (design.md D3).
+ * `getIdempotencyKey` hashes the whole payload, items and all, so
+ * correcting a line's description or price mints a NEW key — which is what
+ * makes a correction reach the backend as a correction instead of
+ * colliding with the original attempt's 409.
+ *
+ * `estado` is still never computed here (RN-FAC-09). On a replay the
+ * backend rebuilds it at answer time over the supplier's current FIFO
+ * pool, so it can legitimately differ from what the first attempt would
+ * have returned (design.md D4) — this layer forwards it verbatim.
+ *
+ * `updateFactura` / `deleteFactura` deliberately send NO key: the backend
+ * does not dedupe them.
  */
+import { isAxiosError } from 'axios'
 import { apiClient } from '@shared/api/client'
+import { getIdempotencyKey, confirmIdempotencyKey } from '@shared/api/idempotency'
+import { classifySuccess } from '@shared/api/submitOutcome'
 import type {
   FacturaListItem,
   FacturaResponse,
@@ -53,11 +73,42 @@ export async function getFactura(id: string): Promise<FacturaResponse> {
   return res.data
 }
 
-// ── Create ────────────────────────────────────────────────────────────────────
+// ── Create (C-43 Fase B — idempotent) ────────────────────────────────────────
 
-export async function createFactura(data: FacturaCreate): Promise<FacturaResponse> {
-  const res = await apiClient.post<FacturaResponse>('/facturas', data)
-  return res.data
+const FACTURA_IDEMPOTENCY_NAMESPACE = 'factura-create'
+
+export interface CreateFacturaResult {
+  factura: FacturaResponse
+  /** True for a deduplicated replay (200 + `Idempotent-Replay`) — no new
+   * row was created. False for an ordinary 201 creation. */
+  replay: boolean
+}
+
+/**
+ * Create an invoice. ALWAYS sends `Idempotency-Key` — that invariant is
+ * the guard (task 11.1): a POST without the header does NOT error, so
+ * this function being the only door to `POST /api/facturas` is the only
+ * thing standing between a lost response and a duplicated invoice.
+ */
+export async function createFactura(data: FacturaCreate): Promise<CreateFacturaResult> {
+  const idempotencyKey = getIdempotencyKey(FACTURA_IDEMPOTENCY_NAMESPACE, data)
+  try {
+    const res = await apiClient.post<FacturaResponse>('/facturas', data, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    })
+    confirmIdempotencyKey(FACTURA_IDEMPOTENCY_NAMESPACE, idempotencyKey)
+    const outcome = classifySuccess(res)
+    return { factura: res.data, replay: outcome.kind === 'alreadyRecorded' }
+  } catch (err) {
+    // A 409 means the key already resolved to a DIFFERENT invoice — that
+    // attempt is over, so the pending key goes with it. Everything else
+    // (422, network error, 5xx) keeps the key so a retry of the same
+    // payload reuses it.
+    if (isAxiosError(err) && err.response?.status === 409) {
+      confirmIdempotencyKey(FACTURA_IDEMPOTENCY_NAMESPACE, idempotencyKey)
+    }
+    throw err
+  }
 }
 
 // ── Update (partial) ──────────────────────────────────────────────────────────

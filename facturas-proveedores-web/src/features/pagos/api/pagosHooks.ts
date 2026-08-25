@@ -83,7 +83,7 @@ export function useCreatePago() {
       // C-13 D6 — invalidate the cuenta-corriente view for the supplier
       // the new pago belongs to.
       void queryClient.invalidateQueries({
-        queryKey: CUENTA_CORRIENTE_KEYS.detail(created.proveedor_id),
+        queryKey: CUENTA_CORRIENTE_KEYS.detail(created.pago.proveedor_id),
       })
       // Also invalidate the supplier list so the saldo column refreshes
       void queryClient.invalidateQueries({ queryKey: PROVEEDOR_KEYS.all })

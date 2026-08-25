@@ -204,8 +204,12 @@ describe('useCreatePago', () => {
     }
     result.current.mutate(payload)
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.data?.proveedor_id).toBe('proveedor-uuid-1')
-    expect(result.current.data?.metodo).toBe('EFECTIVO')
+    // C-43 Fase B — the mutation resolves `{ pago, replay }`, not a bare
+    // PagoResponse: the caller needs `replay` to tell "already recorded"
+    // apart from "just created" (design.md D6).
+    expect(result.current.data?.pago.proveedor_id).toBe('proveedor-uuid-1')
+    expect(result.current.data?.pago.metodo).toBe('EFECTIVO')
+    expect(result.current.data?.replay).toBe(false)
   })
 
   it('the PagoCreate payload type does NOT allow a `factura_id` key (compile-time)', () => {

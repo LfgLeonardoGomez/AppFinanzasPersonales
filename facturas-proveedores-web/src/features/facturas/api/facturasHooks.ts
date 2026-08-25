@@ -73,7 +73,7 @@ export function useCreateFactura() {
       // C-13 D6 — invalidate the cuenta-corriente view for the supplier
       // the new factura belongs to.
       void queryClient.invalidateQueries({
-        queryKey: CUENTA_CORRIENTE_KEYS.detail(created.proveedor_id),
+        queryKey: CUENTA_CORRIENTE_KEYS.detail(created.factura.proveedor_id),
       })
     },
   })

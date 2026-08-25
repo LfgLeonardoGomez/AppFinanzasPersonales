@@ -224,8 +224,12 @@ describe('useCreateFactura', () => {
       monto_total: 1500.0,
     })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.data?.proveedor_id).toBe('proveedor-uuid-1')
-    expect(result.current.data?.estado).toBe('PENDIENTE')
+    // C-43 Fase B — the mutation resolves `{ factura, replay }`, not a bare
+    // FacturaResponse: the caller needs `replay` to tell "already recorded"
+    // apart from "just created" (design.md D6).
+    expect(result.current.data?.factura.proveedor_id).toBe('proveedor-uuid-1')
+    expect(result.current.data?.factura.estado).toBe('PENDIENTE')
+    expect(result.current.data?.replay).toBe(false)
   })
 })
 
