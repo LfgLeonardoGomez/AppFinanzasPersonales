@@ -58,7 +58,7 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 
 **Próximo change:** `C-43` quedó **completo** el 2026-08-25 (Fase A + Fase B) y solo resta archivarlo. El siguiente es **`C-39-exportacion-pdf-xls`**, el cierre del camino crítico; su única dependencia (C-36) ya está archivada: `/opsx:propose C-39-exportacion-pdf-xls`.
 
-Sueltos, sin dependencias: `C-37` (estadísticas backend) y `C-41` (tipos TS generados desde OpenAPI).
+Sueltos, sin dependencias: `C-37` (estadísticas backend — **implementado, ver nota abajo**, resta `/opsx:archive`) y `C-41` (tipos TS generados desde OpenAPI).
 
 > ✅ **C-28 archivado el 2026-08-09**: el eje de aislamiento ya es `negocio_id` en todo el sistema. Lo sostiene el test estructural `tests/test_c28_scoping_axis_guard.py`, que recorre el AST de `services/` y `repositories/` y falla si `usuario_id` reaparece como filtro fuera de la lista blanca. Ese guard está parametrizado sobre los archivos que encuentra: agregar o quitar un archivo en esos directorios **cambia el conteo de tests colectados**, y no es un error.
 
@@ -71,6 +71,14 @@ Sueltos, sin dependencias: `C-37` (estadísticas backend) y `C-41` (tipos TS gen
 > - Quien manda la clave y promete que reintentar es seguro es el `CargaModal`. La regla general: solo un formulario que efectivamente manda la clave puede hacer esa promesa; cualquier escritura que no la mande hereda el copy conservador.
 >
 > ⚠️ **La respuesta de una repetición puede diferir de la original** (D-70, RN-FAC-11). El `estado` de una factura se recalcula sobre el pool FIFO actual, así que una repetición puede devolver `PARCIAL` donde el original devolvió `PENDIENTE`. Es correcto: `estado` es derivado y nunca persistido. La garantía es "no se creó una segunda fila", **no** "recibís los mismos bytes".
+
+> ✅ **C-37 implementado (backend puro), pendiente de `/opsx:archive`.** Tres endpoints de solo lectura (`GET /api/estadisticas/compras|ventas|resumen`), todo por agregación SQL on-demand (RN-VTA-05), cero columnas nuevas, cero dependencias nuevas. `app/services/estadisticas_engine.py` es el único motor compartido (bucketing + relleno de huecos, D-75) — compras y ventas conservan cada una su propia query porque una necesita filtro por `proveedor_id` y la otra desglose por `forma_pago`.
+>
+> **Corrección al roadmap original:** el scope pedía tests de "zona horaria UTC-3 en los cortes de período". Ese problema no existe — `venta.fecha` y `factura.fecha_emision` son columnas `date`, sin hora ni zona, así que agrupar por día/semana/mes es aritmética de fechas pura. Agregar una conversión ahí **introduciría** el bug que se buscaba evitar: desplazaría de período los movimientos cercanos a un borde, de forma sistemática e invisible (D-78). Si alguien viene a "arreglar" esto: no está roto, no lo toques.
+>
+> **La trampa de dominio que este change existe para blindar** (D-77, RN-EST-01): un cobro de cuenta corriente **no** es una venta (RN-VTA-04) — ya se contó como venta el día que salió la mercadería (RN-VTA-02); sumarlo de nuevo duplica la facturación y el número queda más alto, pero plausible, así que nadie lo nota mirando la pantalla. Simétricamente, un pago **no** es una compra: la factura es la compra, el pago la cancela. `EstadisticasRepository` no importa `Pago` ni `CobroCliente` — verificado con un test que falla por mutación si alguien los agrega a la suma.
+>
+> `test_c28_scoping_axis_guard.py` subió de 40 a 46 tests colectados (3 archivos nuevos en `services/`/`repositories/` × 2 tests parametrizados). Esperado, no una sorpresa.
 
 ## Reglas Duras (específicas del proyecto)
 
