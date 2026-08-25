@@ -822,18 +822,20 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `specs/design/DESIGN_SYSTEM.md`, `specs/design/LAYOUT.md`
 
 ### [C-39] `exportacion-pdf-xls`
-- **Estado**: `[ ]`
+- **Estado**: `[~]` **apply completo 2026-08-25 — pendiente `/opsx:archive`.** Backend y frontend implementados y en verde (ver `tasks.md` del change, 59/59 marcadas con evidencia). Sin fecha de archive porque el archive real todavía no corrió.
 - **Scope**:
-  - **XLS**: dump tabular de movimientos (cuenta corriente de cliente y de proveedor) para seguir trabajando en Excel. Sin formato decorativo
-  - **PDF**: *resumen de cuenta* presentable — encabezado del negocio, datos del cliente/proveedor, saldo, detalle de movimientos con saldo acumulado. Es un documento que el negocio le muestra a su cliente, no un dump de tabla
-  - Generación en **backend** (el frontend solo dispara y descarga), aislada por `negocio_id`
-  - Los montos del export salen del **mismo cálculo on-demand** que la pantalla: prohibido recalcular por otra vía y arriesgar divergencia
-  - Tests: export de cuenta con datos mixtos coincide con el saldo de la pantalla, cliente de otro negocio → 404, cuenta vacía no rompe
+  - **XLS**: dump tabular de movimientos (cuenta corriente de cliente y de proveedor) para seguir trabajando en Excel. Sin formato decorativo. ✅ Entregado con `xlsxwriter` (`constant_memory`).
+  - **PDF**: *resumen de cuenta* presentable — encabezado del negocio, datos del cliente/proveedor, saldo, detalle de movimientos con saldo acumulado. Es un documento que el negocio le muestra a su cliente, no un dump de tabla. ✅ Entregado con `fpdf2`.
+  - Generación en **backend** (el frontend solo dispara y descarga), aislada por `negocio_id`. ✅ `ExportacionCuentaCorrienteService`, sin router nuevo (design.md D4 — cero conflicto con C-37).
+  - Los montos del export salen del **mismo cálculo on-demand** que la pantalla: prohibido recalcular por otra vía y arriesgar divergencia. ✅ El armador (`exportacion_armador.py`) no importa repositorios ni el motor FIFO — verificado por AST, mismo espíritu que el guard de C-28.
+  - Historial opcional con rango de fechas, fila de `saldo anterior` para que el documento reconcilie consigo mismo (D2), tope de filas por formato con 422 explicativo en vez de job asíncrono (D5). ✅ Todo entregado — ver `knowledge-base/09_decisiones_y_supuestos.md` D-80 a D-84 y `knowledge-base/05_reglas_de_negocio.md` §Dominio: Exportación de cuenta corriente (RN-EXP-01 a RN-EXP-06).
+  - Tests: export de cuenta con datos mixtos coincide con el saldo de la pantalla, cliente/proveedor de otro negocio → 404, cuenta vacía no rompe. ✅ Backend 1402 passed (baseline 1346 + 56 propios), frontend 903 passed (baseline 884 + 19 propios), `tsc`/`eslint` limpios.
 - **Dependencias**: `C-36`
 - **Governance**: MEDIO
 - **Leer antes**:
-  - `knowledge-base/05_reglas_de_negocio.md` §RN-SALDO, §RN-HIST, §Dominio: Cuenta corriente de clientes
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-SALDO, §RN-HIST, §Dominio: Cuenta corriente de clientes, §Dominio: Exportación de cuenta corriente
   - `knowledge-base/01_vision_y_objetivos.md` §Alcance de la evolución post-MVP
+  - `knowledge-base/09_decisiones_y_supuestos.md` D-80 a D-84
 
 ---
 

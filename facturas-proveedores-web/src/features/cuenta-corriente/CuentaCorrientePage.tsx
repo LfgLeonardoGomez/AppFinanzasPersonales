@@ -40,6 +40,8 @@ import { SaldoBadge } from './components/SaldoBadge'
 import { TablaFacturasConEstado } from './components/TablaFacturasConEstado'
 import { PagosRegistrados } from './components/PagosRegistrados'
 import { HistorialCronologico } from './components/HistorialCronologico'
+import { ExportarCuentaCorriente } from './components/ExportarCuentaCorriente'
+import { exportarCuentaCorrienteProveedor } from './api/exportacionApi'
 import { Card } from '@shared/components/Card/Card'
 import type {
   CuentaCorrienteResponse,
@@ -155,6 +157,14 @@ export function CuentaCorrientePage({ cuentaCorriente }: CuentaCorrientePageProp
     [cuentaCorriente.historial, historialOrder],
   )
 
+  // C-39, D7 — bound once here to the supplier endpoint; the export
+  // component itself does not know which account type it is exporting.
+  const exportFn = useMemo(
+    () => (params: Parameters<typeof exportarCuentaCorrienteProveedor>[1]) =>
+      exportarCuentaCorrienteProveedor(cuentaCorriente.proveedor_id, params),
+    [cuentaCorriente.proveedor_id],
+  )
+
   if (isEmptyTriple(cuentaCorriente)) {
     return (
       <div data-testid="cuenta-corriente-page" className="flex flex-col gap-6">
@@ -164,6 +174,11 @@ export function CuentaCorrientePage({ cuentaCorriente }: CuentaCorrientePageProp
           </p>
           <div className="mt-2">
             <SaldoBadge saldo={cuentaCorriente.saldo} />
+          </div>
+          {/* spec: "una cuenta sin deuda también se exporta" — la acción sigue
+              disponible aunque el saldo esté en cero. */}
+          <div className="mt-3">
+            <ExportarCuentaCorriente exportFn={exportFn} />
           </div>
         </Card>
 
@@ -191,6 +206,7 @@ export function CuentaCorrientePage({ cuentaCorriente }: CuentaCorrientePageProp
             Calculado al momento a partir de facturas y pagos. Se actualiza
             automáticamente.
           </p>
+          <ExportarCuentaCorriente exportFn={exportFn} />
         </Card>
       </section>
 

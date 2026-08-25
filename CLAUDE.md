@@ -54,9 +54,9 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 
 **Etapa actual — evolución a sistema de gestión (C-28 → C-39).** Decidida el 2026-08-09, documentada en D-27 a D-38. La app deja de ser "registro de facturas a proveedores" y pasa a ser un mini sistema para negocios chicos: equipo multi-usuario sobre un mismo local, clientes con fiado, ventas y analítica. **El proyecto se renombrará** cuando la etapa esté encaminada.
 
-**Camino crítico de la etapa:** `C-28 ✓ → C-32 ✓ → C-33 ✓ → C-34 ✓ → C-35 ✓ → C-36 ✓ → C-39 exportación`, con `C-29/C-30/C-31` (equipo + recuperación de contraseña, todos ✓) y `C-37/C-38` (estadísticas) en paralelo. **Todo el camino crítico está archivado salvo el último tramo: C-39.**
+**Camino crítico de la etapa:** `C-28 ✓ → C-32 ✓ → C-33 ✓ → C-34 ✓ → C-35 ✓ → C-36 ✓ → C-39 exportación`, con `C-29/C-30/C-31` (equipo + recuperación de contraseña, todos ✓) y `C-37/C-38` (estadísticas) en paralelo. **El camino crítico está implementado de punta a punta** — a `C-39` le falta solo el archive (ver abajo).
 
-**Próximo change:** `C-43` quedó **completo** el 2026-08-25 (Fase A + Fase B) y solo resta archivarlo. El siguiente es **`C-39-exportacion-pdf-xls`**, el cierre del camino crítico; su única dependencia (C-36) ya está archivada: `/opsx:propose C-39-exportacion-pdf-xls`.
+**Próximo a archivar:** `C-43` quedó **completo** el 2026-08-25 (Fase A + Fase B) y solo resta archivarlo. `C-39-exportacion-pdf-xls`, el cierre del camino crítico, **quedó implementado el 2026-08-25** (backend + frontend, apply completo — ver nota abajo) y también solo resta archivarlo: `/opsx:archive c-39-exportacion-pdf-xls`.
 
 Sueltos, sin dependencias: `C-37` (estadísticas backend — **implementado, ver nota abajo**, resta `/opsx:archive`) y `C-41` (tipos TS generados desde OpenAPI).
 
@@ -79,6 +79,9 @@ Sueltos, sin dependencias: `C-37` (estadísticas backend — **implementado, ver
 > **La trampa de dominio que este change existe para blindar** (D-77, RN-EST-01): un cobro de cuenta corriente **no** es una venta (RN-VTA-04) — ya se contó como venta el día que salió la mercadería (RN-VTA-02); sumarlo de nuevo duplica la facturación y el número queda más alto, pero plausible, así que nadie lo nota mirando la pantalla. Simétricamente, un pago **no** es una compra: la factura es la compra, el pago la cancela. `EstadisticasRepository` no importa `Pago` ni `CobroCliente` — verificado con un test que falla por mutación si alguien los agrega a la suma.
 >
 > `test_c28_scoping_axis_guard.py` subió de 40 a 46 tests colectados (3 archivos nuevos en `services/`/`repositories/` × 2 tests parametrizados). Esperado, no una sorpresa.
+> ✅ **C-39 implementado (2026-08-25) — apply completo, pendiente `/opsx:archive`.** Cierra el camino crítico de la etapa. Dos endpoints (`GET /api/proveedores/{id}/cuenta-corriente/export`, `GET /api/clientes/{id}/cuenta-corriente/export`), formato `pdf` o `xlsx`, historial opcional con rango. El export **no recalcula nada** — reutiliza `ProveedorService.get_cuenta_corriente`/`ClienteService.get_cuenta_corriente` (D-80); con rango, el `saldo anterior` se **lee** de una fila que el historial ya trae, nunca se suma (D-81). `fpdf2` + `xlsxwriter` por el límite de 1 GB del VPS (D-82); tope de filas por formato en vez de job asíncrono (D-83, valores conservadores: PDF 500, XLSX 5000, sin medir contra el contenedor real todavía). Detalle completo en `knowledge-base/09_decisiones_y_supuestos.md` D-80 a D-84 y `knowledge-base/05_reglas_de_negocio.md` §Dominio: Exportación de cuenta corriente.
+>
+> **Hallazgo que corrige un supuesto del design**: D4 asumía que declarar la ruta de export después del catch-all `/{id}` la dejaría inalcanzable en silencio, igual que `/buscar` vs `/{id}`. Verificado por mutación real (mover el bloque de código y repetir la request): **no pasa** — Starlette ancla cada ruta por cantidad de segmentos, y una ruta de 3 segmentos (`/{id}/cuenta-corriente/export`) nunca puede ser shadowed por una de 1 segmento (`/{id}`), sin importar el orden. La ruta se dejó declarada antes de `/{id}` igual, por consistencia con el patrón existente — pero el riesgo real solo aparece entre rutas de **igual** cantidad de segmentos (una literal, una parámetro), no en este par. Ver D-84.
 
 ## Reglas Duras (específicas del proyecto)
 

@@ -9,12 +9,17 @@ Collection routes answer on both `""` and `"/"` without a redirect (C-27): a
 
 `/buscar` is declared before `/{cliente_id}` so the path parameter does not
 shadow it — same ordering constraint as the suppliers router.
+
+C-39: `GET /{cliente_id}/cuenta-corriente/export` follows immediately after
+`GET /{cliente_id}/cuenta-corriente`, same placement discipline (design.md
+D4) — before `/{cliente_id}`, or it never gets reached.
 """
 
 import uuid
-from typing import Annotated
+from datetime import date
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlmodel import Session
 
 from app.core.deps import get_current_user, get_db
@@ -22,6 +27,7 @@ from app.models.usuario import Usuario
 from app.schemas.cliente import ClienteCreate, ClienteResponse, ClienteUpdate
 from app.schemas.cuenta_corriente_cliente import CuentaCorrienteClienteResponse
 from app.services.cliente_service import ClienteService
+from app.services.exportacion_cuenta_corriente_service import ExportacionCuentaCorrienteService
 
 router = APIRouter(prefix="/api/clientes", tags=["clientes"])
 
@@ -80,6 +86,49 @@ def get_cuenta_corriente(
     svc = ClienteService(session)
     result = svc.get_cuenta_corriente(current_user.negocio_id, cliente_id)
     return CuentaCorrienteClienteResponse.model_validate(result)
+
+
+# ── GET /{cliente_id}/cuenta-corriente/export — MUST come before /{cliente_id} (C-39) ─
+#
+# Cuelga del mismo router existente (design.md D4): cero router nuevo, cero
+# línea tocada en main.py.
+
+
+@router.get(
+    "/{cliente_id}/cuenta-corriente/export",
+    summary="Export a customer's current account as a PDF or XLSX document",
+)
+def export_cuenta_corriente(
+    cliente_id: Annotated[uuid.UUID, ...],
+    formato: Annotated[Literal["pdf", "xlsx"], Query(description="pdf | xlsx")],
+    incluir_historial: Annotated[bool, Query()] = False,
+    desde: Annotated[date | None, Query()] = None,
+    hasta: Annotated[date | None, Query()] = None,
+    current_user: CurrentUser = ...,
+    session: DbSession = ...,
+) -> Response:
+    """
+    Export a customer's cuenta-corriente as a downloadable PDF or XLSX.
+
+    Read-only, same on-demand composition as `get_cuenta_corriente` above
+    (design.md D1) — never recomputed. 404 on foreign/missing/deleted
+    customer, 422 on unsupported `formato`, on `desde`/`hasta` without
+    `incluir_historial`, or on a historial past the row cap (design.md D5).
+    """
+    svc = ExportacionCuentaCorrienteService(session)
+    archivo = svc.exportar_cliente(
+        current_user.negocio_id,
+        cliente_id,
+        formato=formato,
+        incluir_historial=incluir_historial,
+        desde=desde,
+        hasta=hasta,
+    )
+    return Response(
+        content=archivo.contenido,
+        media_type=archivo.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{archivo.filename}"'},
+    )
 
 
 @router.get(

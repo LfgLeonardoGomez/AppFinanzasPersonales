@@ -13,6 +13,11 @@ C-12 additions:
   C-06 /buscar pattern).
 - The endpoint is read-only; the router does NOT call session.commit().
 
+C-39 additions:
+- GET /{proveedor_id}/cuenta-corriente/export — declared right after the
+  cuenta-corriente route above, same placement discipline, same reason
+  (design.md D4). No new router, no line touched in main.py.
+
 Pattern mirrors app/routers/auth.py:
 - Router owns the session.commit().
 - Service raises HTTPExceptions; router does not add logic.
@@ -20,10 +25,11 @@ Pattern mirrors app/routers/auth.py:
 """
 
 import uuid
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlmodel import Session
 
 from app.core.deps import get_current_user, get_db
@@ -36,6 +42,7 @@ from app.schemas.proveedor import (
     ProveedorResponse,
     ProveedorUpdate,
 )
+from app.services.exportacion_cuenta_corriente_service import ExportacionCuentaCorrienteService
 from app.services.proveedor_service import ProveedorService
 
 router = APIRouter(prefix="/api/proveedores", tags=["proveedores"])
@@ -112,6 +119,53 @@ def get_cuenta_corriente(
     svc = ProveedorService(session)
     result = svc.get_cuenta_corriente(current_user.negocio_id, proveedor_id)
     return CuentaCorrienteResponse.model_validate(result)
+
+
+# ── GET /{id}/cuenta-corriente/export — MUST come before /{id} (C-39) ────────
+#
+# Cuelga del mismo router existente (design.md D4): cero router nuevo, cero
+# línea tocada en main.py — es lo que le da a C-39 superficie de conflicto
+# cero con C-37, que sí monta un router propio.
+
+@router.get(
+    "/{proveedor_id}/cuenta-corriente/export",
+    summary="Export a supplier's current account as a PDF or XLSX document",
+)
+def export_cuenta_corriente(
+    proveedor_id: Annotated[uuid.UUID, ...],
+    formato: Annotated[Literal["pdf", "xlsx"], Query(description="pdf | xlsx")],
+    incluir_historial: Annotated[bool, Query()] = False,
+    desde: Annotated[date | None, Query()] = None,
+    hasta: Annotated[date | None, Query()] = None,
+    current_user: CurrentUser = ...,
+    session: DbSession = ...,
+) -> Response:
+    """
+    Export a supplier's cuenta-corriente as a downloadable PDF or XLSX.
+
+    Read-only: derives its saldo and historial from the SAME on-demand
+    composition `get_cuenta_corriente` above serves (design.md D1) — never
+    recomputed. Returns 404 on a foreign/missing/deleted supplier, 422 on an
+    unsupported `formato`, on `desde`/`hasta` without `incluir_historial`,
+    or on a historial that exceeds the row cap (design.md D5).
+
+    Zero decision logic here: assembles the parameters, delegates to
+    `ExportacionCuentaCorrienteService`, returns its bytes.
+    """
+    svc = ExportacionCuentaCorrienteService(session)
+    archivo = svc.exportar_proveedor(
+        current_user.negocio_id,
+        proveedor_id,
+        formato=formato,
+        incluir_historial=incluir_historial,
+        desde=desde,
+        hasta=hasta,
+    )
+    return Response(
+        content=archivo.contenido,
+        media_type=archivo.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{archivo.filename}"'},
+    )
 
 
 # ── GET / — paginated listing ─────────────────────────────────────────────────

@@ -170,6 +170,18 @@ Es una vista **distinta** del estado FIFO (RN-FIFO): muestra la evolución de la
 | **RN-EST-05** | `GET /api/estadisticas/resumen` deriva `compras` y `ventas` de las **mismas** agregaciones que sirven a los endpoints individuales — nunca una query propia (D-79). Expone `compras`, `ventas` y `diferencia`; **NUNCA** margen ni rentabilidad, porque el sistema no sabe cuánto costó la mercadería vendida. |
 | **RN-EST-06** | Un rango que produciría más períodos que el tope configurado (`MAX_PERIODOS`) se rechaza con **422**, informando cuántos períodos pediría y sugiriendo granularidad más gruesa o rango más corto. Nunca una serie truncada en silencio. |
 | **RN-EST-07** | Las tres agregaciones están aisladas por `negocio_id` (D-27). Un `proveedor_id` de otro negocio en `/compras` responde **404**, nunca 403 — una filtración acá no se ve como un registro ajeno, se ve como un número más alto. |
+## Dominio: Exportación de cuenta corriente *(C-39, design.md)*
+
+> **No es un tercer motor de cálculo.** El exportador de proveedores y el de clientes son el mismo módulo, parametrizado por el service de cuenta corriente que cada uno ya tiene (`ProveedorService.get_cuenta_corriente` / `ClienteService.get_cuenta_corriente`). Ninguna regla de esta sección calcula saldo ni historial por su cuenta — todas leen lo que RN-SALDO/RN-FIFO/RN-HIST (y sus espejos RN-CCC-XX) ya produjeron.
+
+| Código | Regla |
+|---|---|
+| **RN-EXP-01** | **El documento exportado (PDF o XLSX) SHALL derivar su saldo y sus movimientos de la misma composición on-demand que sirve la vista de cuenta corriente, y SHALL NOT recalcularlos por una vía propia.** Es la condición que hace estructuralmente imposible que un documento entregado a un tercero diga un número distinto al de la pantalla (D-80). |
+| **RN-EXP-02** | **El saldo del encabezado es siempre el de la cuenta completa** y **SHALL NOT** verse afectado por ningún filtro de fechas aplicado al historial. Un rango acota qué movimientos se listan, nunca qué saldo se declara como "el saldo". |
+| **RN-EXP-03** | **Un documento con historial acotado a un rango SHALL reconciliar consigo mismo.** Abre con una fila de `saldo_anterior` — el `saldo_acumulado` de la última fila del historial completo anterior al inicio del rango (cero si no hay ninguna) — de forma que `saldo_anterior + Σ(movimientos con signo del rango) == saldo_acumulado de la última fila del rango`. Ese número se **lee** de una fila que el historial ya trae (D-81), nunca se suma de cero — sumar violaría RN-EXP-01. |
+| **RN-EXP-04** | **Pedir un rango de fechas sin pedir el historial es contradictorio** y **SHALL** rechazarse con **422**, nunca ignorarse en silencio devolviendo un documento sin filas. |
+| **RN-EXP-05** | **Tope de filas por formato.** El sistema **SHALL** rechazar con **422** una exportación cuyo historial (post-filtro de fechas) exceda el tope del formato pedido, informando la cantidad real de movimientos y sugiriendo acotar el rango. Al exceder el tope **SHALL NOT** devolverse ningún documento, ni parcial. Los topes de PDF y XLSX son distintos (D-83) porque los formatos no consumen memoria igual. |
+| **RN-EXP-06** | **Aislamiento por `negocio_id`, igual que el resto del sistema (D-27).** Exportar una cuenta ajena, borrada o inexistente responde **404**, nunca 403, y la verificación de pertenencia corre antes de generar cualquier byte. |
 
 ## Dominio: Testing
 
