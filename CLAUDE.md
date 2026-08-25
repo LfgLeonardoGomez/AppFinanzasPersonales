@@ -54,9 +54,9 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 
 **Etapa actual — evolución a sistema de gestión (C-28 → C-39).** Decidida el 2026-08-09, documentada en D-27 a D-38. La app deja de ser "registro de facturas a proveedores" y pasa a ser un mini sistema para negocios chicos: equipo multi-usuario sobre un mismo local, clientes con fiado, ventas y analítica. **El proyecto se renombrará** cuando la etapa esté encaminada.
 
-**Camino crítico de la etapa:** `C-28 ✓ → C-32 ✓ → C-33 ✓ → C-34 ✓ → C-35 ✓ → C-36 ✓ → C-39 exportación`, con `C-29/C-30/C-31` (equipo + recuperación de contraseña, todos ✓) y `C-37/C-38` (estadísticas) en paralelo. **Todo el camino crítico está archivado salvo el último tramo: C-39.**
+**Camino crítico de la etapa:** `C-28 ✓ → C-32 ✓ → C-33 ✓ → C-34 ✓ → C-35 ✓ → C-36 ✓ → C-39 exportación`, con `C-29/C-30/C-31` (equipo + recuperación de contraseña, todos ✓) y `C-37/C-38` (estadísticas) en paralelo. **El camino crítico está implementado de punta a punta** — a `C-39` le falta solo el archive (ver abajo).
 
-**Próximo change:** `C-43` quedó **completo** el 2026-08-25 (Fase A + Fase B) y solo resta archivarlo. El siguiente es **`C-39-exportacion-pdf-xls`**, el cierre del camino crítico; su única dependencia (C-36) ya está archivada: `/opsx:propose C-39-exportacion-pdf-xls`.
+**Próximo a archivar:** `C-43` quedó **completo** el 2026-08-25 (Fase A + Fase B) y solo resta archivarlo. `C-39-exportacion-pdf-xls`, el cierre del camino crítico, **quedó implementado el 2026-08-25** (backend + frontend, apply completo — ver nota abajo) y también solo resta archivarlo: `/opsx:archive c-39-exportacion-pdf-xls`.
 
 Sueltos, sin dependencias: `C-37` (estadísticas backend) y `C-41` (tipos TS generados desde OpenAPI).
 
@@ -71,6 +71,10 @@ Sueltos, sin dependencias: `C-37` (estadísticas backend) y `C-41` (tipos TS gen
 > - Quien manda la clave y promete que reintentar es seguro es el `CargaModal`. La regla general: solo un formulario que efectivamente manda la clave puede hacer esa promesa; cualquier escritura que no la mande hereda el copy conservador.
 >
 > ⚠️ **La respuesta de una repetición puede diferir de la original** (D-70, RN-FAC-11). El `estado` de una factura se recalcula sobre el pool FIFO actual, así que una repetición puede devolver `PARCIAL` donde el original devolvió `PENDIENTE`. Es correcto: `estado` es derivado y nunca persistido. La garantía es "no se creó una segunda fila", **no** "recibís los mismos bytes".
+
+> ✅ **C-39 implementado (2026-08-25) — apply completo, pendiente `/opsx:archive`.** Cierra el camino crítico de la etapa. Dos endpoints (`GET /api/proveedores/{id}/cuenta-corriente/export`, `GET /api/clientes/{id}/cuenta-corriente/export`), formato `pdf` o `xlsx`, historial opcional con rango. El export **no recalcula nada** — reutiliza `ProveedorService.get_cuenta_corriente`/`ClienteService.get_cuenta_corriente` (D-80); con rango, el `saldo anterior` se **lee** de una fila que el historial ya trae, nunca se suma (D-81). `fpdf2` + `xlsxwriter` por el límite de 1 GB del VPS (D-82); tope de filas por formato en vez de job asíncrono (D-83, valores conservadores: PDF 500, XLSX 5000, sin medir contra el contenedor real todavía). Detalle completo en `knowledge-base/09_decisiones_y_supuestos.md` D-80 a D-84 y `knowledge-base/05_reglas_de_negocio.md` §Dominio: Exportación de cuenta corriente.
+>
+> **Hallazgo que corrige un supuesto del design**: D4 asumía que declarar la ruta de export después del catch-all `/{id}` la dejaría inalcanzable en silencio, igual que `/buscar` vs `/{id}`. Verificado por mutación real (mover el bloque de código y repetir la request): **no pasa** — Starlette ancla cada ruta por cantidad de segmentos, y una ruta de 3 segmentos (`/{id}/cuenta-corriente/export`) nunca puede ser shadowed por una de 1 segmento (`/{id}`), sin importar el orden. La ruta se dejó declarada antes de `/{id}` igual, por consistencia con el patrón existente — pero el riesgo real solo aparece entre rutas de **igual** cantidad de segmentos (una literal, una parámetro), no en este par. Ver D-84.
 
 ## Reglas Duras (específicas del proyecto)
 
