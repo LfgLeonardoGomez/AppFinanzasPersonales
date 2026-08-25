@@ -210,7 +210,7 @@ describe('CobroFormDialog — no way to select a sale (task 8.7)', () => {
 })
 
 describe('CobroFormDialog — unconfirmed outcome (task 8.8-8.9)', () => {
-  it('a request with no response renders a role=status banner distinct from role=alert, retains values, and points at the movements — never claims retry is safe', async () => {
+  it('a request with no response renders a role=status banner distinct from role=alert and retains the typed values', async () => {
     const mutate = vi.fn((_data, opts) => {
       opts.onError({ isAxiosError: true }) // network error / timeout — no `response` at all
     })
@@ -233,9 +233,15 @@ describe('CobroFormDialog — unconfirmed outcome (task 8.8-8.9)', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect((screen.getByLabelText(/monto/i) as HTMLInputElement).value).toBe('500')
 
+    // C-43 Fase B (design.md D8) — this assertion USED to read "points at
+    // the movements, never claims retry is safe". That was the honest copy
+    // for an endpoint that did not dedupe. `crearCobro` now sends the key,
+    // so the promise became true and the copy moved with it; the detailed
+    // wording is pinned in the "unconfirmed-outcome copy after C-43" block
+    // below. What this test still guards is the STRUCTURE: an unconfirmed
+    // outcome is a status, never an alert, and never clears the form.
     const banner = screen.getByRole('status')
-    expect(banner.textContent).toMatch(/revis.*movimientos/i)
-    expect(banner.textContent).not.toMatch(/reintentar.*seguro|seguro.*reintentar/i)
+    expect(banner.textContent).toMatch(/no pudimos confirmar/i)
   })
 
   it('a 500 also renders the unconfirmed banner, not the ordinary rejected path (triangulation)', async () => {
@@ -310,5 +316,89 @@ describe('CobroFormDialog — the C-43 branch is live (task 8.11)', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
     const [, meta] = onSuccess.mock.calls[0] as [unknown, { replay?: boolean } | undefined]
     expect(meta?.replay).toBe(true)
+  })
+})
+
+// ── C-43 Fase B — the copy the protection earns (task 12.4, design.md D8) ────
+//
+// D8's rule is general: the promise "retrying is safe" may ONLY be made by a
+// form that actually sends the key. `crearCobro` now does, so the interim
+// copy C-36 wrote — which pointed at the customer's movements and never
+// offered a retry — is retired here, in the same deliverable as the wiring.
+
+describe('CobroFormDialog — unconfirmed-outcome copy after C-43 (task 12.4)', () => {
+  function submitWithUnknownOutcome() {
+    const mutate = vi.fn((_data, opts) => {
+      // No `response` at all — a lost answer, the ambiguous case.
+      opts.onError({ isAxiosError: true })
+    })
+    renderDialog(
+      <CobroFormDialog
+        open
+        clienteId="cliente-1"
+        saldo={1000}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+        externalCreateMutation={makeMutation({ mutate })}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText(/monto/i), { target: { value: '1000' } })
+    fireEvent.change(screen.getByLabelText(/fecha/i), { target: { value: '2026-08-16' } })
+    fireEvent.change(screen.getByLabelText(/método/i), { target: { value: 'EFECTIVO' } })
+    fireEvent.click(screen.getByRole('button', { name: /guardar|registrar/i }))
+  }
+
+  it('says retrying should be safe and no longer asks to check the movements first', async () => {
+    submitWithUnknownOutcome()
+
+    const banner = await screen.findByRole('status')
+    expect(banner.textContent).toMatch(/reintentar debería ser seguro/i)
+    // The retired claim, not the link: the movements pointer legitimately
+    // survives inside the closed-or-reloaded caveat (next test), the same
+    // way VentaForm keeps its list link there. What had to go is the
+    // statement that the operation is NOT identified — now false.
+    expect(banner.textContent).not.toMatch(/no queda identificada/i)
+    // And checking the movements is no longer the precondition for retrying.
+    expect(banner.textContent).not.toMatch(/antes de reintentar,\s*revis/i)
+  })
+
+  it('keeps the closed-or-reloaded-page caveat — the one state where the pending key is genuinely lost', async () => {
+    submitWithUnknownOutcome()
+
+    const banner = await screen.findByRole('status')
+    expect(banner.textContent).toMatch(/cerrado o recargado/i)
+  })
+
+  it('offers the retry as the primary action — the submit button relabels to "Reintentar"', async () => {
+    submitWithUnknownOutcome()
+
+    await screen.findByRole('status')
+    expect(screen.getByRole('button', { name: /^reintentar$/i })).toBeInTheDocument()
+  })
+
+  it('a real rejection still shows the backend detail and no unconfirmed banner (triangulation — the copy swap did not blur the two)', async () => {
+    const mutate = vi.fn((_data, opts) => {
+      opts.onError(axiosError(422, { detail: 'El monto supera el saldo pendiente.' }))
+    })
+    renderDialog(
+      <CobroFormDialog
+        open
+        clienteId="cliente-1"
+        saldo={1000}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+        externalCreateMutation={makeMutation({ mutate })}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText(/monto/i), { target: { value: '1000' } })
+    fireEvent.change(screen.getByLabelText(/fecha/i), { target: { value: '2026-08-16' } })
+    fireEvent.change(screen.getByLabelText(/método/i), { target: { value: 'EFECTIVO' } })
+    fireEvent.click(screen.getByRole('button', { name: /guardar|registrar/i }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain('El monto supera el saldo pendiente.'),
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /registrar cobro/i })).toBeInTheDocument()
   })
 })

@@ -15,6 +15,7 @@ import { setupServer } from 'msw/node'
 import type { ReactNode } from 'react'
 import type { PropuestaFactura } from '@shared/api/api'
 import { CargaModal } from './CargaModal'
+import type { CreatePagoResult } from '@features/pagos/api/pagosApi'
 
 const propuestaOk: PropuestaFactura = {
   proveedor_nombre: 'Acme SA',
@@ -374,5 +375,149 @@ describe('CargaModal — Radix dialog shell (c-27)', () => {
 
     await waitFor(() => expect(document.activeElement).toBe(opener))
     opener.remove()
+  })
+})
+
+// ── C-43 Fase B — the four outcome states on the REAL create path ───────────
+//
+// `PagoForm` / `FacturaForm` are edit-only; every payment and invoice a
+// person actually creates is created HERE. That makes this modal the place
+// design.md D6's four distinguishable outcomes have to live, and the place
+// design.md D8's copy rule applies: `createPago` / `createFactura` now send
+// an `Idempotency-Key`, so this modal — and only a form that sends it — may
+// promise that retrying is safe.
+//
+// Before C-43 every failure collapsed into ONE generic message: a 422, a
+// timeout and a 502 were indistinguishable. That indistinction is exactly
+// what produces the duplicate charge.
+
+const PROVEEDOR: import('@shared/api/api').ProveedorListItem = {
+  id: 'prov-1',
+  nombre: 'Acme SA',
+  cuit: null,
+  telefono: null,
+  categoria: 'OTRO',
+  notas: null,
+  saldo: 0,
+  created_at: '2026-08-20T10:00:00',
+  updated_at: '2026-08-20T10:00:00',
+}
+
+const PAGO_CREADO = {
+  id: 'pago-1',
+  negocio_id: 'negocio-1',
+  proveedor_id: 'prov-1',
+  monto: 1000,
+  fecha: '2026-08-20',
+  metodo: 'EFECTIVO' as const,
+  comprobante_url: null,
+  origen: 'MANUAL' as const,
+  created_at: '2026-08-20T10:00:00',
+  updated_at: '2026-08-20T10:00:00',
+}
+
+function axiosError(status?: number, data?: unknown) {
+  return status === undefined
+    ? { isAxiosError: true }
+    : { isAxiosError: true, response: { status, data } }
+}
+
+/** Drives the modal to the review step on the MANUAL origin with a supplier
+ * already selected, fills the amount, and confirms. */
+async function confirmManualPago(
+  createPago: (payload: import('@shared/api/api').PagoCreate) => Promise<CreatePagoResult>,
+) {
+  renderModal({ initialTipo: 'pago', initialSelectedProveedor: PROVEEDOR, createPago })
+  fireEvent.click(screen.getByRole('button', { name: 'Manual' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Confirmar' })).toBeEnabled())
+  fireEvent.change(screen.getByLabelText(/monto/i), { target: { value: '1000' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+}
+
+describe('CargaModal — outcome: already recorded (C-43 Fase B)', () => {
+  it('a replay lands on the success step saying the pago ALREADY was registered, not that one was created', async () => {
+    const createPago = vi.fn().mockResolvedValue({ pago: PAGO_CREADO, replay: true })
+
+    await confirmManualPago(createPago)
+
+    await waitFor(() => expect(screen.getByText(/ya estaba registrado/i)).toBeInTheDocument())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText(/pago confirmado/i)).not.toBeInTheDocument()
+  })
+
+  it('an ordinary creation says confirmed, not already-registered (triangulation)', async () => {
+    const createPago = vi.fn().mockResolvedValue({ pago: PAGO_CREADO, replay: false })
+
+    await confirmManualPago(createPago)
+
+    await waitFor(() => expect(screen.getByText(/pago confirmado/i)).toBeInTheDocument())
+    expect(screen.queryByText(/ya estaba registrado/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('CargaModal — outcome: unknown vs rejected are no longer the same message (C-43 Fase B)', () => {
+  it('a response-less failure shows a role=status banner promising the retry is safe — not a generic error', async () => {
+    const createPago = vi.fn().mockRejectedValue(axiosError())
+
+    await confirmManualPago(createPago)
+
+    // NOTE: the modal body is itself a `role="status"` live region, so the
+    // banner is queried by its copy — a role query would match the outer
+    // container and pass against no banner at all.
+    const banner = await screen.findByText(/no pudimos confirmar/i)
+    expect(banner.textContent).toMatch(/reintentar debería ser seguro/i)
+    expect(banner.textContent).toMatch(/cerrado o recargado/i)
+  })
+
+  it('a 502 is unknown too — any 5xx may have committed server-side (triangulation)', async () => {
+    const createPago = vi.fn().mockRejectedValue(axiosError(502, {}))
+
+    await confirmManualPago(createPago)
+
+    const banner = await screen.findByText(/no pudimos confirmar/i)
+    expect(banner.textContent).toMatch(/reintentar debería ser seguro/i)
+  })
+
+  it('offers the retry as the primary action — Confirmar relabels to Reintentar', async () => {
+    const createPago = vi.fn().mockRejectedValue(axiosError())
+
+    await confirmManualPago(createPago)
+
+    await screen.findByText(/no pudimos confirmar/i)
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
+  })
+
+  it('a 422 is a REJECTION: the backend detail via role=alert, no status banner, no retry promise', async () => {
+    const createPago = vi
+      .fn()
+      .mockRejectedValue(axiosError(422, { detail: 'La fecha no puede ser futura.' }))
+
+    await confirmManualPago(createPago)
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain('La fecha no puede ser futura.'),
+    )
+    expect(screen.queryByText(/no pudimos confirmar/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/reintentar debería ser seguro/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeInTheDocument()
+  })
+
+  it('the retry reuses the same call — the pending key lives in the api layer, so a second Confirmar just calls createPago again', async () => {
+    const createPago = vi
+      .fn()
+      .mockRejectedValueOnce(axiosError())
+      .mockResolvedValueOnce({ pago: PAGO_CREADO, replay: true })
+
+    await confirmManualPago(createPago)
+
+    await screen.findByText(/no pudimos confirmar/i)
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+
+    await waitFor(() => expect(screen.getByText(/ya estaba registrado/i)).toBeInTheDocument())
+    expect(createPago).toHaveBeenCalledTimes(2)
+    // Same payload both times — which is what makes `idempotency.ts` reuse
+    // the key rather than mint a new one.
+    expect(createPago.mock.calls[0]?.[0]).toEqual(createPago.mock.calls[1]?.[0])
   })
 })

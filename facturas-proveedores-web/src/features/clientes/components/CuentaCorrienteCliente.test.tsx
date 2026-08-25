@@ -8,12 +8,20 @@
  * row's `saldo_acumulado` render exactly as the response carries them
  * (RN-SALDO, RN-FIFO, RN-HIST).
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import type { ReactElement } from 'react'
 import { CuentaCorrienteCliente } from './CuentaCorrienteCliente'
+import { toast } from '@shared/components/Toaster/toast'
+
+// C-43 Fase B — the panel is what turns the dialog's `meta.replay` into
+// something the person can read. The Toaster itself is mounted once in
+// AuthenticatedLayout, so it is not in this tree; the call is what matters.
+vi.mock('@shared/components/Toaster/toast', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}))
 import type { CuentaCorrienteClienteResponse } from '@shared/api/api'
 
 // CuentaCorrienteCliente renders CobroFormDialog when there is something to
@@ -149,5 +157,64 @@ describe('CuentaCorrienteCliente — the cobro action is absent, not disabled, w
     renderPanel(<CuentaCorrienteCliente cuentaCorriente={account({ saldo: 800 })} />)
     fireEvent.click(screen.getByRole('button', { name: /registrar cobro/i }))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+})
+
+// ── C-43 Fase B — the replay reaches the person (task 12.4) ────────────────
+//
+// `CobroFormDialog` resolves `{ cobro, replay }` and hands `replay` up via
+// `onSuccess`'s second argument. Until now this panel dropped it on the
+// floor: a deduplicated retry closed the dialog exactly like a fresh
+// collection, so the one thing the person needed to know — that their
+// retry did NOT charge the customer twice — was never said out loud.
+//
+// `useCrearCobro` is mocked so the dialog's own mutation resolves with a
+// chosen `replay`, exercising the real dialog → panel → toast path.
+
+const crearCobroMutate = vi.fn()
+vi.mock('../api/cobrosHooks', () => ({
+  useCrearCobro: () => ({
+    mutate: (data: unknown, opts: { onSuccess: (r: unknown) => void }) =>
+      crearCobroMutate(data, opts),
+    isPending: false,
+    isError: false,
+    isSuccess: false,
+    error: null,
+    data: undefined,
+  }),
+}))
+
+describe('CuentaCorrienteCliente — cobro outcome feedback (C-43 Fase B)', () => {
+  beforeEach(() => {
+    vi.mocked(toast.success).mockClear()
+    crearCobroMutate.mockReset()
+  })
+
+  function submitCobro(replay: boolean) {
+    crearCobroMutate.mockImplementation((_data, opts) => {
+      opts.onSuccess({ cobro: { id: 'cobro-1' }, replay })
+    })
+    renderPanel(<CuentaCorrienteCliente cuentaCorriente={account({ saldo: 1000 })} />)
+    fireEvent.click(screen.getByRole('button', { name: /registrar cobro/i }))
+    fireEvent.change(screen.getByLabelText(/monto/i), { target: { value: '1000' } })
+    fireEvent.change(screen.getByLabelText(/fecha/i), { target: { value: '2026-08-20' } })
+    fireEvent.change(screen.getByLabelText(/método/i), { target: { value: 'EFECTIVO' } })
+    fireEvent.click(screen.getByRole('button', { name: /^registrar cobro$/i }))
+  }
+
+  it('says the cobro ALREADY was registered when the save was a deduplicated replay', () => {
+    submitCobro(true)
+
+    expect(toast.success).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(toast.success).mock.calls[0]?.[0]).toMatch(/ya estaba registrado/i)
+  })
+
+  it('says the cobro was registered on an ordinary creation (triangulation)', () => {
+    submitCobro(false)
+
+    expect(toast.success).toHaveBeenCalledTimes(1)
+    const message = String(vi.mocked(toast.success).mock.calls[0]?.[0])
+    expect(message).toMatch(/cobro registrado/i)
+    expect(message).not.toMatch(/ya estaba/i)
   })
 })

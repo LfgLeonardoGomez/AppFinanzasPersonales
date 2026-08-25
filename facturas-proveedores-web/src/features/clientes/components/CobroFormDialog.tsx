@@ -14,16 +14,30 @@
  * `replay: true` is passed up via `onSuccess`'s second argument, mirroring
  * `VentaForm`. An UNCONFIRMED outcome (`classifyError` → `unknown`: no
  * response, or any 5xx) gets its own `role="status"` banner, distinct from
- * the `role="alert"` backend-error path — this endpoint does NOT dedupe
- * (no idempotency until C-43 Fase B), so the copy points at the customer's
- * movements and never claims a retry is safe.
+ * the `role="alert"` backend-error path.
+ *
+ * C-43 Fase B — `crearCobro` now sends an `Idempotency-Key`, so the
+ * interim copy C-36 wrote ("check the customer's movements before
+ * retrying") is retired here, in the SAME deliverable as the wiring
+ * (design.md D8): retiring it earlier would have promised safety that did
+ * not exist, and keeping it now would ask the person to do by hand what
+ * the system already does. The retry is the primary action, and the
+ * submit button says so.
+ *
+ * The one hedge that stays is real: the promise excludes "you closed or
+ * reloaded the page since the failed attempt", the single state where the
+ * client-side pending-key bookkeeping in `idempotency.ts` can genuinely be
+ * lost (sessionStorage unavailable + memory wiped by the reload).
+ *
+ * This dialog is the case design.md D2 was written for. Paying off the
+ * WHOLE balance and losing the response used to be unfixable: the retry
+ * would hit a stateful balance validation that had already counted the
+ * original collection, and die with a 422. The backend now looks the key
+ * up BEFORE validating the balance, so the retry comes back as a replay.
  *
  * D11 — client validation (amount > 0, amount <= saldo, date not future in
  * Argentina, method required) exists for usability only; the backend's
  * `422 detail` is always what is actually shown on a real rejection.
- *
- * NO idempotency here: no `@shared/api/idempotency` import, no
- * `Idempotency-Key` header — that is C-43 Fase B (design.md D7).
  */
 import { useState, type FormEvent, type ChangeEvent } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
@@ -300,8 +314,10 @@ export function CobroFormDialog({
               </p>
             )}
 
-            {/* design.md D8 — unconfirmed outcome: this endpoint does NOT
-                dedupe, so the copy never says retrying is safe. */}
+            {/* C-43 Fase B (design.md D8) — unconfirmed outcome. The
+                endpoint now dedupes and this form sends the key, so the
+                copy may finally offer the retry. `role="status"` (not
+                "alert") on purpose: this is not a failure. */}
             {ambiguousOutcome && (
               <div
                 role="status"
@@ -309,12 +325,13 @@ export function CobroFormDialog({
                 className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning ring-1 ring-warning/10"
               >
                 <p>
-                  No pudimos confirmar si el cobro se guardó. Esta operación no queda identificada
-                  para evitar duplicados, así que antes de reintentar,{' '}
+                  No pudimos confirmar si el cobro se guardó. Reintentar debería ser seguro — la
+                  operación ya quedó identificada — salvo que hayas cerrado o recargado la página
+                  mientras tanto: en ese caso, mejor{' '}
                   <Link to={`/clientes/${clienteId}`} className="font-semibold underline">
                     revisá los movimientos del cliente
                   </Link>{' '}
-                  para asegurarte de que no quedó cargado.
+                  antes de reintentar.
                 </p>
               </div>
             )}
@@ -333,7 +350,7 @@ export function CobroFormDialog({
                 disabled={isPending}
                 className="rounded-pill bg-violet-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-violet-600 active:scale-[0.98] disabled:opacity-50"
               >
-                {isPending ? 'Guardando…' : 'Registrar cobro'}
+                {isPending ? 'Guardando…' : ambiguousOutcome ? 'Reintentar' : 'Registrar cobro'}
               </button>
             </div>
           </form>

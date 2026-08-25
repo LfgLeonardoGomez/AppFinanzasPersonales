@@ -33,6 +33,7 @@ import { CobroFormDialog } from './CobroFormDialog'
 import { HistorialTable, type HistorialTipoConfig } from '@shared/components/HistorialTable/HistorialTable'
 import { Card } from '@shared/components/Card/Card'
 import { CLIENTE_KEYS } from '../api/clientesHooks'
+import { toast } from '@shared/components/Toaster/toast'
 import type { CuentaCorrienteClienteResponse } from '@shared/api/api'
 
 type Tab = 'fiados' | 'historial'
@@ -193,9 +194,18 @@ export function CuentaCorrienteCliente({
           open={cobroDialogOpen}
           clienteId={cuentaCorriente.cliente_id}
           saldo={cuentaCorriente.saldo}
-          onSuccess={() => {
+          onSuccess={(_cobro, meta) => {
             setCobroDialogOpen(false)
             invalidateAccount()
+            // C-43 Fase B — a deduplicated replay is still a success, but
+            // saying "cobro registrado" would be false: the backend
+            // recognised the idempotency key and created nothing. The
+            // distinction is the entire point of the retry being safe —
+            // the person needs to read that their retry did NOT charge the
+            // customer twice.
+            toast.success(
+              meta?.replay ? 'Este cobro ya estaba registrado.' : 'Cobro registrado.',
+            )
           }}
           onCancel={() => setCobroDialogOpen(false)}
           onAccountInvalidate={invalidateAccount}

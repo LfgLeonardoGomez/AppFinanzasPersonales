@@ -42,6 +42,29 @@
  * anywhere (a factura page, a pago page, or a single generic "Cargar"
  * entry point) and the user can freely toggle tipo inside. See the
  * `CargaModalProps` below.
+ *
+ * C-43 Fase B — THE FOUR OUTCOMES (design.md D6/D8). `PagoForm` and
+ * `FacturaForm` are edit-only; every payment and invoice a person creates
+ * is created here, which makes this the form the whole idempotency
+ * mechanism exists to protect.
+ *
+ * Before C-43 every failure collapsed into ONE generic message — a 422, a
+ * timeout and a 502 were indistinguishable, and that indistinction is what
+ * produces the duplicate charge. Now `classifySuccess` / `classifyError`
+ * split them:
+ *   - created         → the ordinary success step;
+ *   - alreadyRecorded → the success step, saying it ALREADY was
+ *                       registered (a replay created nothing);
+ *   - rejected (4xx)  → the backend's own `detail` via `role="alert"`;
+ *   - unknown         → its own `role="status"` banner, NOT an error, that
+ *                       offers the retry as the primary action.
+ *
+ * That last promise is only honest because `createPago` / `createFactura`
+ * send an `Idempotency-Key` (design.md D8: only a form that sends the key
+ * may say retrying is safe). The retry re-submits the SAME payload, so
+ * `idempotency.ts` reuses the pending key and the backend recognises it.
+ * The one hedge that stays is real: a page closed or reloaded since the
+ * failed attempt can genuinely lose that client-side bookkeeping.
  */
 import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
@@ -55,6 +78,9 @@ import type {
   PropuestaPago,
   ProveedorListItem,
 } from '@shared/api/api'
+import { classifyError } from '@shared/api/submitOutcome'
+import type { CreateFacturaResult } from '@features/facturas/api/facturasApi'
+import type { CreatePagoResult } from '@features/pagos/api/pagosApi'
 import { useExtraerFacturaIA, useExtraerPagoIA } from '../api/iaVisionHooks'
 import { useCloudinaryPreset } from '@features/facturas/api/facturasHooks'
 import { uploadToCloudinary } from '@shared/utils/uploadToCloudinary'
@@ -91,8 +117,8 @@ export interface CargaModalProps {
   onClose: () => void
   /** Fired when the user clicks the success screen's CTA — the parent redirects. */
   onCreated: (created: FacturaResponse | PagoResponse) => void
-  createFactura: (payload: FacturaCreate) => Promise<FacturaResponse>
-  createPago: (payload: PagoCreate) => Promise<PagoResponse>
+  createFactura: (payload: FacturaCreate) => Promise<CreateFacturaResult>
+  createPago: (payload: PagoCreate) => Promise<CreatePagoResult>
   /** Optional supplier prefill (e.g. `?proveedor_id=` on the page route). */
   initialSelectedProveedor?: ProveedorListItem | null
 }
@@ -100,6 +126,9 @@ export interface CargaModalProps {
 interface CreatedResult {
   resource: FacturaResponse | PagoResponse
   proveedorNombre: string
+  /** True when the backend recognised the idempotency key and replayed the
+   * original row — nothing new was created (design.md D4). */
+  replay: boolean
 }
 
 function isAxiosError(e: unknown): e is { response?: { status: number; headers?: Record<string, string> } } {
@@ -123,6 +152,10 @@ export function CargaModal({
   const [editablePropuesta, setEditablePropuesta] = useState<PropuestaFactura | PropuestaPago | null>(null)
   const [isConfirming, setIsConfirming] = useState(false)
   const [confirmError, setConfirmError] = useState<string | null>(null)
+  // C-43 Fase B — an UNCONFIRMED outcome is its own state, never folded
+  // into `confirmError`: it is not a failure, and the copy it drives makes
+  // the opposite promise (retry, don't go check by hand).
+  const [ambiguousOutcome, setAmbiguousOutcome] = useState(false)
   const [countdown, setCountdown] = useState(0)
   const [createdResult, setCreatedResult] = useState<CreatedResult | null>(null)
   const previouslyFocusedRef = useRef<HTMLElement | null>(null)
@@ -156,6 +189,7 @@ export function CargaModal({
     setProveedorDismissed(false)
     setEditablePropuesta(null)
     setConfirmError(null)
+    setAmbiguousOutcome(false)
     setIsConfirming(false)
     setCountdown(0)
     setCreatedResult(null)
@@ -340,18 +374,59 @@ export function CargaModal({
 
     const origenTag: OrigenDocumento = state.origen === 'imagen' ? 'IA' : 'MANUAL'
     try {
-      const created =
+      // C-43 Fase B — both create functions resolve `{ resource, replay }`.
+      // `replay` cannot be inferred from the body: a replayed row and a
+      // freshly created one look identical (design.md D4). It comes from
+      // the real status + `Idempotent-Replay` header, resolved inside the
+      // api layer by `classifySuccess`.
+      const created: { resource: FacturaResponse | PagoResponse; replay: boolean } =
         state.tipo === 'factura'
-          ? await createFactura(
-              buildCreatePayload('factura', editablePropuesta as PropuestaFactura, selectedProveedor.id, url, origenTag),
-            )
-          : await createPago(
-              buildCreatePayload('pago', editablePropuesta as PropuestaPago, selectedProveedor.id, url, origenTag),
-            )
-      setCreatedResult({ resource: created, proveedorNombre: selectedProveedor.nombre })
+          ? await (async () => {
+              const r = await createFactura(
+                buildCreatePayload('factura', editablePropuesta as PropuestaFactura, selectedProveedor.id, url, origenTag),
+              )
+              return { resource: r.factura, replay: r.replay }
+            })()
+          : await (async () => {
+              const r = await createPago(
+                buildCreatePayload('pago', editablePropuesta as PropuestaPago, selectedProveedor.id, url, origenTag),
+              )
+              return { resource: r.pago, replay: r.replay }
+            })()
+      setConfirmError(null)
+      setAmbiguousOutcome(false)
+      setCreatedResult({
+        resource: created.resource,
+        proveedorNombre: selectedProveedor.nombre,
+        replay: created.replay,
+      })
       dispatch({ kind: 'CONFIRM_SUCCESS' })
-    } catch {
-      setConfirmError(CREATE_ERROR_FALLBACK)
+    } catch (err) {
+      // C-43 Fase B — the split that makes the retry safe to offer. An
+      // unknown outcome (no response, or ANY 5xx) may have committed
+      // server-side, so it must never be shown as "nothing was saved";
+      // a 4xx is a real answer from the application and shows its own
+      // `detail`, which was written to be corrected against.
+      // The local `isAxiosError` guard above does not describe `data`, and
+      // `exactOptionalPropertyTypes` refuses an explicit `undefined`, so the
+      // shape `classifyError` takes is built here rather than spread.
+      const response = (err as { response?: { status?: number; data?: { detail?: unknown } } })
+        .response
+      const outcome = classifyError(
+        typeof response?.status === 'number'
+          ? { response: { status: response.status, data: response.data ?? {} } }
+          : {},
+      )
+      if (outcome.kind === 'rejected') {
+        setAmbiguousOutcome(false)
+        setConfirmError(extractDetail(outcome.detail))
+      } else {
+        // `classifyError` only ever answers 'rejected' or 'unknown'; an
+        // unknown outcome may already have committed server-side, so it is
+        // never rendered as a failure.
+        setAmbiguousOutcome(true)
+        setConfirmError(null)
+      }
     } finally {
       setIsConfirming(false)
     }
@@ -439,7 +514,11 @@ export function CargaModal({
               ) : null}
 
               {state.step === 'success' && createdResult ? (
-                <SuccessStep tipo={state.tipo} proveedorNombre={createdResult.proveedorNombre} />
+                <SuccessStep
+                  tipo={state.tipo}
+                  proveedorNombre={createdResult.proveedorNombre}
+                  replay={createdResult.replay}
+                />
               ) : null}
             </div>
 
@@ -459,6 +538,7 @@ export function CargaModal({
                 canConfirm={canConfirm}
                 isConfirming={isConfirming}
                 confirmError={confirmError}
+                ambiguousOutcome={ambiguousOutcome}
                 onVolver={handleBack}
                 onConfirmar={() => void handleConfirm()}
               />
@@ -479,6 +559,25 @@ export function CargaModal({
 export default CargaModal
 
 // ── Sub-components ────────────────────────────────────────────────────────────
+
+/**
+ * Renders a rejected outcome's `detail` — FastAPI answers either a plain
+ * string, a Pydantic validation array, or (on a 409) a `{ mensaje }`
+ * object. Mirrors `extractBackendError` in `VentaForm`/`PagoForm`; kept
+ * local rather than shared because each form's fallback sentence differs.
+ */
+function extractDetail(detail: unknown): string {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0] as { msg?: string }
+    return first?.msg ?? CREATE_ERROR_FALLBACK
+  }
+  if (typeof detail === 'object' && detail !== null && 'mensaje' in detail) {
+    const mensaje = (detail as { mensaje?: unknown }).mensaje
+    if (typeof mensaje === 'string') return mensaje
+  }
+  return CREATE_ERROR_FALLBACK
+}
 
 function IaGlyph() {
   return (
@@ -733,12 +832,14 @@ function ReviewFooter({
   canConfirm,
   isConfirming,
   confirmError,
+  ambiguousOutcome,
   onVolver,
   onConfirmar,
 }: {
   canConfirm: boolean
   isConfirming: boolean
   confirmError: string | null
+  ambiguousOutcome: boolean
   onVolver: () => void
   onConfirmar: () => void
 }) {
@@ -749,12 +850,31 @@ function ReviewFooter({
           {confirmError}
         </p>
       ) : null}
+
+      {/* C-43 Fase B (design.md D8) — the unconfirmed outcome. `role=
+          "status"` and not "alert": nothing failed, we just do not know.
+          The form sends an Idempotency-Key, so it is allowed to say the
+          retry is safe — and the hedge it keeps is the one case where the
+          client-side pending key can genuinely be lost. */}
+      {ambiguousOutcome ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-xl bg-warning-bg px-4 py-3 text-sm text-warning ring-1 ring-warning/10"
+        >
+          <p>
+            No pudimos confirmar si se guardó. Reintentar debería ser seguro — la operación ya
+            quedó identificada — salvo que hayas cerrado o recargado la página mientras tanto.
+          </p>
+        </div>
+      ) : null}
+
       <div className="flex items-center gap-2.5">
         <Button variant="secondary" onClick={onVolver} disabled={isConfirming}>
           Volver
         </Button>
         <Button variant="primary" fullWidth onClick={onConfirmar} disabled={!canConfirm} loading={isConfirming}>
-          Confirmar
+          {ambiguousOutcome ? 'Reintentar' : 'Confirmar'}
         </Button>
       </div>
     </div>
@@ -769,8 +889,25 @@ function CheckIcon() {
   )
 }
 
-function SuccessStep({ tipo, proveedorNombre }: { tipo: Tipo; proveedorNombre: string }) {
-  const title = tipo === 'factura' ? 'Factura confirmada' : 'Pago confirmado'
+function SuccessStep({
+  tipo,
+  proveedorNombre,
+  replay,
+}: {
+  tipo: Tipo
+  proveedorNombre: string
+  replay: boolean
+}) {
+  // C-43 Fase B — a replay is still a success (design.md D6: never show an
+  // error for something that exists), but claiming it was just created
+  // would be false: the backend recognised the key and created nothing.
+  const title = replay
+    ? tipo === 'factura'
+      ? 'Esta factura ya estaba registrada'
+      : 'Este pago ya estaba registrado'
+    : tipo === 'factura'
+      ? 'Factura confirmada'
+      : 'Pago confirmado'
   return (
     <div className="flex flex-col items-center gap-4 py-6 text-center">
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success-bg">

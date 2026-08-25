@@ -5,18 +5,27 @@
  * preserved: label names, id="fecha", data-testid="proveedor-readonly",
  * button names, alert roles, RN-PAG-01 note.
  *
- * C-42 review fix (finding 2, WARNING) — interim mitigation for an
- * ambiguous outcome (knowledge-base D-67): unlike ventas (C-42), this
- * endpoint has NO idempotency protection — that is C-43, explicitly out of
- * scope here. C-42's 20s global Axios timeout makes an ambiguous outcome
- * MORE dangerous for this form, not less: it turns a request that may have
- * already committed server-side into "an explicit error that invites
- * retrying over something that doesn't dedupe." So an ambiguous outcome
+ * C-42 review fix (finding 2, WARNING) — an ambiguous outcome
  * (`classifyError` from `submitOutcome.ts` — no response, or any 5xx) gets
  * its own `role="status"` banner that tells the user to check the payments
- * list BEFORE retrying, and never claims retrying is safe (it isn't — there
- * is no key to reuse). A real rejection keeps the exact prior behavior:
- * `errors.backend` via `extractBackendError`, unchanged.
+ * list BEFORE retrying, and never claims retrying is safe. A real
+ * rejection keeps `errors.backend` via `extractBackendError`.
+ *
+ * C-43 Fase B — WHY THE CONSERVATIVE COPY STAYS HERE. C-42 wrote the
+ * ambiguous-outcome banner below as an interim measure, on the assumption
+ * that C-43 would retire it. It does not, and the reason matters: this
+ * form is EDIT-ONLY. Every payment a person creates is created in
+ * `CargaModal` (see `PagoFormPage.tsx`), which is where C-43 wired the
+ * key and the confident "retrying is safe" copy.
+ *
+ * What this form issues is a PATCH, and PATCH sends no `Idempotency-Key`
+ * and is not deduplicated by the backend — by design, not by omission.
+ * design.md D8 states the rule generally: only a form that actually sends
+ * the key may promise that retrying is safe; any write that does not
+ * inherits the conservative copy. So on this path the banner below is
+ * CORRECT, not interim: an ambiguous outcome really does leave the user
+ * with no protection, and checking the list really is the only way to
+ * know. Do not "finish C-43" by copying `CargaModal`'s wording here.
  */
 import { useState, useEffect, useRef, type FormEvent, type ChangeEvent } from 'react'
 import { X } from 'lucide-react'
@@ -25,6 +34,7 @@ import { isAxiosError } from 'axios'
 import { SupplierSearch } from '@shared/components/SupplierSearch/SupplierSearch'
 import { FileUploadField } from '@features/facturas/components/FileUploadField'
 import { useCreatePago, useUpdatePago } from '../api/pagosHooks'
+import type { CreatePagoResult } from '../api/pagosApi'
 import { classifyError } from '@shared/api/submitOutcome'
 import type { UseMutationResult } from '@tanstack/react-query'
 import { getTodayInArgentina } from '@shared/utils/date'
@@ -40,7 +50,7 @@ import type {
   PropuestaPago,
 } from '@shared/api/api'
 
-type CreatePagoMutation = UseMutationResult<PagoResponse, Error, PagoCreate>
+type CreatePagoMutation = UseMutationResult<CreatePagoResult, Error, PagoCreate>
 type UpdatePagoMutation = UseMutationResult<PagoResponse, Error, { id: string; data: PagoUpdate }>
 
 // c-26 (D1): mirrors FacturaForm's placeholder — a supplier id is never
@@ -58,7 +68,12 @@ interface FormErrors {
 interface PagoFormProps {
   pago?: PagoListItem
   proveedor?: ProveedorListItem | null
-  onSuccess: (saved: PagoResponse) => void
+  /**
+   * `meta.replay` is true when the save was a deduplicated retry (C-43
+   * Fase B): nothing new was created, the payment the caller sees is the
+   * original one. Absent on an edit (PATCH is not protected).
+   */
+  onSuccess: (saved: PagoResponse, meta?: { replay?: boolean }) => void
   onCancel: () => void
   initialSelectedProveedor?: ProveedorListItem | null
   prefillFromProposal?: {
@@ -134,10 +149,10 @@ export function PagoForm({
   }, [prefillFromProposal])
 
   const [errors, setErrors] = useState<FormErrors>({})
-  // C-42 review fix (finding 2) — an ambiguous ("no pudimos confirmar")
-  // outcome is its own state, never folded into `errors.backend`: this
-  // endpoint does not dedupe, so the message points at the list instead of
-  // offering a "safe" retry.
+  // An ambiguous ("no pudimos confirmar") outcome is its own state, never
+  // folded into `errors.backend`: the PATCH this form issues does not
+  // dedupe, so the message points at the list instead of offering a
+  // "safe" retry (see the C-43 Fase B note in the file header).
   const [ambiguousOutcome, setAmbiguousOutcome] = useState(false)
 
   const createMutationInternal = useCreatePago()
@@ -238,10 +253,10 @@ export function PagoForm({
         ...(prefillConsumedRef.current ? { origen: 'IA' as const } : {}),
       }
       createMutation.mutate(createPayload, {
-        onSuccess: (created) => {
+        onSuccess: (result) => {
           setErrors({})
           setAmbiguousOutcome(false)
-          onSuccess(created)
+          onSuccess(result.pago, { replay: result.replay })
         },
         onError: handleSubmitError,
       })
@@ -386,10 +401,11 @@ export function PagoForm({
           </p>
         )}
 
-        {/* C-42 review fix (finding 2) — ambiguous outcome: this endpoint
-            does NOT dedupe, so the copy must never say retrying is safe.
-            `role="status"` (not "alert") — mirrors VentaForm's convention
-            for a non-failure, unconfirmed state. */}
+        {/* Ambiguous outcome on the EDIT path: a PATCH carries no
+            idempotency key, so this copy must never say retrying is safe
+            (design.md D8). Deliberately NOT aligned with `CargaModal`'s
+            confident wording — see the file header. `role="status"` (not
+            "alert") mirrors VentaForm's convention for a non-failure. */}
         {ambiguousOutcome && (
           <div
             role="status"

@@ -5,19 +5,26 @@
  * preserved: label names, id="fecha_emision", data-testid="proveedor-readonly",
  * button names, alert roles.
  *
- * C-42 review fix (finding 2, WARNING) — interim mitigation for an
- * ambiguous outcome (knowledge-base D-67): unlike ventas (C-42), this
- * endpoint has NO idempotency protection — that is C-43, explicitly out of
- * scope here. C-42's 20s global Axios timeout makes an ambiguous outcome
- * MORE dangerous for this form, not less: it turns a request that may have
- * already committed server-side into "an explicit error that invites
- * retrying over something that doesn't dedupe." So an ambiguous outcome
+ * C-42 review fix (finding 2, WARNING) — an ambiguous outcome
  * (`classifyError` from `submitOutcome.ts` — no response, or any 5xx) gets
  * its own `role="status"` banner that tells the user to check the invoices
- * list BEFORE retrying, and never claims retrying is safe (it isn't — there
- * is no key to reuse). A real rejection (4xx other than what
- * `classifyError` treats as ambiguous) keeps the exact prior behavior:
- * `errors.backend`, unchanged.
+ * list BEFORE retrying, and never claims retrying is safe. A real
+ * rejection keeps `errors.backend`.
+ *
+ * C-43 Fase B — WHY THE CONSERVATIVE COPY STAYS HERE. C-42 wrote that
+ * banner as an interim measure, on the assumption that C-43 would retire
+ * it. It does not, and the reason matters: this form is EDIT-ONLY. Every
+ * invoice a person creates is created in `CargaModal` (see
+ * `FacturaFormPage.tsx`), which is where C-43 wired the key and the
+ * confident "retrying is safe" copy.
+ *
+ * What this form issues is a PATCH, and PATCH sends no `Idempotency-Key`
+ * and is not deduplicated by the backend — by design, not by omission.
+ * design.md D8 states the rule generally: only a form that actually sends
+ * the key may promise that retrying is safe; any write that does not
+ * inherits the conservative copy. So on this path the banner below is
+ * CORRECT, not interim. Do not "finish C-43" by copying `CargaModal`'s
+ * wording here.
  */
 import { useState, useEffect, useRef, type FormEvent, type ChangeEvent } from 'react'
 import { X } from 'lucide-react'
@@ -27,6 +34,7 @@ import { SupplierSearch } from '@shared/components/SupplierSearch/SupplierSearch
 import { ItemsEditor } from './ItemsEditor'
 import { FileUploadField } from './FileUploadField'
 import { useCreateFactura, useUpdateFactura } from '../api/facturasHooks'
+import type { CreateFacturaResult } from '../api/facturasApi'
 import { classifyError } from '@shared/api/submitOutcome'
 import type { UseMutationResult } from '@tanstack/react-query'
 import { getTodayInArgentina } from '@shared/utils/date'
@@ -41,7 +49,7 @@ import type {
   PropuestaFactura,
 } from '@shared/api/api'
 
-type CreateFacturaMutation = UseMutationResult<FacturaResponse, Error, FacturaCreate>
+type CreateFacturaMutation = UseMutationResult<CreateFacturaResult, Error, FacturaCreate>
 type UpdateFacturaMutation = UseMutationResult<FacturaResponse, Error, { id: string; data: FacturaUpdate }>
 
 // c-26 (D1): a supplier id is never a valid label. When no name is
@@ -59,7 +67,12 @@ interface FormErrors {
 interface FacturaFormProps {
   factura?: FacturaResponse
   proveedor?: ProveedorListItem | null
-  onSuccess: (saved: FacturaResponse) => void
+  /**
+   * `meta.replay` is true when the save was a deduplicated retry (C-43
+   * Fase B): nothing new was created, the invoice the caller sees is the
+   * original one. Absent on an edit (PATCH is not protected).
+   */
+  onSuccess: (saved: FacturaResponse, meta?: { replay?: boolean }) => void
   onCancel: () => void
   initialSelectedProveedor?: ProveedorListItem | null
   prefillFromProposal?: {
@@ -241,11 +254,11 @@ export function FacturaForm({
         ...(prefillConsumedRef.current ? { origen: 'IA' as const } : {}),
       }
       createMutation.mutate(createPayload, {
-        onSuccess: (created) => {
+        onSuccess: (result) => {
           setErrors({})
           setAmbiguousOutcome(false)
-          if (created.items_sum_mismatch) setItemsSumMismatchAfterSave(true)
-          onSuccess(created)
+          if (result.factura.items_sum_mismatch) setItemsSumMismatchAfterSave(true)
+          onSuccess(result.factura, { replay: result.replay })
         },
         onError: (err) => handleSubmitError(err, 'Error al crear la factura.'),
       })
