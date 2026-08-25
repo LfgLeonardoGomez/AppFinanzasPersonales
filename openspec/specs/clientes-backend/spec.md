@@ -3,9 +3,7 @@
 ## Purpose
 
 Own the `Cliente` entity and, above all, what makes two typed names the same person (shipped by C-32). This is the mirror of `Proveedor` with one structural difference that drives everything: a supplier's name is a label and two suppliers may share it, while a customer's name identifies an **account** — two equivalent rows split one person's debt across two balances and destroy the only guarantee the feature has to make. Hence a `nombre_normalizado` derived in the service layer (never accepted from a payload) and a **partial** unique index over `(negocio_id, nombre_normalizado) WHERE deleted_at IS NULL`, so equivalent names cannot coexist while a soft-deleted customer still releases its name for reuse. The normalization is deliberately conservative — casing, accents and whitespace, but no phonetic matching, no word reordering, and `ñ` is not an `n` — because merging two different people is worse than allowing a duplicate. Also owns the minimal alta (only `nombre`, because it happens at the counter), the accent- and case-insensitive search that feeds the autocomplete, and the 409 that names the existing customer so the caller can offer it instead of creating a second account. Sales and running balances are NOT here (C-33, C-35).
-
 ## Requirements
-
 ### Requirement: Entidad Cliente aislada por negocio
 
 El sistema SHALL definir un modelo SQLModel `Cliente` (tabla `cliente`) con `negocio_id` (FK → `negocio`, obligatorio), `nombre` (string, máximo 120, obligatorio), `nombre_normalizado` (string, máximo 120, obligatorio, indexado), `telefono` (nullable), `notas` (nullable), `creado_por_usuario_id` (FK → `usuario`, nullable) y `deleted_at` (soft delete), más el mixin base.
@@ -90,6 +88,10 @@ La base de datos SHALL imponer un índice **único** sobre `(negocio_id, nombre_
 
 Dos clientes equivalentes en un mismo negocio partirían la deuda en dos cuentas, que es exactamente lo que una libreta no puede permitirse.
 
+El `409` SHALL emitirse únicamente cuando la restricción violada sea efectivamente la del nombre normalizado, comprobando el **nombre de la constraint** que la base reporta. Cualquier otra violación de integridad SHALL propagarse como el error que es y SHALL NOT reportarse como nombre duplicado.
+
+Hoy el sistema captura la violación sin mirar cuál fue, y acierta por accidente porque `cliente` tiene un solo índice único. Esa suposición se rompe sola en cuanto exista un segundo, y su modo de falla es el peor posible: un error real disfrazado de mensaje de usuario razonable, sobre el que nadie va a investigar. La misma comprobación SHALL aplicarse en el alta y en la edición, que hoy comparten el defecto.
+
 #### Scenario: nombre equivalente rechazado
 
 - **WHEN** existe "Juan Pérez" y se intenta crear "juan perez" en el mismo negocio
@@ -114,6 +116,16 @@ Dos clientes equivalentes en un mismo negocio partirían la deuda en dos cuentas
 
 - **WHEN** un cliente es eliminado (soft delete) y se crea otro con el mismo nombre
 - **THEN** el alta se acepta: la unicidad aplica solo entre clientes activos
+
+#### Scenario: una violación de otra restricción no se reporta como nombre duplicado
+
+- **WHEN** un alta de cliente falla por una restricción de integridad distinta de la del nombre normalizado
+- **THEN** el error se propaga como corresponde a esa restricción y la respuesta no dice que el nombre ya existe
+
+#### Scenario: la edición aplica la misma comprobación
+
+- **WHEN** una edición de cliente falla por una restricción de integridad distinta de la del nombre normalizado
+- **THEN** el error se propaga y la respuesta no dice que el nombre ya existe
 
 ### Requirement: Búsqueda para autocompletado
 
@@ -176,3 +188,4 @@ Todo endpoint bajo `/api/clientes` SHALL requerir una sesión válida y SHALL re
 
 - **WHEN** se llama a `/api/clientes` y a `/api/clientes/` con la misma sesión
 - **THEN** ambas responden 200 con el mismo cuerpo, sin 307
+

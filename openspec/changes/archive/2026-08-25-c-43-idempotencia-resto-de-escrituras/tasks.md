@@ -144,47 +144,71 @@ Ejecutable ya. Cero archivos de frontend. Cero dependencia de C-36.
 >
 > Si al llegar acá C-36 no archivó: hacer 10, 11 y 13, y dejar el grupo 12 abierto con la razón anotada.
 
+> ## ⚠️ Desviación de estas tasks, aprobada 2026-08-25
+>
+> Las tasks 10.8–10.11 y 11.7–11.10 nombran a `PagoForm.tsx` y `FacturaForm.tsx` como los formularios donde cablear el reporte de repetición y retirar el copy interino de C-42. **Ese destino es incorrecto y se cambió.**
+>
+> **`PagoForm` y `FacturaForm` son solo modo edición.** El camino real de creación de pagos y facturas es `features/ia-vision/components/CargaModal.tsx`, montado por `CreatePagoPage` y `CreateFacturaPage`. La convergencia al CargaModal unificado (que supersede el split `ModeSelector` + `PropuestaIAModal` de C-21) ocurrió **después** de que C-42 escribiera ese copy, así que el copy quedó parado sobre el `PATCH` — que la idempotencia no cubre y nunca va a cubrir.
+>
+> Peor: `CargaModal` no usaba `classifyError` ni `classifySuccess`. Su manejo de fallo era un `catch` pelado con un único mensaje genérico para 422, timeout y 502 — exactamente la indistinción que C-42 existe para eliminar, sobre el único camino de creación que un usuario alcanza.
+>
+> **Qué se hizo en su lugar:**
+>
+> 1. **`CargaModal`** recibió el cableado completo de los cuatro estados de `submitOutcome` (created / alreadyRecorded / rejected / unknown), el copy que ofrece el reintento como acción principal, y el `SuccessStep` que distingue "ya estaba registrado" de "confirmado".
+> 2. **`PagoForm` / `FacturaForm`**: el copy conservador **NO se retiró**. Se aplicó la regla general de design.md D8 —"la promesa de 'reintentar es seguro' solo puede hacerla un formulario que efectivamente mande la clave"— al código real: el `PATCH` no manda clave, así que ahí el copy conservador es **correcto**, no interino. Se corrigió el comentario de cabecera de ambos para que diga la razón verdadera y para que nadie lo "termine" copiando el wording del CargaModal.
+> 3. **`CuentaCorrienteCliente`** ahora informa el resultado del cobro con un toast que distingue la repetición. Antes descartaba el `meta.replay` que `CobroFormDialog` ya le pasaba.
+>
+> Las tasks de abajo quedan con su texto original para que la desviación sea legible contra lo planificado.
+
 ## 10. Red de seguridad y `createPago`
 
-- [ ] 10.1 Correr el suite completo de frontend y anotar la línea medida de tests y archivos. Cualquier fallo es preexistente: reportarlo, no arreglarlo acá.
-- [ ] 10.2 Test: `createPago` incluye **siempre** el header `Idempotency-Key`. Es el guard del mecanismo: como un POST sin clave **no** da error, este test es la única señal de que un call site nuevo se la olvidó. Anotarlo así en el código.
-- [ ] 10.3 Test: dos llamadas de `createPago` con el mismo payload tras un fallo sin respuesta mandan **la misma** clave.
-- [ ] 10.4 Test (triangulación): si entre los dos envíos cambia el monto, la clave es distinta.
-- [ ] 10.5 Test: `updatePago` y `deletePago` **no** mandan clave — no están protegidos y mandarla sugeriría una garantía inexistente.
-- [ ] 10.6 Test: el namespace de la clave de pagos es **propio** — confirmar el guardado de un pago no descarta la clave pendiente de una venta ni de una factura.
-- [ ] 10.7 Implementar en `pagosApi.ts` reutilizando `getIdempotencyKey` / `confirmIdempotencyKey` (ya genéricos por namespace desde C-42) y `classifySuccess`. **No modificar `src/shared/api/idempotency.ts` ni `submitOutcome.ts` ni `client.ts`** — ya sirven tal cual.
-- [ ] 10.8 Test (`PagoForm`): ante `200` + `Idempotent-Replay: true` informa éxito diciendo que el pago **ya estaba** registrado, navega como en un guardado normal, y no muestra ningún error. Triangular con un `201` normal.
-- [ ] 10.9 Test (`PagoForm`): ante un error sin respuesta conserva proveedor, monto, fecha y método; y apretar el reintento manda **la misma** clave que el intento fallido.
-- [ ] 10.10 Test (`PagoForm`): el copy de resultado desconocido ofrece el reintento como acción principal, **ya no pide revisar el listado**, y conserva la salvedad de la página cerrada o recargada. Es el retiro del copy interino que dejó C-42 en `PagoForm.tsx:403`.
-- [ ] 10.11 Implementar en `PagoForm.tsx`. El retiro del copy y el cableado de la clave van en el **mismo** entregable: retirarlo antes prometería seguridad inexistente, dejarlo después pediría trabajo manual que el sistema ya hace (design.md D8).
+- [x] 10.1 Correr el suite completo de frontend y anotar la línea medida de tests y archivos. Cualquier fallo es preexistente: reportarlo, no arreglarlo acá.
+      **Medido:** `1 failed | 842 passed (843)` en 108 archivos (`1 failed | 107 passed`), 167.07s.
+      ⚠️ **Fallo PREEXISTENTE, no tocado:** `src/features/ia-vision/PropuestaIAModal.e2e.test.tsx:318` — `getByText(/Podés reintentar en/)` no encuentra el countdown derivado de `Retry-After` en el 429. Es anterior a este change (medido sobre el árbol limpio, antes de escribir una sola línea). Reportado, **no arreglado** acá.
+- [x] 10.2 Test: `createPago` incluye **siempre** el header `Idempotency-Key`. Es el guard del mecanismo: como un POST sin clave **no** da error, este test es la única señal de que un call site nuevo se la olvidó. Anotarlo así en el código.
+- [x] 10.3 Test: dos llamadas de `createPago` con el mismo payload tras un fallo sin respuesta mandan **la misma** clave.
+- [x] 10.4 Test (triangulación): si entre los dos envíos cambia el monto, la clave es distinta.
+- [x] 10.5 Test: `updatePago` y `deletePago` **no** mandan clave — no están protegidos y mandarla sugeriría una garantía inexistente.
+- [x] 10.6 Test: el namespace de la clave de pagos es **propio** — confirmar el guardado de un pago no descarta la clave pendiente de una venta ni de una factura.
+- [x] 10.7 Implementar en `pagosApi.ts` reutilizando `getIdempotencyKey` / `confirmIdempotencyKey` (ya genéricos por namespace desde C-42) y `classifySuccess`. **No modificar `src/shared/api/idempotency.ts` ni `submitOutcome.ts` ni `client.ts`** — ya sirven tal cual.
+- [x] 10.8 Test (`PagoForm`): ante `200` + `Idempotent-Replay: true` informa éxito diciendo que el pago **ya estaba** registrado, navega como en un guardado normal, y no muestra ningún error. Triangular con un `201` normal.
+- [x] 10.9 Test (`PagoForm`): ante un error sin respuesta conserva proveedor, monto, fecha y método; y apretar el reintento manda **la misma** clave que el intento fallido.
+- [x] 10.10 Test (`PagoForm`): el copy de resultado desconocido ofrece el reintento como acción principal, **ya no pide revisar el listado**, y conserva la salvedad de la página cerrada o recargada. Es el retiro del copy interino que dejó C-42 en `PagoForm.tsx:403`.
+- [x] 10.11 Implementar en `PagoForm.tsx`. El retiro del copy y el cableado de la clave van en el **mismo** entregable: retirarlo antes prometería seguridad inexistente, dejarlo después pediría trabajo manual que el sistema ya hace (design.md D8).
 
 ## 11. `createFactura` y `FacturaForm`
 
-- [ ] 11.1 Test: `createFactura` incluye **siempre** el header `Idempotency-Key`. Mismo guard que 10.2.
-- [ ] 11.2 Test: dos llamadas con el mismo payload tras un fallo sin respuesta mandan la misma clave.
-- [ ] 11.3 Test: el payload que determina la identidad del intento **incluye los items** — corregir la descripción o el precio de un item acuña una clave **nueva**. Sin esto la corrección chocaría contra el `409` del backend en vez de guardarse.
-- [ ] 11.4 Test (triangulación): agregar un item también acuña clave nueva; reenviar exactamente lo mismo reutiliza la clave.
-- [ ] 11.5 Test: `updateFactura` y `deleteFactura` no mandan clave.
-- [ ] 11.6 Implementar en `facturasApi.ts`, con namespace propio.
-- [ ] 11.7 Test (`FacturaForm`): ante `200` + `Idempotent-Replay: true` informa éxito diciendo que la factura **ya estaba** registrada, sin error.
-- [ ] 11.8 Test (`FacturaForm`): el `estado` de la respuesta de una repetición se muestra **verbatim** aun si difiere del que devolvió el intento original — nunca se recalcula en el cliente (RN-FAC-09).
-- [ ] 11.9 Test (`FacturaForm`): el copy de resultado desconocido ofrece el reintento como acción principal, ya no pide revisar el listado, y conserva la salvedad de la página cerrada o recargada. Retiro del copy interino de `FacturaForm.tsx:407`.
-- [ ] 11.10 Implementar en `FacturaForm.tsx`, con el retiro del copy en el mismo entregable.
+- [x] 11.1 Test: `createFactura` incluye **siempre** el header `Idempotency-Key`. Mismo guard que 10.2.
+- [x] 11.2 Test: dos llamadas con el mismo payload tras un fallo sin respuesta mandan la misma clave.
+- [x] 11.3 Test: el payload que determina la identidad del intento **incluye los items** — corregir la descripción o el precio de un item acuña una clave **nueva**. Sin esto la corrección chocaría contra el `409` del backend en vez de guardarse.
+- [x] 11.4 Test (triangulación): agregar un item también acuña clave nueva; reenviar exactamente lo mismo reutiliza la clave.
+- [x] 11.5 Test: `updateFactura` y `deleteFactura` no mandan clave.
+- [x] 11.6 Implementar en `facturasApi.ts`, con namespace propio.
+- [x] 11.7 Test (`FacturaForm`): ante `200` + `Idempotent-Replay: true` informa éxito diciendo que la factura **ya estaba** registrada, sin error.
+- [x] 11.8 Test (`FacturaForm`): el `estado` de la respuesta de una repetición se muestra **verbatim** aun si difiere del que devolvió el intento original — nunca se recalcula en el cliente (RN-FAC-09).
+- [x] 11.9 Test (`FacturaForm`): el copy de resultado desconocido ofrece el reintento como acción principal, ya no pide revisar el listado, y conserva la salvedad de la página cerrada o recargada. Retiro del copy interino de `FacturaForm.tsx:407`.
+- [x] 11.10 Implementar en `FacturaForm.tsx`, con el retiro del copy en el mismo entregable.
 
 ## 12. `createCobro` — 🚫 BLOQUEADO POR C-36
 
-- [ ] 12.1 **Verificar que C-36 archivó** y que existen el `cobrosApi` y el formulario de cobro. Si no, detenerse acá y anotar la razón: sin C-36 no hay dónde cablear la clave. No inventar el formulario en este change.
-- [ ] 12.2 Test: la creación de cobro incluye **siempre** el header `Idempotency-Key`, con namespace propio. Mismo guard que 10.2.
-- [ ] 12.3 Test: dos envíos del mismo cobro tras un fallo sin respuesta mandan la misma clave; cambiar el monto acuña una nueva.
-- [ ] 12.4 Test: ante `200` + `Idempotent-Replay: true` el formulario informa éxito diciendo que el cobro **ya estaba** registrado, sin error.
-- [ ] 12.5 Test del escenario que motivó design.md D2, extremo a extremo desde el formulario: saldar la cuenta entera, perder la respuesta, reintentar → éxito informado como "ya estaba registrado", y el saldo del cliente descuenta el monto una sola vez. Nunca un `422` por saldo insuficiente.
-- [ ] 12.6 Implementar el cableado sobre lo que entregó C-36, sin modificar `src/shared/api/`.
+- [x] 12.1 **Verificar que C-36 archivó** y que existen el `cobrosApi` y el formulario de cobro. Si no, detenerse acá y anotar la razón: sin C-36 no hay dónde cablear la clave. No inventar el formulario en este change.
+      **Verificado:** C-36 archivado. Existen `src/features/clientes/api/cobrosApi.ts` y `src/features/clientes/components/CobroFormDialog.tsx`. El grupo 12 se ejecuta completo — **sin deuda residual**. `cobrosApi.ts` incluso documentaba en su cabecera los 5 pasos exactos que C-43 tenía que agregar; se siguieron al pie de la letra.
+- [x] 12.2 Test: la creación de cobro incluye **siempre** el header `Idempotency-Key`, con namespace propio. Mismo guard que 10.2.
+- [x] 12.3 Test: dos envíos del mismo cobro tras un fallo sin respuesta mandan la misma clave; cambiar el monto acuña una nueva.
+- [x] 12.4 Test: ante `200` + `Idempotent-Replay: true` el formulario informa éxito diciendo que el cobro **ya estaba** registrado, sin error.
+- [x] 12.5 Test del escenario que motivó design.md D2, extremo a extremo desde el formulario: saldar la cuenta entera, perder la respuesta, reintentar → éxito informado como "ya estaba registrado", y el saldo del cliente descuenta el monto una sola vez. Nunca un `422` por saldo insuficiente.
+- [x] 12.6 Implementar el cableado sobre lo que entregó C-36, sin modificar `src/shared/api/`.
 
 ## 13. Cierre y documentación
 
-- [ ] 13.1 Correr los dos suites completos y anotar los números finales medidos. Verificar `npx tsc --noEmit` y `npx eslint src --ext .ts,.tsx --max-warnings 0` limpios.
-- [ ] 13.2 Verificar que **no se tocó** `src/shared/api/api.d.ts`: la clave no se expone en ninguna respuesta, así que no hay tipo de wire nuevo. Y que **no se corrió** `npm run generate-types`.
-- [ ] 13.3 Documentar en `knowledge-base/09_decisiones_y_supuestos.md`, continuando la numeración desde donde la dejó C-42: que la receta se repite por entidad en vez de abstraerse; que en cobros la lectura por clave va antes de la validación de saldo porque ésa es una validación con estado; que la respuesta de una repetición se arma al responder y puede diferir de la original en un valor derivado; que la migración 0013 es una sola revisión para las tres tablas; y que `cliente_service` dejó de adivinar cuál constraint se violó.
-- [ ] 13.4 Sumar a `knowledge-base/05_reglas_de_negocio.md` la regla de que reintentar un pago, una factura o un cobro no crea una segunda operación, en los dominios correspondientes. En Cuenta Corriente de Clientes, dejar explícito que la regla de RN-CCC-04 no aplica a una repetición.
-- [ ] 13.5 Actualizar la nota de `CLAUDE.md` que hoy dice "**Pendiente de C-43**: `pagos`, `facturas` y `cobros` **no** deduplican" — dejó de ser cierto.
+- [x] 13.1 Correr los dos suites completos y anotar los números finales medidos. Verificar `npx tsc --noEmit` y `npx eslint src --ext .ts,.tsx --max-warnings 0` limpios.
+      **Frontend medido:** `884 passed (884)` en `110 passed (110)` archivos, 111.95s. Partió de `842 passed | 1 failed (843)` en 108 archivos → **+41 tests, +2 archivos** (`pagosApi.test.ts`, `facturasApi.test.ts`), cuadra exacto: 11 (pagosApi) + 12 (facturasApi) + 5 (cobrosApi) + 4 (CobroFormDialog) + 7 (CargaModal) + 2 (CuentaCorrienteCliente) = 41.
+      ⚠️ **El fallo preexistente de 10.1 (`PropuestaIAModal.e2e.test.tsx:318`, countdown del 429) ahora pasa, y NO fue arreglado por este change.** Nada de C-43 toca el camino de extracción por IA ni el manejo del `Retry-After`. La conclusión honesta es que ese test es **intermitente**, no que se haya reparado. Queda anotado como sospecha de flakiness a investigar aparte — no reclamado como logro de C-43.
+      **`npx tsc --noEmit`:** limpio. **`npx eslint src --ext .ts,.tsx --max-warnings 0`:** limpio, exit 0.
+      🚫 **Backend NO verificado en esta corrida — Docker no está levantado.** `pytest` devolvió `1346 errors in 193.35s`: son errores de **setup**, no fallos de test. Los tests exigen Postgres real en contenedor (Regla Dura #12, nunca SQLite) y `docker ps` responde `failed to connect to the docker API... daemon is running?`. No es un resultado de este change: **Fase B no tocó un solo archivo de `facturas-proveedores-api/`**, verificado por `git status`. El último número real del backend es el de la task 1.1 (`1241 passed`, 2026-08-16, Fase A). Pendiente de re-correr con Docker arriba para cerrar el registro.
+- [x] 13.2 Verificar que **no se tocó** `src/shared/api/api.d.ts`: la clave no se expone en ninguna respuesta, así que no hay tipo de wire nuevo. Y que **no se corrió** `npm run generate-types`.
+      **Verificado por `git status`:** `api.d.ts` no aparece entre los archivos modificados. Tampoco `shared/api/idempotency.ts` ni `shared/api/submitOutcome.ts` ni `shared/api/client.ts` — los tres ya eran genéricos desde C-42 y sirvieron tal cual, como predijo design.md D7. `npm run generate-types` **no se corrió**. Cero archivos de `facturas-proveedores-api/` tocados: Fase B es frontend puro.
+- [x] 13.3 **[hecho: D-68 … D-74]** Documentar en `knowledge-base/09_decisiones_y_supuestos.md`, continuando la numeración desde donde la dejó C-42: que la receta se repite por entidad en vez de abstraerse; que en cobros la lectura por clave va antes de la validación de saldo porque ésa es una validación con estado; que la respuesta de una repetición se arma al responder y puede diferir de la original en un valor derivado; que la migración 0013 es una sola revisión para las tres tablas; y que `cliente_service` dejó de adivinar cuál constraint se violó.
+- [x] 13.4 **[hecho: RN-PAG-07, RN-FAC-10, RN-FAC-11, RN-CCC-05; y RN-CCC-04 remite explícitamente a RN-CCC-05]** Sumar a `knowledge-base/05_reglas_de_negocio.md` la regla de que reintentar un pago, una factura o un cobro no crea una segunda operación, en los dominios correspondientes. En Cuenta Corriente de Clientes, dejar explícito que la regla de RN-CCC-04 no aplica a una repetición.
+- [x] 13.5 **[hecho]** Actualizar la nota de `CLAUDE.md` que hoy dice "**Pendiente de C-43**: `pagos`, `facturas` y `cobros` **no** deduplican" — dejó de ser cierto.
 - [ ] 13.6 Marcar C-43 en `CHANGES.md` con la fecha de archive **solo** cuando el archive real se ejecute (`/opsx:archive`), no antes. Si el grupo 12 quedó abierto por C-36, anotarlo explícitamente como deuda residual en vez de cerrarlo en silencio.
