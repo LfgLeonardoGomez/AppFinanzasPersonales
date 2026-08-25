@@ -48,7 +48,7 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 
 ## Roadmap de Changes
 
-44 entradas en 13 fases — índice completo en [`CHANGES.md`](CHANGES.md). **39 archivadas, 5 pendientes.**
+44 entradas en 13 fases — índice completo en [`CHANGES.md`](CHANGES.md). **40 archivadas, 4 pendientes.**
 
 **MVP (C-01 → C-27): COMPLETO.** El sistema es funcional en producción desde C-13 (cuenta corriente de proveedores). C-14/C-15 cerraron la IA de visión; C-15a…C-27 fueron housekeeping, fixes y cierre de deudas. El rediseño de UX/UI se entregó fuera de la numeración de changes.
 
@@ -56,17 +56,21 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 
 **Camino crítico de la etapa:** `C-28 ✓ → C-32 ✓ → C-33 ✓ → C-34 ✓ → C-35 ✓ → C-36 ✓ → C-39 exportación`, con `C-29/C-30/C-31` (equipo + recuperación de contraseña, todos ✓) y `C-37/C-38` (estadísticas) en paralelo. **Todo el camino crítico está archivado salvo el último tramo: C-39.**
 
-**Próximo change:** hay dos candidatos y ninguno bloquea al otro.
-- **`C-43` Fase B** — la deuda más urgente. Fase A (backend) se entregó el 2026-08-16; Fase B es el cableado de frontend, que estaba esperando el formulario de cobro que trajo C-36. Ya no está bloqueada. El change sigue **activo** en `openspec/changes/c-43-idempotencia-resto-de-escrituras/`, con las tareas 10–13 sin marcar: `/opsx:apply c-43-idempotencia-resto-de-escrituras`.
-- **`C-39-exportacion-pdf-xls`** — el cierre del camino crítico. Su única dependencia (C-36) ya está archivada: `/opsx:propose C-39-exportacion-pdf-xls`.
+**Próximo change:** `C-43` quedó **completo** el 2026-08-25 (Fase A + Fase B) y solo resta archivarlo. El siguiente es **`C-39-exportacion-pdf-xls`**, el cierre del camino crítico; su única dependencia (C-36) ya está archivada: `/opsx:propose C-39-exportacion-pdf-xls`.
 
 Sueltos, sin dependencias: `C-37` (estadísticas backend) y `C-41` (tipos TS generados desde OpenAPI).
 
 > ✅ **C-28 archivado el 2026-08-09**: el eje de aislamiento ya es `negocio_id` en todo el sistema. Lo sostiene el test estructural `tests/test_c28_scoping_axis_guard.py`, que recorre el AST de `services/` y `repositories/` y falla si `usuario_id` reaparece como filtro fuera de la lista blanca. Ese guard está parametrizado sobre los archivos que encuentra: agregar o quitar un archivo en esos directorios **cambia el conteo de tests colectados**, y no es un error.
 
-> ⚠️ **C-43 va por la mitad**: la **Fase A (backend) se entregó el 2026-08-16** — `pagos`, `facturas` y `cobros` ya deduplican del lado del servidor. Falta la **Fase B (frontend)**: los formularios todavía no mandan `Idempotency-Key`, así que un reintento del usuario sigue creando un duplicado, y sigue en pantalla la copia interina de C-42 que pide revisar el listado antes de reintentar. La protección no está completa hasta que Fase B entre.
+> ✅ **C-43 completo (2026-08-25)**: `pagos`, `facturas` y `cobros` deduplican **de punta a punta**. Fase A (backend, 2026-08-16) puso la columna, el índice único parcial y la lectura por clave; Fase B (frontend, 2026-08-25) cableó la `Idempotency-Key` en `pagosApi`, `facturasApi` y `cobrosApi`, y los cuatro estados de resultado en la UI. Un reintento del usuario ya no crea un duplicado.
 >
-> **Cobros no sigue la receta de C-42, y es a propósito.** `CobroClienteService._saldo_disponible` es una validación **stateful** (resta los cobros ya persistidos), y corre *antes* del INSERT. Con el orden de C-42 (validar → insertar → atrapar `IntegrityError`), una repetición legítima evalúa el saldo ya consumido por el cobro original y muere en `422` sin llegar nunca al INSERT que la habría reconocido: saldar una cuenta entera fallaría siempre. Por eso cobros hace el **lookup por clave ANTES de validar el saldo** (D2). Regla general: el patrón "validar → insertar → atrapar conflicto" solo es seguro si toda validación previa es *stateless* respecto del recurso que se crea.
+> **Cobros no sigue la receta de C-42, y es a propósito.** `CobroClienteService._saldo_disponible` es una validación **stateful** (resta los cobros ya persistidos), y corre *antes* del INSERT. Con el orden de C-42 (validar → insertar → atrapar `IntegrityError`), una repetición legítima evalúa el saldo ya consumido por el cobro original y muere en `422` sin llegar nunca al INSERT que la habría reconocido: saldar una cuenta entera fallaría siempre. Por eso cobros hace el **lookup por clave ANTES de validar el saldo** (D-69). Regla general: el patrón "validar → insertar → atrapar conflicto" solo es seguro si toda validación previa es *stateless* respecto del recurso que se crea.
+>
+> ⚠️ **`PagoForm` y `FacturaForm` son SOLO modo edición** (descubierto en Fase B, D-73/D-74). El camino real de creación de pagos y facturas es `features/ia-vision/components/CargaModal.tsx`, montado por `CreatePagoPage` y `CreateFacturaPage`. Consecuencias que hay que tener presentes antes de tocar cualquiera de los tres:
+> - El copy conservador de esos dos formularios ("revisá el listado antes de reintentar") **NO es interino y no se retira**: el `PATCH` que emiten no manda clave y no está protegido. Ahí ese copy es el correcto. **No lo "arregles" copiando el wording del `CargaModal`.**
+> - Quien manda la clave y promete que reintentar es seguro es el `CargaModal`. La regla general: solo un formulario que efectivamente manda la clave puede hacer esa promesa; cualquier escritura que no la mande hereda el copy conservador.
+>
+> ⚠️ **La respuesta de una repetición puede diferir de la original** (D-70, RN-FAC-11). El `estado` de una factura se recalcula sobre el pool FIFO actual, así que una repetición puede devolver `PARCIAL` donde el original devolvió `PENDIENTE`. Es correcto: `estado` es derivado y nunca persistido. La garantía es "no se creó una segunda fila", **no** "recibís los mismos bytes".
 
 ## Reglas Duras (específicas del proyecto)
 

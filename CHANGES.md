@@ -889,13 +889,14 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `facturas-proveedores-api/app/services/cliente_service.py` (el patrón de carrera del repo) y `alembic/versions/20240008_0008_cliente.py` (el índice único parcial)
 
 ### [C-43] `idempotencia-resto-de-escrituras`
-- **Estado**: `[ ]`
+- **Estado**: `[x]` **archivado 2026-08-25** — completo, **sin deuda residual**. Fase A (backend) el 2026-08-16; Fase B (frontend) el 2026-08-25. El grupo 12 (cobros) **no** quedó abierto: C-36 ya había archivado, así que el `cobrosApi` y el `CobroFormDialog` existían y se cablearon.
 - **Por qué**: `POST /api/pagos`, `/api/facturas` y `/api/cobros` tienen exactamente la misma exposición que C-42 arregla en ventas — y la revisión adversarial de C-42 confirmó que ahora están **más** expuestos, no menos: el `timeout` global de 20s que C-42 sumó al cliente Axios compartido convierte los fallos ambiguos de estos tres endpoints en un error explícito, que invita a reintentar sobre endpoints que todavía no desduplican nada. Un pago duplicado infla lo pagado a un proveedor y, vía FIFO, marca como `PAGADA` una factura que no lo está; un cobro duplicado acredita de más y puede empujar el saldo del cliente a negativo (D-58). C-42 deja el mecanismo listo y **no** los cubre, así que hasta que este change entre siguen expuestos.
 - **Scope**:
   - Repetir la receta de C-42 (columna + índice único parcial + rama en el service) sobre `pago`, `factura` y `cobro_cliente`, con su migración.
   - Arreglar el `except IntegrityError` pelado de `cliente_service.crear` usando `app/services/idempotencia.py`: hoy funciona porque `cliente` tiene un solo índice único, y deja de funcionar en cuanto tenga dos.
-  - Frontend: la clave de idempotencia en `pagosApi` y `facturasApi` (dedup real, todavía pendiente) y en el de cobros cuando exista ese formulario — **hoy no existe** (D-34: el cobro de cuenta corriente aún no tiene UI propia).
-  - **Ya shippeado como mitigación interina** (commit `eb9e980`, parte de la revisión de C-42, no de este change): `PagoForm` y `FacturaForm` clasifican el resultado desconocido igual que `VentaForm`, pero su copy dice explícitamente que hay que revisar el listado antes de reintentar y **no** ofrece el reintento como acción principal ni afirma que sea seguro — porque sin clave de idempotencia todavía no lo es.
+  - Frontend: la clave de idempotencia en `pagosApi`, `facturasApi` y `cobrosApi`. ✅ **Entregado**: los tres mandan siempre `Idempotency-Key`, cada uno con namespace propio (`pago-create`, `factura-create`, `cobro-create`). `shared/api/idempotency.ts` y `submitOutcome.ts` no se modificaron — ya eran genéricos desde C-42.
+  - ~~**Ya shippeado como mitigación interina** (commit `eb9e980`): el copy conservador de `PagoForm` y `FacturaForm`, a retirar cuando entre C-43.~~ **⚠️ NO se retiró, y es correcto (D-73).** Al implementar Fase B se descubrió que **esos dos formularios son solo modo edición**: el camino real de creación de pagos y facturas es `CargaModal.tsx`. El copy quedaba parado sobre el `PATCH`, que no manda clave y no está protegido — por diseño. La regla del spec (*"solo un formulario que efectivamente manda la clave puede prometer que reintentar es seguro"*) lo vuelve **definitivo**, no interino, en ese camino.
+  - **Alcance real de la UI (D-74)**: quien recibió el cableado fue `CargaModal.tsx`, que hasta acá colapsaba 422, timeout y 502 en **un solo mensaje genérico** — la indistinción que C-42 existe para eliminar, sobre el único formulario de creación que un usuario alcanza. Ahora distingue los cuatro estados. Además `CuentaCorrienteCliente` informa el resultado del cobro distinguiendo la repetición.
 - **Dependencias**: `C-42`
 - **Governance**: ALTO
 - **Leer antes**: `openspec/specs/escritura-idempotente/spec.md` (el contrato que C-42 deja escrito)
@@ -951,7 +952,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-42 | idempotencia-registro-venta | ALTO | C-34 (deuda detectada revisando C-34, archivado 2026-08-16) |
 | **C-43** | **idempotencia-resto-de-escrituras** | ALTO | C-42 |
 
-**Total: 44 entradas (C-01…C-43 + C-15a) · 13 fases · 39 archivadas, 5 pendientes**
+**Total: 44 entradas (C-01…C-43 + C-15a) · 13 fases · 40 archivadas, 4 pendientes**
 
 **Estado del MVP**: completo y archivado desde C-13 (2026-06-27). C-14/C-15 cerraron la IA de visión. C-15a…C-27 fueron housekeeping, fixes y cierre de deudas; el rediseño de UX/UI se entregó fuera de la numeración (ver nota al final de la sección de housekeeping).
 
