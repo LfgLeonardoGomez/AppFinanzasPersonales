@@ -28,6 +28,8 @@ import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 import { SaldoBadge } from '@features/cuenta-corriente/components/SaldoBadge'
+import { ExportarCuentaCorriente } from '@features/cuenta-corriente/components/ExportarCuentaCorriente'
+import { exportarCuentaCorrienteCliente } from '@features/cuenta-corriente/api/exportacionApi'
 import { TablaVentasFiadas } from './TablaVentasFiadas'
 import { CobroFormDialog } from './CobroFormDialog'
 import { HistorialTable, type HistorialTipoConfig } from '@shared/components/HistorialTable/HistorialTable'
@@ -115,6 +117,14 @@ export function CuentaCorrienteCliente({
   const queryClient = useQueryClient()
   const hayAlgoParaCobrar = cuentaCorriente.saldo > 0
 
+  // C-39, D7 — bound once to the customer endpoint; the export component
+  // itself does not know which account type it is exporting.
+  const exportFn = useMemo(
+    () => (params: Parameters<typeof exportarCuentaCorrienteCliente>[1]) =>
+      exportarCuentaCorrienteCliente(cuentaCorriente.cliente_id, params),
+    [cuentaCorriente.cliente_id],
+  )
+
   function invalidateAccount() {
     void queryClient.invalidateQueries({
       queryKey: CLIENTE_KEYS.cuentaCorriente(cuentaCorriente.cliente_id),
@@ -144,6 +154,10 @@ export function CuentaCorrienteCliente({
             Calculado al momento a partir de fiados y cobros. Se actualiza
             automáticamente.
           </p>
+
+          {/* spec: "una cuenta sin deuda también se exporta" — disponible
+              sin importar hayAlgoParaCobrar. */}
+          <ExportarCuentaCorriente exportFn={exportFn} />
 
           {hayAlgoParaCobrar ? (
             <button

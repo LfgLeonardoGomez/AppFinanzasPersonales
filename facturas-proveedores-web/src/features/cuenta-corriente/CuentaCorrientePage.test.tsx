@@ -147,6 +147,18 @@ describe('CuentaCorrientePage', () => {
     expect(screen.queryByTestId(/^historial-row-/)).not.toBeInTheDocument()
   })
 
+  // C-39, task 9.1 — the export action is offered on both branches of this
+  // component (non-empty AND empty/saldo-cero), never gated on having debt.
+  it('C-39: offers the export action', () => {
+    render(<CuentaCorrientePage cuentaCorriente={triple} />)
+    expect(screen.getByRole('button', { name: 'Exportar' })).toBeInTheDocument()
+  })
+
+  it('C-39: the export action is still available on a saldo-cero account', () => {
+    render(<CuentaCorrientePage cuentaCorriente={emptyTriple} />)
+    expect(screen.getByRole('button', { name: 'Exportar' })).toBeInTheDocument()
+  })
+
   it('changing the filter in FiltrosFacturas propagates to the table', () => {
     render(<CuentaCorrientePage cuentaCorriente={triple} />)
     // Initially both rows are visible

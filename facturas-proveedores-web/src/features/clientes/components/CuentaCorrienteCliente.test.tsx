@@ -218,3 +218,15 @@ describe('CuentaCorrienteCliente — cobro outcome feedback (C-43 Fase B)', () =
     expect(message).not.toMatch(/ya estaba/i)
   })
 })
+
+describe('CuentaCorrienteCliente — C-39, task 9.1: offers the export action', () => {
+  it('a customer with debt shows the export action', () => {
+    renderPanel(<CuentaCorrienteCliente cuentaCorriente={account({ saldo: 1000 })} />)
+    expect(screen.getByRole('button', { name: 'Exportar' })).toBeInTheDocument()
+  })
+
+  it('a saldo-cero customer still shows the export action (triangulation)', () => {
+    renderPanel(<CuentaCorrienteCliente cuentaCorriente={account({ saldo: 0 })} />)
+    expect(screen.getByRole('button', { name: 'Exportar' })).toBeInTheDocument()
+  })
+})
