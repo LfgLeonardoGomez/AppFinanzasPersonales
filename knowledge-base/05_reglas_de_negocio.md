@@ -159,6 +159,18 @@ Es una vista **distinta** del estado FIFO (RN-FIFO): muestra la evolución de la
 | **RN-CCC-05** | **Reintentar un cobro no crea un segundo cobro, y no se rechaza por saldo insuficiente** (C-43, D-69). `POST /api/cobros` acepta el header opcional `Idempotency-Key`. A diferencia de pagos y facturas, acá la búsqueda por clave corre **antes** de la validación de saldo, y no es un detalle de implementación sino la regla: `_saldo_disponible` resta los cobros ya persistidos, así que una repetición legítima evaluaría el saldo que el cobro **original ya consumió**. Sin esa inversión, **saldar una cuenta entera y reintentar fallaría siempre** con un `422` de RN-CCC-04 — el caso más común de todos. Por eso RN-CCC-04 se evalúa solo cuando la clave es nueva. Regla general que deja: *"validar → insertar → atrapar conflicto" solo es seguro si toda validación previa es stateless respecto del recurso que se crea.* |
 | **RN-CCC-05** | **Historial cronológico** debe/haber con saldo acumulado por fila, aplicando RN-HIST sobre ventas fiadas y cobros. |
 
+## Dominio: Estadísticas *(C-37)*
+
+| Código | Regla |
+|---|---|
+| **RN-EST-01** | `GET /api/estadisticas/compras` suma únicamente `factura.monto_total`; `GET /api/estadisticas/ventas` suma únicamente `venta.monto`. **NUNCA** `pago.monto` ni `cobro_cliente.monto` (D-77). Una factura es la compra, el pago la cancela; una venta fiada ya se contó el día que salió la mercadería (RN-VTA-02/RN-VTA-04), su cobro es la misma plata entrando. Sumar ambos lados duplica la facturación. |
+| **RN-EST-02** | Un período (día/semana/mes) sin movimiento vale `0.00` y **aparece** en la serie devuelta — nunca se omite (D-76). El relleno lo hace el backend, nunca el cliente. |
+| **RN-EST-03** | El desglose de ventas por `forma_pago` de cada período **suma exactamente** el `total` de ese período, siempre, por construcción. `CUENTA_CORRIENTE` aparece en el desglose como una forma de pago más, esté cobrada o no. |
+| **RN-EST-04** | El corte de período **no aplica ninguna conversión de zona horaria** (D-78): opera directamente sobre `venta.fecha` / `factura.fecha_emision`, que son columnas `date`. La semana empieza el **lunes** (norma ISO). |
+| **RN-EST-05** | `GET /api/estadisticas/resumen` deriva `compras` y `ventas` de las **mismas** agregaciones que sirven a los endpoints individuales — nunca una query propia (D-79). Expone `compras`, `ventas` y `diferencia`; **NUNCA** margen ni rentabilidad, porque el sistema no sabe cuánto costó la mercadería vendida. |
+| **RN-EST-06** | Un rango que produciría más períodos que el tope configurado (`MAX_PERIODOS`) se rechaza con **422**, informando cuántos períodos pediría y sugiriendo granularidad más gruesa o rango más corto. Nunca una serie truncada en silencio. |
+| **RN-EST-07** | Las tres agregaciones están aisladas por `negocio_id` (D-27). Un `proveedor_id` de otro negocio en `/compras` responde **404**, nunca 403 — una filtración acá no se ve como un registro ajeno, se ve como un número más alto. |
+
 ## Dominio: Testing
 
 | Código | Regla |

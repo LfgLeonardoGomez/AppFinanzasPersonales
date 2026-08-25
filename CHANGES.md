@@ -789,20 +789,23 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 ## FASE 13 — Analítica y exportación
 
 ### [C-37] `estadisticas-backend`
-- **Estado**: `[ ]`
+- **Estado**: `[ ]` — implementado y con suite en verde (`1396 passed`); falta correr `/opsx:archive`. Tasks 1-10 completas en `openspec/changes/c-37-estadisticas-backend/tasks.md`, con los números medidos anotados.
 - **Scope**:
-  - **Un solo motor de agregación** parametrizado por período (día/semana/mes) y rango, reutilizado por compras y ventas (D-35)
+  - **Un solo motor de agregación** — pero no un constructor de queries genérico: lo compartido entre compras y ventas es el bucketing por período y el relleno de huecos (`app/services/estadisticas_engine.py`, funciones puras), no una función `agregar(tabla, columna, filtros)`. Cada fuente conserva su propia query porque compras filtra por `proveedor_id` y ventas necesita desglose por `forma_pago` (D-75).
   - `GET /api/estadisticas/compras?proveedor_id&desde&hasta&granularidad` — totales de compra por proveedor y período
-  - `GET /api/estadisticas/ventas?desde&hasta&granularidad` — totales de venta con **desglose por forma de pago**
-  - `GET /api/estadisticas/resumen?desde&hasta` — contraste compras vs. ventas en el mismo período
-  - Todo por agregación SQL, sin columnas persistidas (RN-VTA-05); un solo query por endpoint, sin N+1
-  - Tests: agregación correcta por día/semana/mes con datos a caballo del límite del período, desglose por forma de pago suma el total, zona horaria UTC-3 en los cortes, aislamiento por negocio
+  - `GET /api/estadisticas/ventas?desde&hasta&granularidad` — totales de venta con **desglose por forma de pago** (suma el total, por construcción)
+  - `GET /api/estadisticas/resumen?desde&hasta` — contraste compras vs. ventas, compuesto de las mismas dos agregaciones (D6, sin query propia ni tope de períodos porque no devuelve series); nunca expone margen ni rentabilidad
+  - Todo por agregación SQL, sin columnas persistidas (RN-VTA-05); un solo `GROUP BY` con `date_trunc` por endpoint, sin N+1 (plan de ejecución verificado con 50k filas: sin scan completo, ~100-140ms)
+  - Un período sin movimiento vale cero y **aparece** en la serie (D2); nunca se omite
+  - Tope de períodos por respuesta (`MAX_PERIODOS = 400`, conservador): un rango que lo excedería rechaza con `422` explicativo en vez de una serie truncada
+  - **Sin conversión de zona horaria en los cortes de período** — corrección al scope original de este roadmap (ver `proposal.md`): `venta.fecha` y `factura.fecha_emision` son columnas `date`, no `datetime`, así que UTC-3 no aplica al bucketing; agregarla desplazaría movimientos de período de forma sistemática e invisible. UTC-3 sigue aplicando donde ya aplicaba (fecha futura al registrar un movimiento).
+  - Tests: agregación correcta por día/semana/mes con datos a caballo del límite del período, desglose por forma de pago suma el total, **cobro de cuenta corriente no cuenta como venta y pago no cuenta como compra** (D3, verificado por mutación), aislamiento por negocio (verificado por mutación), tope de períodos con 422 explicativo
 - **Dependencias**: `C-33`
 - **Governance**: MEDIO
 - **Leer antes**:
-  - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Ventas (RN-VTA-05)
+  - `knowledge-base/05_reglas_de_negocio.md` §Dominio: Estadísticas (RN-EST-01 a RN-EST-07)
   - `knowledge-base/04_modelo_de_datos.md` §Cálculos derivados (puntos 6 y 7)
-  - `knowledge-base/09_decisiones_y_supuestos.md` D-35
+  - `knowledge-base/09_decisiones_y_supuestos.md` D-75 a D-79
 
 ### [C-38] `estadisticas-frontend`
 - **Estado**: `[ ]`

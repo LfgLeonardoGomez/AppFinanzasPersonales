@@ -21,6 +21,7 @@ from app.routers import equipo as equipo_router
 from app.routers import clientes as clientes_router
 from app.routers import ventas as ventas_router
 from app.routers import cobros as cobros_router
+from app.routers import estadisticas as estadisticas_router
 
 # ── Instancia FastAPI ─────────────────────────────────────────────────────────
 app = FastAPI(
@@ -56,6 +57,7 @@ app.include_router(equipo_router.router)
 app.include_router(clientes_router.router)
 app.include_router(ventas_router.router)
 app.include_router(cobros_router.router)
+app.include_router(estadisticas_router.router)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

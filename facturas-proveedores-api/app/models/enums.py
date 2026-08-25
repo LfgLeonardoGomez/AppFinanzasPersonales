@@ -104,6 +104,25 @@ class EstadoVentaFiada(str, enum.Enum):
     COBRADA = "COBRADA"
 
 
+class Granularidad(str, enum.Enum):
+    """
+    Period bucket size for /api/estadisticas (C-37).
+
+    Never a column — this exists only in query params and responses, not in
+    any table. It lives here rather than in a schemas module because the
+    repository layer needs it too (to pick the right `date_trunc` unit), and
+    the project's convention is that repositories do not import from
+    `app.schemas` (design.md D1, D7).
+
+    MES and DIA name themselves; SEMANA always starts Monday (D4) — the ISO
+    convention `date_trunc('week', ...)` already uses in Postgres.
+    """
+
+    DIA = "dia"
+    SEMANA = "semana"
+    MES = "mes"
+
+
 __all__ = [
     "TemaPreferido",
     "CategoriaProveedor",
@@ -113,4 +132,5 @@ __all__ = [
     "EstadoFactura",
     "MetodoCobro",
     "EstadoVentaFiada",
+    "Granularidad",
 ]
