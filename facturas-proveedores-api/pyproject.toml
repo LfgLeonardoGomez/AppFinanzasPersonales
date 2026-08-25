@@ -37,6 +37,16 @@ dependencies = [
 
     # UUID utilities (D-16: uuid7 para IDs time-ordered)
     "uuid6>=2022.10.25",
+
+    # Export de cuenta corriente (C-39, design.md D3). El VPS es Oracle Free
+    # Tier con 1 GB de RAM: quedan descartadas las librerías que arrastran
+    # binarios de sistema (weasyprint → cairo/pango/gdk-pixbuf; reportlab es
+    # puro pero mucho más pesado de lo que un resumen de cuenta necesita).
+    # fpdf2 y xlsxwriter son Python puro, sin dependencias de sistema, y
+    # xlsxwriter soporta constant_memory (escritura fila por fila) — la
+    # propiedad que importa en 1 GB.
+    "fpdf2>=2.7.0,<3",
+    "xlsxwriter>=3.2.0,<4",
 ]
 
 [project.optional-dependencies]
@@ -48,6 +58,8 @@ dev = [
     "testcontainers[postgres]>=4.7.0,<5",
     "coverage[toml]>=7.5.0,<8",
     "pip-audit>=2.7.0,<3",
+    "pypdf>=4.0.0,<5",               # C-39: leer texto de un PDF generado en tests
+    "openpyxl>=3.1.0,<4",            # C-39: leer un XLSX generado en tests (design.md D3 descarta openpyxl solo como ESCRITOR de producción)
 ]
 
 [tool.pytest.ini_options]
