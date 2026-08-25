@@ -789,7 +789,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 ## FASE 13 — Analítica y exportación
 
 ### [C-37] `estadisticas-backend`
-- **Estado**: `[ ]` — implementado y con suite en verde (`1396 passed`); falta correr `/opsx:archive`. Tasks 1-10 completas en `openspec/changes/c-37-estadisticas-backend/tasks.md`, con los números medidos anotados.
+- **Estado**: `[x]` **archivado 2026-08-25** — motor de agregación de solo lectura. El scope original pedía tests de zona horaria en los cortes de período; **esa corrección se documentó en D-78**: las columnas de fecha son `date`, no `datetime`, y agregar la conversión habría desplazado movimientos de bucket.
 - **Scope**:
   - **Un solo motor de agregación** — pero no un constructor de queries genérico: lo compartido entre compras y ventas es el bucketing por período y el relleno de huecos (`app/services/estadisticas_engine.py`, funciones puras), no una función `agregar(tabla, columna, filtros)`. Cada fuente conserva su propia query porque compras filtra por `proveedor_id` y ventas necesita desglose por `forma_pago` (D-75).
   - `GET /api/estadisticas/compras?proveedor_id&desde&hasta&granularidad` — totales de compra por proveedor y período
@@ -822,7 +822,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `specs/design/DESIGN_SYSTEM.md`, `specs/design/LAYOUT.md`
 
 ### [C-39] `exportacion-pdf-xls`
-- **Estado**: `[~]` **apply completo 2026-08-25 — pendiente `/opsx:archive`.** Backend y frontend implementados y en verde (ver `tasks.md` del change, 59/59 marcadas con evidencia). Sin fecha de archive porque el archive real todavía no corrió.
+- **Estado**: `[x]` **archivado 2026-08-25** — cierra el camino crítico de la etapa post-MVP (C-28 → C-39). Entregado como `xlsx`, no `.xls` binario legado (D-82).
 - **Scope**:
   - **XLS**: dump tabular de movimientos (cuenta corriente de cliente y de proveedor) para seguir trabajando en Excel. Sin formato decorativo. ✅ Entregado con `xlsxwriter` (`constant_memory`).
   - **PDF**: *resumen de cuenta* presentable — encabezado del negocio, datos del cliente/proveedor, saldo, detalle de movimientos con saldo acumulado. Es un documento que el negocio le muestra a su cliente, no un dump de tabla. ✅ Entregado con `fpdf2`.
@@ -957,7 +957,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-42 | idempotencia-registro-venta | ALTO | C-34 (deuda detectada revisando C-34, archivado 2026-08-16) |
 | **C-43** | **idempotencia-resto-de-escrituras** | ALTO | C-42 |
 
-**Total: 44 entradas (C-01…C-43 + C-15a) · 13 fases · 40 archivadas, 4 pendientes**
+**Total: 44 entradas (C-01…C-43 + C-15a) · 13 fases · 42 archivadas, 2 pendientes**
 
 **Estado del MVP**: completo y archivado desde C-13 (2026-06-27). C-14/C-15 cerraron la IA de visión. C-15a…C-27 fueron housekeeping, fixes y cierre de deudas; el rediseño de UX/UI se entregó fuera de la numeración (ver nota al final de la sección de housekeeping).
 

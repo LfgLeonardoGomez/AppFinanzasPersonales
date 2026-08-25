@@ -48,7 +48,7 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 
 ## Roadmap de Changes
 
-44 entradas en 13 fases — índice completo en [`CHANGES.md`](CHANGES.md). **40 archivadas, 4 pendientes.**
+44 entradas en 13 fases — índice completo en [`CHANGES.md`](CHANGES.md). **42 archivadas, 2 pendientes.**
 
 **MVP (C-01 → C-27): COMPLETO.** El sistema es funcional en producción desde C-13 (cuenta corriente de proveedores). C-14/C-15 cerraron la IA de visión; C-15a…C-27 fueron housekeeping, fixes y cierre de deudas. El rediseño de UX/UI se entregó fuera de la numeración de changes.
 
