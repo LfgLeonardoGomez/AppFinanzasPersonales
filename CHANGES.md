@@ -808,7 +808,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
   - `knowledge-base/09_decisiones_y_supuestos.md` D-75 a D-79
 
 ### [C-38] `estadisticas-frontend`
-- **Estado**: `[ ]`
+- **Estado**: `[x]` **implementado 2026-08-26, verificado contra la API real 2026-08-28** — apply completo, pendiente `/opsx:archive`. Frontend puro: **cero cambios en el backend**. Suite frontend 903 → **1005 passed** (125 archivos), `tsc` y `eslint` limpios. Primera librería de gráficos del proyecto: **`visx` (SVG)**, elegida sobre uPlot/Chart.js porque bajo `jsdom` sin el paquete `canvas` un gráfico de canvas no produce nada afirmable y el repo no tiene tier e2e (D-85). Ver D-85 a D-90.
 - **Scope**:
   - Ficha de proveedor: total comprado por período (mensual/semanal) — cierra el pedido original
   - Pantalla de ventas: totales por día/semana/mes con desglose por forma de pago
@@ -950,7 +950,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-34 | ventas-clientes-frontend | MEDIO | C-30, C-33 (archivado 2026-08-14) |
 | C-36 | cuenta-corriente-clientes-frontend | MEDIO | C-34, C-35 (archivado 2026-08-16) |
 | **C-37** | **estadisticas-backend** | MEDIO | C-33 |
-| **C-38** | **estadisticas-frontend** | BAJO | C-34, C-37 |
+| **C-38** | **estadisticas-frontend** | BAJO | C-34 ✓, C-37 ✓ — implementado 2026-08-26 |
 | **C-39** | **exportacion-pdf-xls** | MEDIO | C-36 |
 | C-40 | dev-setup-lint-guard | BAJO | — (deuda detectada en C-30, archivado 2026-08-15) |
 | **C-41** | **api-types-generated** | MEDIO | — (deuda detectada en C-30) |
