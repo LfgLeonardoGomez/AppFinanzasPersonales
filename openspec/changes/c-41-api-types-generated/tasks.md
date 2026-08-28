@@ -1,0 +1,84 @@
+> Orden derivado del Migration Plan de `design.md`. Cada grupo cierra con typecheck y suite en verde: una tanda que deja `tsc` roja no está terminada.
+>
+> Baseline al abrir el change (2026-08-28): frontend **1005 passed / 125 archivos**, `tsc --noEmit` limpio, `eslint` limpio.
+
+## 1. Andamiaje: el generado entra sin que nada lo consuma
+
+- [ ] 1.1 Reconstruir la imagen del backend (`docker compose build api`) y confirmar que `http://localhost:8000/openapi.json` responde `200`, para no generar contra un contenedor viejo (regla de C-39 en `CLAUDE.md`)
+- [ ] 1.2 Apuntar el script `generate-types` del `package.json` a `src/shared/api/api.generated.d.ts` (D7) — hoy apunta a `api.d.ts` y correrlo destruye el archivo a mano
+- [ ] 1.3 Generar `src/shared/api/api.generated.d.ts` con `npm run generate-types` y commitearlo, con un encabezado que diga que es derivado y no se edita a mano
+- [ ] 1.4 Verificar que `tsc --noEmit` y la suite siguen en el baseline: nada consume el generado todavía, así que nada debe haber cambiado
+
+## 2. El helper de conversión y el guard, probados sobre lo que ya coincide
+
+- [ ] 2.1 RED — escribir las aserciones de compilación del guard general para los 22 tipos que la medición dio idénticos, importando desde `api.generated.d.ts`; verificar que fallan mientras el helper no existe
+- [ ] 2.2 GREEN — implementar `DecimalAsNumber<T, K>` (D2) y derivar esos 22 tipos en `api.d.ts` hasta que `tsc --noEmit` pase
+- [ ] 2.3 TRIANGULAR — verificar por mutación que el guard sirve: alterar a mano un campo del generado, confirmar que `tsc` falla señalando el tipo, revertir
+- [ ] 2.4 TRIANGULAR — verificar que `DecimalAsNumber` convierte solo las claves nombradas: una aserción que falle si un campo no nombrado cambia de tipo
+- [ ] 2.5 Confirmar suite y typecheck en verde antes de tocar ningún tipo con drift
+
+## 3. Cliente de proveedores — y medición del costo real de los fixtures
+
+- [ ] 3.1 Medir y reportar cuántos archivos de test simulan respuestas de proveedores con montos, antes de migrar ninguno (Open Question de `design.md`)
+- [ ] 3.2 RED — escribir el test del parseo en el borde de `proveedoresApi`: la respuesta simulada trae `saldo` como cadena, el cliente debe devolver número
+- [ ] 3.3 RED — escribir el test del decimal malformado: debe lanzar, no devolver `0` (D4, D-88)
+- [ ] 3.4 GREEN — implementar el parseo en `proveedoresApi` con las formas `Raw*` internas al módulo, siguiendo `estadisticasParse.ts`
+- [ ] 3.5 Derivar `Proveedor` y `ProveedorListItem` del generado; resolver el drift conocido de `ProveedorListItem` (a mano extiende `Proveedor`, el backend devuelve un subconjunto con `ultima_factura_fecha`)
+- [ ] 3.6 Migrar los fixtures de proveedores a la forma del wire (D9): un fixture que ya devuelve número deja el parseo sin ejercitar
+- [ ] 3.7 Agregar al guard las aserciones de los tipos de proveedores
+- [ ] 3.8 Typecheck, lint y suite en verde; reportar el costo medido en 3.1 antes de seguir
+
+## 4. Cliente de facturas
+
+- [ ] 4.1 RED — test del parseo en el borde de `facturasApi` con `monto_total`, `cantidad` y `precio_unitario` como cadenas
+- [ ] 4.2 RED — test del decimal malformado en facturas: lanza, no degrada
+- [ ] 4.3 GREEN — implementar el parseo en `facturasApi` con las formas `Raw*` internas
+- [ ] 4.4 Derivar `Factura`, `FacturaListItem`, `FacturaConEstado` y `FacturaItem` del generado, resolviendo el drift que aflore
+- [ ] 4.5 Migrar los fixtures de facturas a la forma del wire
+- [ ] 4.6 Agregar al guard las aserciones de los tipos de facturas
+- [ ] 4.7 Typecheck, lint y suite en verde
+
+## 5. Cliente de pagos
+
+- [ ] 5.1 RED — test del parseo en el borde de `pagosApi` con `monto` como cadena
+- [ ] 5.2 RED — test del decimal malformado en pagos: lanza, no degrada
+- [ ] 5.3 GREEN — implementar el parseo en `pagosApi` con las formas `Raw*` internas
+- [ ] 5.4 Derivar `Pago`, `PagoListItem` y `PagoListResponse` del generado, resolviendo el drift que aflore
+- [ ] 5.5 Migrar los fixtures de pagos a la forma del wire
+- [ ] 5.6 Agregar al guard las aserciones de los tipos de pagos
+- [ ] 5.7 Typecheck, lint y suite en verde
+
+## 6. Cliente de ventas
+
+- [ ] 6.1 RED — test del parseo en el borde de `ventasApi` con `monto` como cadena
+- [ ] 6.2 RED — test del decimal malformado en ventas: lanza, no degrada
+- [ ] 6.3 GREEN — implementar el parseo en `ventasApi` con las formas `Raw*` internas
+- [ ] 6.4 Derivar `Venta`, `VentaListItem` y `VentaConEstado` del generado, resolviendo el drift que aflore
+- [ ] 6.5 Migrar los fixtures de ventas a la forma del wire
+- [ ] 6.6 Agregar al guard las aserciones de los tipos de ventas
+- [ ] 6.7 Typecheck, lint y suite en verde
+
+## 7. El resto de los tipos derivados y los alias de nombre
+
+- [ ] 7.1 Derivar los tipos de cuenta corriente (`CuentaCorrienteResponse`, `CuentaCorrienteClienteResponse`, `EntradaHistorial`, `EntradaHistorialCliente`) y verificar que su parseo existente sigue siendo el único lugar de conversión
+- [ ] 7.2 Derivar los tipos de estadísticas (`ComprasResponse`, `VentasResponse`, `ResumenResponse`, `PeriodoTotal`, `VentaPeriodo`) sin cambiar `estadisticasParse.ts`
+- [ ] 7.3 Derivar los tipos de IA de visión (`PropuestaFactura`, `PropuestaPago`) y los de clientes y cobros
+- [ ] 7.4 Aplicar los 15 alias de nombre de D6 (`Proveedor`→`ProveedorResponse`, `LoginBody`→`LoginRequest`, `Categoria`→`CategoriaProveedor` y el resto), verificando que ningún call site cambia su import
+- [ ] 7.5 Revisar los 19 schemas del backend hoy sin consumir y reportar si alguno corresponde a una respuesta que el frontend está tipando a mano (Open Question de `design.md`)
+- [ ] 7.6 Typecheck, lint y suite en verde
+
+## 8. Rotulado y retiro del andamio
+
+- [ ] 8.1 Agrupar bajo un rótulo explícito los tipos sin contraparte (`*Filters`, `*DeleteInput`, `HTTPError`, `PaginatedFacturas`, `PaginatedProveedores`, `ClienteConflictDetail`, `TopeExcedidoDetail` y los `*ListItem` locales), con el motivo por el que no se generan (D5)
+- [ ] 8.2 Verificar que el guard general cubre todos los tipos que `api.estadisticas.test-d.ts` protegía, ANTES de retirarlo (D8)
+- [ ] 8.3 Retirar `api.estadisticas.test-d.ts` y confirmar por mutación que el guard general sigue detectando el drift de estadísticas
+- [ ] 8.4 Actualizar el encabezado de `api.d.ts`: hoy dice que se generó a mano porque el backend no corría, y eso deja de ser cierto
+
+## 9. Cierre
+
+- [ ] 9.1 Verificar que ningún archivo de los 139 que importan de `@shared/api/api` tuvo que cambiar su import; si alguno lo necesitó, documentar por qué
+- [ ] 9.2 Regenerar desde cero (`npm run generate-types`) y confirmar que el diff del generado es vacío: prueba de que lo commiteado corresponde al contrato vigente
+- [ ] 9.3 Correr suite completa, `tsc --noEmit` y `eslint --max-warnings 0`; reportar el conteo final contra el baseline de 1005
+- [ ] 9.4 Registrar en `knowledge-base/09_decisiones_y_supuestos.md` las decisiones D1-D9 de este change
+- [ ] 9.5 Corregir en `CHANGES.md` la afirmación de que los tipos sin contraparte "son invenciones del frontend y no se pueden generar" — medido y falso para 15 de ellos (D6)
+- [ ] 9.6 Documentar en `CLAUDE.md` la regla resultante: los tipos del contrato se generan, los locales van rotulados, y los decimales se parsean en el borde de cada cliente
