@@ -999,3 +999,113 @@ export interface CobroClienteCreate {
   metodo: MetodoCobro
   comprobante_url?: string | null
 }
+
+// ── Estadísticas (C-38, consuming C-37) ──────────────────────────────────────
+
+/**
+ * Period bucket size for /api/estadisticas (backend: app/models/enums.py
+ * Granularidad).
+ *
+ * Never a column — it exists only in query params and responses. `semana`
+ * always starts on Monday (ISO, what `date_trunc('week', ...)` already does
+ * in Postgres).
+ */
+export type Granularidad = 'dia' | 'semana' | 'mes'
+
+/**
+ * One bucket of the compras series (backend: app/schemas/estadisticas.py
+ * PeriodoTotal). `periodo` equals `desde` — the bucket start.
+ *
+ * DECIMALS: `total` is a `number` here, but it travels the wire as a
+ * Pydantic-v2 Decimal STRING. `parseEstadisticas` converts it at the
+ * boundary (mirrors `parseCuentaCorriente`, C-13 D13) so no component ever
+ * sees a string-encoded decimal.
+ *
+ * A period with no movement arrives with `total: 0` — the backend zero-fills
+ * the series on purpose (C-37 D2) so a chart never draws a straight line
+ * between two non-consecutive dates and invents a trend. The frontend must
+ * NOT filter those zeros out.
+ */
+export interface PeriodoTotal {
+  periodo: string
+  desde: string
+  hasta: string
+  total: number
+}
+
+/**
+ * Purchase totals by period (backend: ComprasResponse), optionally scoped to
+ * one supplier. A `proveedor_id` belonging to another negocio answers 404,
+ * never 403 (negocio_id isolation).
+ */
+export interface ComprasResponse {
+  desde: string
+  hasta: string
+  granularidad: Granularidad
+  proveedor_id?: string | null
+  periodos: PeriodoTotal[]
+}
+
+/**
+ * One bucket of the ventas series with its payment-method breakdown
+ * (backend: VentaPeriodo).
+ *
+ * `desglose` always carries EVERY `FormaPago`, defaulting to `0` — same
+ * reasoning as the zero-filled periods. And `sum(desglose) === total` holds
+ * by construction: the backend computes both from the same grouped rows, so
+ * the frontend must display them, never add them up to derive the total.
+ *
+ * `cobro_cliente` is NEVER part of this (C-37 D3): a fiado was already
+ * counted as a sale the day the goods left.
+ */
+export interface VentaPeriodo {
+  periodo: string
+  desde: string
+  hasta: string
+  total: number
+  desglose: Record<FormaPago, number>
+}
+
+/** Sales totals by period, broken down by payment method (backend: VentasResponse). */
+export interface VentasResponse {
+  desde: string
+  hasta: string
+  granularidad: Granularidad
+  periodos: VentaPeriodo[]
+}
+
+/**
+ * Purchases vs. sales for one range (backend: ResumenResponse).
+ *
+ * `diferencia = ventas - compras`. It is NOT a margin and must never be
+ * labelled as one (C-37 D6): the system does not know what the goods it sold
+ * cost, so calling this "margen" or "rentabilidad" would be a made-up number
+ * wearing an accounting label.
+ */
+export interface ResumenResponse {
+  desde: string
+  hasta: string
+  compras: number
+  ventas: number
+  diferencia: number
+}
+
+/**
+ * Structured `detail` of the 422 the backend returns when a range would
+ * produce more periods than its cap (backend: `_error_tope_excedido`).
+ *
+ * This 422 is an INSTRUCTION, not a failure: it tells the caller exactly how
+ * many periods the request would have produced and how to shrink it, rather
+ * than silently returning a truncated series. The UI must present it as an
+ * actionable correction.
+ *
+ * The inverted-range 422 sends a plain STRING detail instead — that shape
+ * difference is how the two are told apart, rather than by matching Spanish
+ * prose that breaks the day someone fixes an accent.
+ */
+export interface TopeExcedidoDetail {
+  mensaje: string
+  periodos_estimados: number
+  tope: number
+  sugerencia: string
+}
