@@ -950,14 +950,14 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | C-34 | ventas-clientes-frontend | MEDIO | C-30, C-33 (archivado 2026-08-14) |
 | C-36 | cuenta-corriente-clientes-frontend | MEDIO | C-34, C-35 (archivado 2026-08-16) |
 | **C-37** | **estadisticas-backend** | MEDIO | C-33 |
-| **C-38** | **estadisticas-frontend** | BAJO | C-34 ✓, C-37 ✓ — implementado 2026-08-26 |
+| **C-38** | **estadisticas-frontend** | BAJO | C-34 ✓, C-37 ✓ — archivado 2026-08-28 |
 | **C-39** | **exportacion-pdf-xls** | MEDIO | C-36 |
 | C-40 | dev-setup-lint-guard | BAJO | — (deuda detectada en C-30, archivado 2026-08-15) |
 | **C-41** | **api-types-generated** | MEDIO | — (deuda detectada en C-30) |
 | C-42 | idempotencia-registro-venta | ALTO | C-34 (deuda detectada revisando C-34, archivado 2026-08-16) |
 | **C-43** | **idempotencia-resto-de-escrituras** | ALTO | C-42 |
 
-**Total: 44 entradas (C-01…C-43 + C-15a) · 13 fases · 42 archivadas, 2 pendientes**
+**Total: 44 entradas (C-01…C-43 + C-15a) · 13 fases · 43 archivadas, 1 pendiente**
 
 **Estado del MVP**: completo y archivado desde C-13 (2026-06-27). C-14/C-15 cerraron la IA de visión. C-15a…C-27 fueron housekeeping, fixes y cierre de deudas; el rediseño de UX/UI se entregó fuera de la numeración (ver nota al final de la sección de housekeeping).
 

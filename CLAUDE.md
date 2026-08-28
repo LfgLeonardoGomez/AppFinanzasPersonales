@@ -48,16 +48,15 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 
 ## Roadmap de Changes
 
-44 entradas en 13 fases — índice completo en [`CHANGES.md`](CHANGES.md). **42 archivadas, 2 pendientes.**
+44 entradas en 13 fases — índice completo en [`CHANGES.md`](CHANGES.md). **43 archivadas, 1 pendiente.**
 
 **MVP (C-01 → C-27): COMPLETO.** El sistema es funcional en producción desde C-13 (cuenta corriente de proveedores). C-14/C-15 cerraron la IA de visión; C-15a…C-27 fueron housekeeping, fixes y cierre de deudas. El rediseño de UX/UI se entregó fuera de la numeración de changes.
 
 **Etapa actual — evolución a sistema de gestión (C-28 → C-39).** Decidida el 2026-08-09, documentada en D-27 a D-38. La app deja de ser "registro de facturas a proveedores" y pasa a ser un mini sistema para negocios chicos: equipo multi-usuario sobre un mismo local, clientes con fiado, ventas y analítica. **El proyecto se renombrará** cuando la etapa esté encaminada.
 
-**Camino crítico de la etapa:** `C-28 ✓ → C-32 ✓ → C-33 ✓ → C-34 ✓ → C-35 ✓ → C-36 ✓ → C-39 ✓`, con `C-29/C-30/C-31` (equipo + recuperación de contraseña, todos ✓) y `C-37 ✓ / C-38` (estadísticas) en paralelo. **El camino crítico está cerrado**: `C-37`, `C-39` y `C-43` se archivaron el 2026-08-25 (commit `155bcd3`). **Cero changes activos.**
+**Camino crítico de la etapa:** `C-28 ✓ → C-32 ✓ → C-33 ✓ → C-34 ✓ → C-35 ✓ → C-36 ✓ → C-39 ✓`, con `C-29/C-30/C-31` (equipo + recuperación de contraseña, todos ✓) y `C-37 ✓ / C-38 ✓` (estadísticas) en paralelo. **El camino crítico está cerrado**: `C-37`, `C-39` y `C-43` se archivaron el 2026-08-25 (commit `155bcd3`), y `C-38` el 2026-08-28. **Cero changes activos.**
 
-**Pendientes:**
-- `C-38` **estadisticas-frontend** — **implementado el 2026-08-26** (ver nota abajo), resta `/opsx:archive`.
+**Pendiente — el último del roadmap:**
 - `C-41` **api-types-generated** — tipos TS generados desde OpenAPI; deuda detectada en `C-30`. Sin empezar.
 
 > ✅ **C-28 archivado el 2026-08-09**: el eje de aislamiento ya es `negocio_id` en todo el sistema. Lo sostiene el test estructural `tests/test_c28_scoping_axis_guard.py`, que recorre el AST de `services/` y `repositories/` y falla si `usuario_id` reaparece como filtro fuera de la lista blanca. Ese guard está parametrizado sobre los archivos que encuentra: agregar o quitar un archivo en esos directorios **cambia el conteo de tests colectados**, y no es un error.
@@ -72,7 +71,7 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 >
 > ⚠️ **La respuesta de una repetición puede diferir de la original** (D-70, RN-FAC-11). El `estado` de una factura se recalcula sobre el pool FIFO actual, así que una repetición puede devolver `PARCIAL` donde el original devolvió `PENDIENTE`. Es correcto: `estado` es derivado y nunca persistido. La garantía es "no se creó una segunda fila", **no** "recibís los mismos bytes".
 
-> ✅ **C-38 implementado (2026-08-26) y verificado contra la API real (2026-08-28) — frontend puro, cero cambios en el backend. Resta `/opsx:archive`.** Nueva ruta `/estadisticas` + panel de compras montado en la ficha de proveedor. Suite frontend 903 → **1005 passed** (125 archivos), `tsc`/`eslint` limpios. Detalle en `knowledge-base/09_decisiones_y_supuestos.md` D-85 a D-90.
+> ✅ **C-38 archivado el 2026-08-28 — frontend puro, cero cambios en el backend.** Implementado el 2026-08-26 y verificado contra la API real el 2026-08-28. Nueva ruta `/estadisticas` + panel de compras montado en la ficha de proveedor. Suite frontend 903 → **1005 passed** (125 archivos), `tsc`/`eslint` limpios. Detalle en `knowledge-base/09_decisiones_y_supuestos.md` D-85 a D-90.
 >
 > 🔴 **`visx` (SVG) es la librería de gráficos, y canvas está PROHIBIDO — no es una preferencia estética** (D-85). Los tests corren en `environment: 'jsdom'` (`vite.config.ts:84`) y **no está instalado el paquete `canvas`**: ahí `getContext('2d')` devuelve `null`, así que un gráfico de canvas no dibuja nada afirmable y lo único "testeable" sería un mock — la clase de test tautológico que este repo ya cazó y borró una vez. Tampoco hay Playwright ni tier e2e donde compensarlo. **Si alguien viene a "optimizar" cambiando visx por uPlot o Chart.js: eso deja la pantalla sin verificar.** Se instalan `@visx/shape` y `@visx/scale` sueltos, nunca el meta-paquete `visx`.
 >
