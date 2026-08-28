@@ -28,6 +28,7 @@ import { useProveedor } from './api/proveedoresHooks'
 import { useCuentaCorriente } from '@features/cuenta-corriente/api/cuentaCorrienteHooks'
 import { CuentaCorrientePage } from '@features/cuenta-corriente/CuentaCorrientePage'
 import { ProveedorDialog } from './components/ProveedorDialog'
+import { PanelComprasProveedor } from '@features/estadisticas/PanelComprasProveedor'
 import { Card } from '@shared/components/Card/Card'
 import { Button } from '@shared/components/Button/Button'
 import { LoadingState } from '@shared/components/LoadingState/LoadingState'
@@ -161,6 +162,11 @@ export function ProveedorDetailPage() {
           </div>
         </div>
       </Card>
+
+      {/* Purchases by period (C-38). The page hands over the id and nothing
+          else — the panel owns its own range, its own query and its own
+          error copy. */}
+      <PanelComprasProveedor proveedorId={proveedorId} />
 
       {/* Cuenta-corriente body */}
       {cuentaCorrienteQuery.data ? (

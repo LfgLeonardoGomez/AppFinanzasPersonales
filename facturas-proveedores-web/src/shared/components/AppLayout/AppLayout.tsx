@@ -18,7 +18,7 @@
 import type { MouseEvent } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { useIsMutating } from '@tanstack/react-query'
-import { Home, Users, Users2, UserRound, FileText, CreditCard, ShoppingCart, UserCircle, LogOut } from 'lucide-react'
+import { Home, Users, Users2, UserRound, FileText, CreditCard, ShoppingCart, BarChart3, UserCircle, LogOut } from 'lucide-react'
 import { useAuthStore } from '@features/auth/store/authStore'
 import { useLogout } from '@features/auth/api/authHooks'
 import { VENTA_CREATE_MUTATION_KEY } from '@features/ventas/api/ventasHooks'
@@ -26,6 +26,7 @@ import { VENTA_CREATE_MUTATION_KEY } from '@features/ventas/api/ventasHooks'
 const NAV_ITEMS = [
   { to: '/', label: 'Home', icon: Home, end: true },
   { to: '/ventas', label: 'Ventas', icon: ShoppingCart, end: false },
+  { to: '/estadisticas', label: 'Estadísticas', icon: BarChart3, end: false },
   { to: '/clientes', label: 'Clientes', icon: UserRound, end: false },
   { to: '/proveedores', label: 'Proveedores', icon: Users, end: false },
   { to: '/facturas', label: 'Facturas', icon: FileText, end: false },

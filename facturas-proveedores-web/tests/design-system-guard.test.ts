@@ -61,10 +61,16 @@ describe('design system guard — Ventas/Clientes screens (C-34, task 9.3)', () 
     expect(offenders, `darkMode: 'class' found in: ${offenders.join(', ')}`).toEqual([])
   })
 
-  it('the Ventas/Clientes screens use only the app design-system tokens (no hardcoded hex colors)', () => {
+  it('the guarded screens use only the app design-system tokens (no hardcoded hex colors)', () => {
+    // C-38 added `features/estadisticas`. This list is the whole guard: a
+    // feature that is not on it is not checked, silently. C-40 already paid
+    // that lesson once (`frontend-lint.test.ts` existed in the repo and had
+    // never actually run) — when a new feature is created, it belongs here
+    // before its first component is written, not after.
     const scanDirs = [
       join(projectRoot, 'src/features/ventas'),
       join(projectRoot, 'src/features/clientes'),
+      join(projectRoot, 'src/features/estadisticas'),
       join(projectRoot, 'src/shared/components/ClienteAutocomplete'),
     ].filter((d) => existsSync(d))
 

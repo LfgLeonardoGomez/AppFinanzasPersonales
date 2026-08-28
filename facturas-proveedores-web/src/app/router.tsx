@@ -23,6 +23,7 @@ import { setNavigate } from '@shared/api/navigateToLogin'
 import { HomePage } from './HomePage'
 import { AuthenticatedLayout } from './AuthenticatedLayout'
 import VentasPage from '@features/ventas/VentasPage'
+import EstadisticasPage from '@features/estadisticas/EstadisticasPage'
 import VentaFormPage from '@features/ventas/VentaFormPage'
 import ClientesPage from '@features/clientes/ClientesPage'
 import ClienteDetailPage from '@features/clientes/ClienteDetailPage'
@@ -52,6 +53,11 @@ export const router = createBrowserRouter([
 
       // ── Ventas routes (C-34) ────────────────────────────────────────────────
       { path: '/ventas', element: <VentasPage /> },
+
+      // C-38 — a route of its own, NOT a section of /ventas: that screen
+      // already uses `desde`/`hasta` to filter its list, and the statistics
+      // range would collide with them on the same URL.
+      { path: '/estadisticas', element: <EstadisticasPage /> },
       { path: '/ventas/nueva', element: <VentaFormPage /> },
       { path: '/ventas/:id/editar', element: <VentaFormPage /> },
 
