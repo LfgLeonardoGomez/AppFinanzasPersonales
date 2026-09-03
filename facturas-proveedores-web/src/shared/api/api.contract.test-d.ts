@@ -143,6 +143,8 @@ import type {
   VentaPeriodo,
   VentasResponse,
   ResumenResponse,
+  HTTPValidationError,
+  TopeExcedidoDetail,
 } from './api'
 
 type S = components['schemas']
@@ -189,6 +191,21 @@ type _LoginBody = Assert<
 type _RecuperarBody = Assert<'RecuperarBody~RecuperarRequest', Eq<RecuperarBody, DecimalAsNumber<S['RecuperarRequest'], never>>>
 type _ResetBody = Assert<'ResetBody~ResetRequest', Eq<ResetBody, DecimalAsNumber<S['ResetRequest'], never>>>
 type _RegistroEmpleadoBody = Assert<'RegistroEmpleadoBody~RegistroEmpleadoRequest', Eq<RegistroEmpleadoBody, DecimalAsNumber<S['RegistroEmpleadoRequest'], never>>>
+
+// ── HTTPValidationError (task 8.1, closing the task 7.5 finding) ───────────
+//
+// `detail` widened back to required — same FastAPI-always-serializes-the-
+// key rationale as every other required-widening in this file.
+
+type _HTTPValidationError = Assert<
+  'HTTPValidationError (detail required)',
+  Eq<
+    HTTPValidationError,
+    Omit<DecimalAsNumber<S['HTTPValidationError'], never>, 'detail'> & {
+      detail: ValidationError[]
+    }
+  >
+>
 
 // ── DecimalAsNumber selectivity (task 2.4) ──────────────────────────────────
 //
@@ -712,11 +729,127 @@ const _assertions: [
   _Granularidad, _InvitacionResponse, _MetodoCobro, _MetodoPago, _MiembroResponse,
   _OrigenDocumento, _PresetFirmadoResponse, _ProveedorDeleteResponse, _TemaPreferido,
   _TipoUpload, _ValidationError, _CobroCliente, _Categoria, _LoginBody, _RecuperarBody,
-  _ResetBody, _RegistroEmpleadoBody,
+  _ResetBody, _RegistroEmpleadoBody, _HTTPValidationError,
 ] = [
   true, true, true, true, true, true, true, true, true, true, true, true, true, true,
-  true, true, true, true, true, true, true, true,
+  true, true, true, true, true, true, true, true, true,
 ]
 void _assertions
+
+// ── Estadísticas structural guards, absorbed from api.estadisticas.test-d.ts
+// (D8, tasks 8.2/8.3) ────────────────────────────────────────────────────
+//
+// The `Eq<>` assertions above are a REGRESSION LOCK: they catch someone
+// hand-editing `api.d.ts` to drift from its own derivation expression, but
+// (per the group-7 finding, documented in `api.d.ts`'s header and this
+// file's own comments) they do NOT catch the backend schema itself
+// changing shape, because both sides of `Eq<>` reference the SAME live
+// schema import and move in lockstep.
+//
+// The assertions below are a DIFFERENT style, on purpose: instead of
+// comparing two independently-re-derived expressions, they inspect a
+// property of the LIVE, already-derived type directly (`'x' extends keyof
+// T`, a hardcoded literal-union comparison, ...). Because the live type
+// reflects whatever the schema currently says, these assertions DO fail
+// when the schema changes underneath them — verified by mutation before
+// `api.estadisticas.test-d.ts` was retired (task 8.2/8.3):
+//   - Added a 4th literal ('anio') to `Granularidad` in `api.generated.d.ts`
+//     — `_AssertGranularidadClosed` below failed to compile (extra member
+//     outside the closed 3-literal union); the `Eq<>`-style `_Granularidad`
+//     assertion above did NOT fail (lockstep). Reverted.
+//   - Renamed `PeriodoTotal.periodo` to `periodo_inicio` in the generated
+//     schema — `_AssertPeriodoHasPeriodo` below failed; `_PeriodoTotal`
+//     above did NOT (lockstep, no named DecimalAsNumber key involved).
+//     Reverted.
+//   - Renamed `ComprasResponse.proveedor_id` to `proveedor_id_opt` in the
+//     generated schema — `_AssertProveedorIdOptional` below failed (the
+//     renamed key does not exist under the old name, so `undefined extends
+//     ComprasResponse['proveedor_id_opt' as never]` breaks the indexed
+//     access); `_ComprasResponse` above did NOT fail. Reverted.
+//   - Removed `sugerencia` from the hand-written `TopeExcedidoDetail`
+//     interface in `api.d.ts` — `_AssertTopeHasSugerencia` below failed.
+//     Reverted. (`TopeExcedidoDetail` has no backend schema at all — this
+//     is the one case in this section that is ALSO a hand-written-type
+//     regression lock, not a schema-drift catch; see the D5 section header
+//     in `api.d.ts` for why.)
+
+// ── Granularidad is closed to the three backend values ───────────────────
+
+type _AssertGranularidadClosed = Granularidad extends 'dia' | 'semana' | 'mes' ? true : never
+type _AssertGranularidadComplete = 'dia' | 'semana' | 'mes' extends Granularidad ? true : never
+
+// ── PeriodoTotal carries its bucket bounds alongside the numeric total ────
+
+type PeriodoFields = keyof PeriodoTotal
+type _AssertPeriodoHasPeriodo = 'periodo' extends PeriodoFields ? true : never
+type _AssertPeriodoHasDesde = 'desde' extends PeriodoFields ? true : never
+type _AssertPeriodoHasHasta = 'hasta' extends PeriodoFields ? true : never
+type _AssertPeriodoTotalIsNumber = PeriodoTotal['total'] extends number ? true : never
+
+// ── `desglose` covers EVERY FormaPago, with numeric amounts ──────────────
+
+type _AssertDesgloseCoversEveryFormaPago = FormaPago extends keyof VentaPeriodo['desglose']
+  ? true
+  : never
+type _AssertDesgloseAmountsAreNumbers = VentaPeriodo['desglose'][FormaPago] extends number
+  ? true
+  : never
+
+// ── Both series responses echo the range's granularity ────────────────────
+
+type _AssertComprasEchoesGranularidad = ComprasResponse['granularidad'] extends Granularidad
+  ? true
+  : never
+type _AssertVentasEchoesGranularidad = VentasResponse['granularidad'] extends Granularidad
+  ? true
+  : never
+
+// ── `proveedor_id` is OPTIONAL on ComprasResponse (the unscoped call omits it) ─
+
+type _AssertProveedorIdOptional = undefined extends ComprasResponse['proveedor_id'] ? true : never
+
+// ── ResumenResponse has no margin, by any of its names (C-37 D6) ─────────
+
+type ResumenFields = keyof ResumenResponse
+type _AssertResumenHasDiferencia = 'diferencia' extends ResumenFields ? true : never
+type _AssertResumenNoMargen = 'margen' extends ResumenFields ? never : true
+type _AssertResumenNoRentabilidad = 'rentabilidad' extends ResumenFields ? never : true
+type _AssertResumenNoGanancia = 'ganancia' extends ResumenFields ? never : true
+
+// ── TopeExcedidoDetail carries what the UI needs to be actionable ────────
+
+type TopeFields = keyof TopeExcedidoDetail
+type _AssertTopeHasEstimados = 'periodos_estimados' extends TopeFields ? true : never
+type _AssertTopeHasTope = 'tope' extends TopeFields ? true : never
+type _AssertTopeHasSugerencia = 'sugerencia' extends TopeFields ? true : never
+type _AssertTopeCountsAreNumbers = TopeExcedidoDetail['periodos_estimados'] extends number
+  ? true
+  : never
+
+const _estadisticasStructuralAssertions: [
+  _AssertGranularidadClosed,
+  _AssertGranularidadComplete,
+  _AssertPeriodoHasPeriodo,
+  _AssertPeriodoHasDesde,
+  _AssertPeriodoHasHasta,
+  _AssertPeriodoTotalIsNumber,
+  _AssertDesgloseCoversEveryFormaPago,
+  _AssertDesgloseAmountsAreNumbers,
+  _AssertComprasEchoesGranularidad,
+  _AssertVentasEchoesGranularidad,
+  _AssertProveedorIdOptional,
+  _AssertResumenHasDiferencia,
+  _AssertResumenNoMargen,
+  _AssertResumenNoRentabilidad,
+  _AssertResumenNoGanancia,
+  _AssertTopeHasEstimados,
+  _AssertTopeHasTope,
+  _AssertTopeHasSugerencia,
+  _AssertTopeCountsAreNumbers,
+] = [
+  true, true, true, true, true, true, true, true, true, true, true, true, true, true,
+  true, true, true, true, true,
+]
+void _estadisticasStructuralAssertions
 
 export {}

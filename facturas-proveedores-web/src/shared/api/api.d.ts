@@ -12,8 +12,9 @@
  *
  * Types with no counterpart in the backend schema (query filters, paginated
  * wrappers the client builds, locally-constructed error shapes) are hand-
- * written and grouped under their own labeled section (design.md D5) — not
- * mixed in with the derived ones.
+ * written and grouped under the "Hand-written types — no backend schema
+ * counterpart" heading at the end of this file (design.md D5) — not mixed
+ * in with the derived ones above it.
  *
  * Regenerate the wire layer with `npm run generate-types` (writes
  * `api.generated.d.ts`, never this file — D7).
@@ -236,17 +237,6 @@ export type ProveedorDeleteResponse = DecimalAsNumber<
   never
 >
 
-/**
- * Paginated response wrapper for GET /api/proveedores.
- */
-export interface PaginatedProveedores {
-  items: ProveedorListItem[]
-  total: number
-  page: number
-  page_size: number
-  total_pages: number
-}
-
 // ---------------------------------------------------------------------------
 // Perfil domain types (C-05 backend, C-05 frontend)
 // ---------------------------------------------------------------------------
@@ -392,17 +382,6 @@ export type FacturaListItem = Omit<
 export interface Factura extends FacturaResponse {}
 
 /**
- * Paginated response wrapper for GET /api/facturas.
- */
-export interface PaginatedFacturas {
-  items: FacturaListItem[]
-  total: number
-  page: number
-  page_size: number
-  total_pages: number
-}
-
-/**
  * Payload for POST /api/facturas (create).
  * usuario_id is taken from the session cookie by the backend.
  *
@@ -434,18 +413,6 @@ export interface FacturaUpdate {
   fecha_vencimiento?: string | null
   archivo_url?: string | null
   items?: FacturaItemCreate[]
-}
-
-/**
- * Query params for GET /api/facturas.
- * estado filter is resolved server-side after FIFO (RN-FAC-09) — frontend just passes the value.
- */
-export interface FacturasFilters {
-  proveedor_id?: string
-  estado?: EstadoFactura
-  fecha_desde?: string
-  fecha_hasta?: string
-  page?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -553,16 +520,6 @@ export interface PagoUpdate {
   fecha?: string
   metodo?: MetodoPago
   comprobante_url?: string | null
-}
-
-/**
- * Query params for GET /api/pagos.
- * Pagos have no `estado` (RN-PAG-01: no per-invoice link → no per-invoice
- * estado to filter on). Only supplier and pagination are supported.
- */
-export interface PagosFilters {
-  proveedor_id?: string
-  page?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -734,43 +691,6 @@ export type CuentaCorrienteResponse = Omit<
   historial: EntradaHistorial[]
 }
 
-/**
- * Client-side filter state for the cuenta-corriente facturas table.
- * Filters are applied on the response payload fields (`f.estado` and
- * `f.fecha_emision`) — the hook has no query params, the endpoint has
- * no query parameters (D3, D8). Defense in depth for RN-FAC-09: the
- * frontend never re-issues the request with a `estado` filter at the
- * SQL level.
- */
-export interface FiltrosFacturas {
-  estado?: EstadoFactura
-  fecha_desde?: string
-  fecha_hasta?: string
-}
-
-/**
- * Delete input for the `useDeleteFactura` mutation. Carries the supplier
- * id alongside the factura id so the cross-feature cache invalidation
- * (D6) can target the right `cuenta-corriente.detail(proveedorId)` key
- * without an extra `GET /api/facturas/{id}` round-trip.
- *
- * INVARIANT (RN-PAG-01, hard rule #1): no `factura_id` key. The compile-
- * time guard in `api.cuentaCorriente.test-d.ts` locks this.
- */
-export interface FacturaDeleteInput {
-  id: string
-  proveedor_id: string
-}
-
-/**
- * Delete input for the `useDeletePago` mutation. Same shape and rationale
- * as `FacturaDeleteInput`. NO `factura_id` key (RN-PAG-01).
- */
-export interface PagoDeleteInput {
-  id: string
-  proveedor_id: string
-}
-
 // ---------------------------------------------------------------------------
 // Error bodies (from FastAPI / Pydantic)
 // ---------------------------------------------------------------------------
@@ -778,12 +698,23 @@ export interface PagoDeleteInput {
 /** Derived from `ValidationError` (C-41). */
 export type ValidationError = DecimalAsNumber<components['schemas']['ValidationError'], never>
 
-export interface HTTPValidationError {
+/**
+ * Derived from `HTTPValidationError` (C-41). `detail` widened back to
+ * REQUIRED (`ValidationError[]`, not `?: ValidationError[]`) — same
+ * FastAPI-always-serializes-the-key rationale as `Proveedor.cuit`: the
+ * schema marks it "not required" because that is what a Pydantic default
+ * means at the constructor, but FastAPI's built-in validation-exception
+ * handler always puts the key on the wire, empty array or not. Task 7.5
+ * flagged this as a hand-typed response that never got migrated when the
+ * rest of this file moved to derivation; C-41 closes it here rather than
+ * parking it in the hand-written section below — there is nothing
+ * hand-invented about it, it was just never revisited.
+ */
+export type HTTPValidationError = Omit<
+  DecimalAsNumber<components['schemas']['HTTPValidationError'], never>,
+  'detail'
+> & {
   detail: ValidationError[]
-}
-
-export interface HTTPError {
-  detail: string
 }
 
 // ---------------------------------------------------------------------------
@@ -848,14 +779,6 @@ export type Cliente = Omit<
 }
 
 /**
- * Item in the customer list/search results — same shape as Cliente; both
- * `GET /api/clientes` and `GET /api/clientes/buscar` return
- * `ClienteResponse[]` (no separate list schema on the backend), mirroring
- * `VentaListItem extends Venta {}`.
- */
-export interface ClienteListItem extends Cliente {}
-
-/**
  * Payload for POST /api/clientes (create).
  *
  * Only `nombre` — this change's `ClienteAutocomplete` creates a customer from
@@ -863,19 +786,6 @@ export interface ClienteListItem extends Cliente {}
  * session; `nombre_normalizado` is derived server-side, never accepted.
  */
 export type ClienteCreate = DecimalAsNumber<components['schemas']['ClienteCreate'], never>
-
-/**
- * Shape of the `detail` object on a `409` from POST /api/clientes
- * (backend: `app/services/cliente_service.py::_conflicto`).
- *
- * `cliente_existente` is present whenever the conflicting customer could be
- * identified — the frontend offers it instead of surfacing an error
- * (design.md D8, RN-CLI-03).
- */
-export interface ClienteConflictDetail {
-  mensaje: string
-  cliente_existente?: { id: string; nombre: string }
-}
 
 // ---------------------------------------------------------------------------
 // Ventas domain types (C-33 backend, C-34 frontend)
@@ -922,9 +832,6 @@ export type Venta = Omit<
   cliente_id: string | null
 }
 
-/** Item in the sales list (GET /api/ventas) — same shape as Venta. */
-export interface VentaListItem extends Venta {}
-
 /**
  * Payload for POST /api/ventas (create).
  *
@@ -954,30 +861,6 @@ export interface VentaUpdate {
   forma_pago?: FormaPago
   cliente_id?: string
   notas?: string | null
-}
-
-/**
- * Query params for GET /api/ventas. Only non-empty filters are sent
- * (design.md D9) — a filtered day is a shareable, reloadable URL.
- */
-export interface VentasFilters {
-  desde?: string
-  hasta?: string
-  forma_pago?: FormaPago
-  cliente_id?: string
-}
-
-/**
- * Delete input for the `useDeleteVenta` mutation. Carries `cliente_id` and
- * `forma_pago` alongside the `id`, following the `PagoDeleteInput` precedent
- * from C-13: the delete mutation needs to know which customer's cached
- * account to invalidate, and whether the sale was on account at all, without
- * an extra `GET` (design.md D4).
- */
-export interface VentaDeleteInput {
-  id: string
-  cliente_id: string | null
-  forma_pago: FormaPago
 }
 
 // ---------------------------------------------------------------------------
@@ -1216,9 +1099,200 @@ export type ResumenResponse = DecimalAsNumber<
   'compras' | 'ventas' | 'diferencia'
 >
 
+// ---------------------------------------------------------------------------
+// Hand-written types — no backend schema counterpart (design.md D5)
+// ---------------------------------------------------------------------------
+//
+// Everything below has no `components['schemas'][...]` entry to derive
+// from — measured directly against `api.generated.d.ts`, not assumed. Each
+// one is a construction of THIS frontend: a query-filter shape built for a
+// client hook, a pagination envelope this client wraps around a list
+// response, a delete-mutation input that bundles extra ids for cache
+// invalidation, or a locally-assembled error/conflict shape the backend
+// raises as a raw dict rather than a Pydantic response model. None of them
+// is "should have been derived and wasn't" — each has a stated reason it
+// stays hand-written, right where it's declared below.
+//
+// This is D5 made concrete: a type in this file is either derived from a
+// schema above, or it lives down here with a reason. There is no third
+// place — task 8.1.
+
+// ── Proveedores ──────────────────────────────────────────────────────────
+
+/**
+ * Paginated response wrapper for GET /api/proveedores. No backend schema:
+ * the pagination envelope (`items`/`total`/`page`/`page_size`/
+ * `total_pages`) is assembled by the router, not declared as a Pydantic
+ * response model.
+ */
+export interface PaginatedProveedores {
+  items: ProveedorListItem[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
+// ── Facturas ──────────────────────────────────────────────────────────────
+
+/**
+ * Paginated response wrapper for GET /api/facturas. Same reason as
+ * `PaginatedProveedores` — no backend schema for the envelope itself.
+ */
+export interface PaginatedFacturas {
+  items: FacturaListItem[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
+/**
+ * Query params for GET /api/facturas. A FastAPI query-param signature, not
+ * a schema — `openapi-typescript` exposes query params under `paths`, not
+ * `components['schemas']`, and this file only derives from the latter.
+ * estado filter is resolved server-side after FIFO (RN-FAC-09) — frontend
+ * just passes the value.
+ */
+export interface FacturasFilters {
+  proveedor_id?: string
+  estado?: EstadoFactura
+  fecha_desde?: string
+  fecha_hasta?: string
+  page?: number
+}
+
+/**
+ * Delete input for the `useDeleteFactura` mutation. Carries the supplier
+ * id alongside the factura id so the cross-feature cache invalidation
+ * (D6) can target the right `cuenta-corriente.detail(proveedorId)` key
+ * without an extra `GET /api/facturas/{id}` round-trip — this pairing
+ * exists only on the frontend, no backend endpoint takes both together.
+ *
+ * INVARIANT (RN-PAG-01, hard rule #1): no `factura_id` key. The compile-
+ * time guard in `api.cuentaCorriente.test-d.ts` locks this.
+ */
+export interface FacturaDeleteInput {
+  id: string
+  proveedor_id: string
+}
+
+/**
+ * Client-side filter state for the cuenta-corriente facturas table. No
+ * backend query params at all — the endpoint takes none (D3, D8) and this
+ * shape only ever filters the response payload in memory (`f.estado` and
+ * `f.fecha_emision`). Defense in depth for RN-FAC-09: the frontend never
+ * re-issues the request with a `estado` filter at the SQL level.
+ */
+export interface FiltrosFacturas {
+  estado?: EstadoFactura
+  fecha_desde?: string
+  fecha_hasta?: string
+}
+
+// ── Pagos ─────────────────────────────────────────────────────────────────
+
+/**
+ * Query params for GET /api/pagos. Same query-param-vs-schema reason as
+ * `FacturasFilters`. Pagos have no `estado` (RN-PAG-01: no per-invoice
+ * link → no per-invoice estado to filter on). Only supplier and pagination
+ * are supported.
+ */
+export interface PagosFilters {
+  proveedor_id?: string
+  page?: number
+}
+
+/**
+ * Delete input for the `useDeletePago` mutation. Same shape and rationale
+ * as `FacturaDeleteInput`. NO `factura_id` key (RN-PAG-01).
+ */
+export interface PagoDeleteInput {
+  id: string
+  proveedor_id: string
+}
+
+// ── Error bodies ──────────────────────────────────────────────────────────
+
+/**
+ * Plain-string error body most non-validation FastAPI `HTTPException`s
+ * raise (`raise HTTPException(status_code=..., detail="...")`). No
+ * Pydantic model backs it — it is a bare dict, so there is nothing under
+ * `components['schemas']` to derive from. `HTTPValidationError` (Error
+ * bodies section above), by contrast, IS a real response model and is
+ * derived there.
+ */
+export interface HTTPError {
+  detail: string
+}
+
+// ── Clientes ──────────────────────────────────────────────────────────────
+
+/**
+ * Item in the customer list/search results — same shape as Cliente; both
+ * `GET /api/clientes` and `GET /api/clientes/buscar` return
+ * `ClienteResponse[]` (no separate list schema on the backend, confirmed
+ * against `api.generated.d.ts` — there is no `ClienteListItem` schema to
+ * derive), mirroring `VentaListItem extends Venta {}` below.
+ */
+export interface ClienteListItem extends Cliente {}
+
+/**
+ * Shape of the `detail` object on a `409` from POST /api/clientes
+ * (backend: `app/services/cliente_service.py::_conflicto`) — raised as a
+ * raw dict, not a Pydantic response model, so there is nothing to derive.
+ *
+ * `cliente_existente` is present whenever the conflicting customer could be
+ * identified — the frontend offers it instead of surfacing an error
+ * (design.md D8, RN-CLI-03).
+ */
+export interface ClienteConflictDetail {
+  mensaje: string
+  cliente_existente?: { id: string; nombre: string }
+}
+
+// ── Ventas ────────────────────────────────────────────────────────────────
+
+/**
+ * Item in the sales list (GET /api/ventas) — same shape as Venta; the
+ * backend has no separate list schema (confirmed against
+ * `api.generated.d.ts`).
+ */
+export interface VentaListItem extends Venta {}
+
+/**
+ * Query params for GET /api/ventas. Only non-empty filters are sent
+ * (design.md D9) — a filtered day is a shareable, reloadable URL. Query
+ * params, not a schema — same reason as `FacturasFilters`.
+ */
+export interface VentasFilters {
+  desde?: string
+  hasta?: string
+  forma_pago?: FormaPago
+  cliente_id?: string
+}
+
+/**
+ * Delete input for the `useDeleteVenta` mutation. Carries `cliente_id` and
+ * `forma_pago` alongside the `id`, following the `PagoDeleteInput`
+ * precedent from C-13: the delete mutation needs to know which customer's
+ * cached account to invalidate, and whether the sale was on account at
+ * all, without an extra `GET` (design.md D4) — this pairing exists only on
+ * the frontend.
+ */
+export interface VentaDeleteInput {
+  id: string
+  cliente_id: string | null
+  forma_pago: FormaPago
+}
+
+// ── Estadísticas ──────────────────────────────────────────────────────────
+
 /**
  * Structured `detail` of the 422 the backend returns when a range would
- * produce more periods than its cap (backend: `_error_tope_excedido`).
+ * produce more periods than its cap (backend: `_error_tope_excedido`) —
+ * raised as a raw dict on the `HTTPException`, not a Pydantic response
+ * model, so there is nothing under `components['schemas']` to derive.
  *
  * This 422 is an INSTRUCTION, not a failure: it tells the caller exactly how
  * many periods the request would have produced and how to shrink it, rather
