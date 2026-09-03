@@ -1,13 +1,57 @@
 /**
- * OpenAPI-derived types for the facturas-proveedores backend (C-03).
+ * Public contract types for the facturas-proveedores backend, derived from
+ * the OpenAPI schema (C-41).
  *
- * Generated manually from the C-03 auth-backend contract (backend not running at apply time).
- * Run `npm run generate-types` when the backend is available to regenerate from the live schema.
+ * This file is the frontend's PUBLIC model, not the wire: it names the
+ * backend's schemas from `api.generated.d.ts` and, where the wire carries a
+ * Pydantic-v2 Decimal serialized as a JSON string, converts those named
+ * fields to `number` via `DecimalAsNumber<T, K>` (design.md D2). The actual
+ * string→number conversion happens at each API client's boundary (D3),
+ * never here and never in a global interceptor — this file only DECLARES
+ * the promise; `src/features/*/api/*Api.ts` keeps it.
  *
- * NOTE (D-C04-5): The `remember_me` flag in POST /auth/login is included per the design
- * contract. If C-03 does not expose it in the OpenAPI schema, this field is a forward-
- * declaration that must be reconciled when `generate-types` is run against the live backend.
+ * Types with no counterpart in the backend schema (query filters, paginated
+ * wrappers the client builds, locally-constructed error shapes) are hand-
+ * written and grouped under their own labeled section (design.md D5) — not
+ * mixed in with the derived ones.
+ *
+ * Regenerate the wire layer with `npm run generate-types` (writes
+ * `api.generated.d.ts`, never this file — D7).
+ *
+ * NOTE (D-C04-5): `LoginBody.remember_me` is an additive field on top of the
+ * derived `LoginRequest` schema, not part of it — C-41's regeneration
+ * confirmed the backend schema still does not declare it. See `LoginBody`
+ * below.
  */
+import type { components } from './api.generated'
+
+// ---------------------------------------------------------------------------
+// Derivation helpers (C-41, D2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Converts the named keys `K` of a wire schema `T` from whatever the wire
+ * declares (typically a Decimal-as-string) to `number`, leaving every other
+ * key untouched.
+ *
+ * Deliberately NOT "smart": it does not guess which fields are money by name
+ * or by shape. Every conversion is an explicit, reviewable choice — a digit
+ * string that must stay a string (the CUIT chief among them) is never at
+ * risk of being silently coerced (design.md D2, D3).
+ *
+ * `K extends never` (no keys named) is a legal, common case: it derives a
+ * type identical to `T`, used for every public type that has no money field
+ * at all — the same mechanism proves out the derivation pipeline before any
+ * conversion is layered on top of it (task group 2). It is handled as an
+ * explicit short-circuit rather than falling through to `Omit<T, never>`:
+ * `Omit`/`Pick` resolve through `keyof T`, and for a string-literal union
+ * schema (every backend enum) `keyof T` does not mean "no keys" — it means
+ * the keys of `String.prototype` (`charAt`, `length`, ...), which would
+ * silently turn an enum into an object type instead of leaving it alone.
+ */
+export type DecimalAsNumber<T, K extends keyof T> = [K] extends [never]
+  ? T
+  : Omit<T, K> & { [P in K]: number }
 
 // ---------------------------------------------------------------------------
 // Core domain types
@@ -48,29 +92,39 @@ export interface RegistroBody {
  * Separate from RegistroBody on purpose: that one creates a negocio, this
  * one joins an existing one. No negocio_id and no es_admin — the shop comes
  * from the code and the privilege is not something you can ask for.
+ *
+ * Derived from `components['schemas']['RegistroEmpleadoRequest']` (C-41,
+ * D6 alias — same shape, renamed on the backend).
  */
-export interface RegistroEmpleadoBody {
-  email: string
-  nombre: string
-  password: string
-  codigo: string
-}
+export type RegistroEmpleadoBody = DecimalAsNumber<
+  components['schemas']['RegistroEmpleadoRequest'],
+  never
+>
 
-/** Payload for POST /api/auth/recuperar (C-31). */
-export interface RecuperarBody {
-  email: string
-}
+/**
+ * Payload for POST /api/auth/recuperar (C-31).
+ * Derived from `RecuperarRequest` (C-41, D6 alias).
+ */
+export type RecuperarBody = DecimalAsNumber<components['schemas']['RecuperarRequest'], never>
 
-/** Payload for POST /api/auth/reset (C-31). */
-export interface ResetBody {
-  token: string
-  password: string
-}
+/**
+ * Payload for POST /api/auth/reset (C-31).
+ * Derived from `ResetRequest` (C-41, D6 alias).
+ */
+export type ResetBody = DecimalAsNumber<components['schemas']['ResetRequest'], never>
 
-export interface LoginBody {
-  email: string
-  password: string
-  /** Delegates session duration to the backend (D-C04-5). */
+/**
+ * Derived from `LoginRequest` (C-41, D6 alias — same shape, renamed on the
+ * backend), PLUS `remember_me`. C-41's regeneration confirmed the D-C04-5
+ * forward-declaration warning was correct: `LoginRequest` has no
+ * `remember_me` field on the backend today. It stays here as an explicit
+ * additive field (not silently dropped — `LoginPage.tsx` sends it) rather
+ * than folded into the schema derivation, so the gap between "what the
+ * frontend sends" and "what the backend schema documents" stays visible
+ * instead of being hidden inside a plain re-export.
+ */
+export type LoginBody = DecimalAsNumber<components['schemas']['LoginRequest'], never> & {
+  /** Delegates session duration to the backend (D-C04-5). Forward-declared. */
   remember_me?: boolean
 }
 
@@ -87,8 +141,9 @@ export interface MeResponse extends Usuario {}
 /**
  * Supplier category enum (backend: app/models/proveedor.py).
  * SERVICIO covers services, OTRO is the default.
+ * Derived from `CategoriaProveedor` (C-41, D6 alias).
  */
-export type Categoria = 'INSUMO' | 'SERVICIO' | 'OTRO'
+export type Categoria = DecimalAsNumber<components['schemas']['CategoriaProveedor'], never>
 
 /**
  * Full supplier object returned by GET /api/proveedores/{id}.
@@ -140,11 +195,12 @@ export interface ProveedorUpdate {
  * Response from DELETE /api/proveedores/{id}.
  * tiene_dependencias=true → frontend must show confirmation modal (RN-PROV-04).
  * The backend already performed the soft delete regardless of dependencies.
+ * Derived from `ProveedorDeleteResponse` (C-41).
  */
-export interface ProveedorDeleteResponse {
-  tiene_dependencias: boolean
-  id: string
-}
+export type ProveedorDeleteResponse = DecimalAsNumber<
+  components['schemas']['ProveedorDeleteResponse'],
+  never
+>
 
 /**
  * Paginated response wrapper for GET /api/proveedores.
@@ -164,8 +220,9 @@ export interface PaginatedProveedores {
 /**
  * Preferred UI theme (backend: app/models/enums.py TemaPreferido).
  * Persisted on the backend profile — NEVER in localStorage (D6).
+ * Derived from `TemaPreferido` (C-41).
  */
-export type TemaPreferido = 'CLARO' | 'OSCURO'
+export type TemaPreferido = DecimalAsNumber<components['schemas']['TemaPreferido'], never>
 
 /**
  * Payload for PATCH /api/me (partial update of optional profile fields).
@@ -183,30 +240,25 @@ export interface PerfilUpdate {
  * The URL must point to the configured Cloudinary account; the backend
  * re-validates this before persisting (D4).
  */
-export interface AvatarUpdate {
-  avatar_url: string
-}
+export type AvatarUpdate = DecimalAsNumber<components['schemas']['AvatarUpdate'], never>
 
 /**
  * Upload kind for the signed-preset endpoint (D5).
  * C-05 supports 'avatar'; C-08 added 'factura' (Factura.archivo_url);
  * C-10 added 'comprobante' (Pago.comprobante_url).
+ * Derived from `TipoUpload` (C-41).
  */
-export type TipoUpload = 'avatar' | 'factura' | 'comprobante'
+export type TipoUpload = DecimalAsNumber<components['schemas']['TipoUpload'], never>
 
 /**
  * Signed Cloudinary upload preset returned by GET /api/cloudinary/preset-firmado.
  * Public parameters only — the API secret is NEVER part of this response.
+ * Derived from `PresetFirmadoResponse` (C-41).
  */
-export interface PresetFirmadoResponse {
-  signature: string
-  timestamp: number
-  api_key: string
-  cloud_name: string
-  folder: string
-  allowed_formats: string[]
-  max_file_size: number
-}
+export type PresetFirmadoResponse = DecimalAsNumber<
+  components['schemas']['PresetFirmadoResponse'],
+  never
+>
 
 // ---------------------------------------------------------------------------
 // Facturas domain types (C-08 backend, C-09 frontend)
@@ -215,16 +267,18 @@ export interface PresetFirmadoResponse {
 /**
  * Computed invoice status. Derived server-side via FIFO (RN-FAC-09).
  * The frontend NEVER recomputes this value — it always reads it from the response.
+ * Derived from `EstadoFactura` (C-41).
  */
-export type EstadoFactura = 'PENDIENTE' | 'PARCIAL' | 'PAGADA'
+export type EstadoFactura = DecimalAsNumber<components['schemas']['EstadoFactura'], never>
 
 /**
  * Origin of a document (Factura or Pago). Stamped server-side; the client
  * never sends this — PagoCreate/FacturaCreate have no `origen` field.
  * MANUAL is set by the C-09/C-11 manual UI; IA is set by the C-14/C-15
  * vision-extraction flow.
+ * Derived from `OrigenDocumento` (C-41).
  */
-export type OrigenDocumento = 'MANUAL' | 'IA'
+export type OrigenDocumento = DecimalAsNumber<components['schemas']['OrigenDocumento'], never>
 
 /**
  * A single line item on an invoice (as returned by the API).
@@ -372,13 +426,9 @@ export interface FacturasFilters {
 /**
  * Payment method enum (backend: app/models/enums.py MetodoPago).
  * All payments are in ARS (no multi-currency, no IVA — D-C02-5).
+ * Derived from `MetodoPago` (C-41).
  */
-export type MetodoPago =
-  | 'EFECTIVO'
-  | 'TRANSFERENCIA'
-  | 'TARJETA'
-  | 'MERCADOPAGO'
-  | 'OTRO'
+export type MetodoPago = DecimalAsNumber<components['schemas']['MetodoPago'], never>
 
 /**
  * Full payment object returned by GET /api/pagos/{id}.
@@ -678,11 +728,8 @@ export interface PagoDeleteInput {
 // Error bodies (from FastAPI / Pydantic)
 // ---------------------------------------------------------------------------
 
-export interface ValidationError {
-  loc: (string | number)[]
-  msg: string
-  type: string
-}
+/** Derived from `ValidationError` (C-41). */
+export type ValidationError = DecimalAsNumber<components['schemas']['ValidationError'], never>
 
 export interface HTTPValidationError {
   detail: ValidationError[]
@@ -696,15 +743,8 @@ export interface HTTPError {
 // Equipo (C-29)
 // ---------------------------------------------------------------------------
 
-/** A team member as the admin sees them in the list. */
-export interface MiembroResponse {
-  id: string
-  nombre: string
-  email: string
-  es_admin: boolean
-  desactivado: boolean
-  created_at: string
-}
+/** A team member as the admin sees them in the list. Derived from `MiembroResponse` (C-41). */
+export type MiembroResponse = DecimalAsNumber<components['schemas']['MiembroResponse'], never>
 
 /**
  * A freshly issued invitation.
@@ -712,12 +752,9 @@ export interface MiembroResponse {
  * `codigo` appears here and nowhere else in the API: only its hash is stored,
  * so this response is the single chance to read it (D-31). The UI has to make
  * that obvious to the admin.
+ * Derived from `InvitacionResponse` (C-41).
  */
-export interface InvitacionResponse {
-  id: string
-  codigo: string
-  expira_en: string
-}
+export type InvitacionResponse = DecimalAsNumber<components['schemas']['InvitacionResponse'], never>
 
 // ---------------------------------------------------------------------------
 // Clientes domain types (C-32 backend, C-34 frontend)
@@ -765,9 +802,7 @@ export interface ClienteListItem extends Cliente {}
  * the name alone (RN-CLI-01, design.md D7). `negocio_id` comes from the
  * session; `nombre_normalizado` is derived server-side, never accepted.
  */
-export interface ClienteCreate {
-  nombre: string
-}
+export type ClienteCreate = DecimalAsNumber<components['schemas']['ClienteCreate'], never>
 
 /**
  * Shape of the `detail` object on a `409` from POST /api/clientes
@@ -794,8 +829,9 @@ export interface ClienteConflictDetail {
  * `FormaPago` carries `CUENTA_CORRIENTE` and has no `MERCADOPAGO`. Sharing
  * them would make a supplier payment expressible as "on account", which is
  * not a thing on that side of the ledger (design.md D4).
+ * Derived from `FormaPago` (C-41).
  */
-export type FormaPago = 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA' | 'CUENTA_CORRIENTE' | 'OTRO'
+export type FormaPago = DecimalAsNumber<components['schemas']['FormaPago'], never>
 
 /**
  * A sale as the app sees it (backend: app/schemas/venta.py VentaResponse).
@@ -906,8 +942,9 @@ export interface VentaDeleteInput {
  * Its own enum — neither `MetodoPago` (money going OUT to suppliers, has
  * `MERCADOPAGO`) nor `FormaPago` (has `CUENTA_CORRIENTE` — debt is not
  * cancelled with debt).
+ * Derived from `MetodoCobro` (C-41).
  */
-export type MetodoCobro = 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA' | 'OTRO'
+export type MetodoCobro = DecimalAsNumber<components['schemas']['MetodoCobro'], never>
 
 /**
  * FIFO state of a fiado (backend: app/models/enums.py EstadoVentaFiada).
@@ -915,8 +952,9 @@ export type MetodoCobro = 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA' | 'OTRO'
  * Deliberately NOT `PAGADA` (the supplier-side `EstadoFactura` value) — a
  * customer's sale reported as "paid" would read as though the shop had paid
  * it (C-35's stated reason).
+ * Derived from `EstadoVentaFiada` (C-41).
  */
-export type EstadoVentaFiada = 'PENDIENTE' | 'PARCIAL' | 'COBRADA'
+export type EstadoVentaFiada = DecimalAsNumber<components['schemas']['EstadoVentaFiada'], never>
 
 /** Row type in the customer history — `VENTA` (debe) or `COBRO` (haber). */
 export type EntradaHistorialClienteTipo = 'VENTA' | 'COBRO'
@@ -972,18 +1010,11 @@ export interface CuentaCorrienteClienteResponse {
  * A cobro as the app sees it (backend: app/schemas/cobro.py). `monto` is a
  * raw Decimal-string on the wire — see the block comment above for why it
  * is never parsed to `number` here.
+ * Derived from `CobroClienteResponse` (C-41, D6 alias — same shape, renamed
+ * on the backend). Zero conversion keys: `monto` is deliberately left as
+ * the wire's `string`.
  */
-export interface CobroCliente {
-  id: string
-  negocio_id: string
-  cliente_id: string
-  monto: string
-  fecha: string
-  metodo: MetodoCobro
-  comprobante_url?: string | null
-  created_at: string
-  updated_at: string
-}
+export type CobroCliente = DecimalAsNumber<components['schemas']['CobroClienteResponse'], never>
 
 /**
  * Payload for POST /api/cobros (create).
@@ -1009,8 +1040,9 @@ export interface CobroClienteCreate {
  * Never a column — it exists only in query params and responses. `semana`
  * always starts on Monday (ISO, what `date_trunc('week', ...)` already does
  * in Postgres).
+ * Derived from `Granularidad` (C-41).
  */
-export type Granularidad = 'dia' | 'semana' | 'mes'
+export type Granularidad = DecimalAsNumber<components['schemas']['Granularidad'], never>
 
 /**
  * One bucket of the compras series (backend: app/schemas/estadisticas.py
