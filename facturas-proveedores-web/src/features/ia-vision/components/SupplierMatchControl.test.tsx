@@ -24,28 +24,28 @@ import type { ReactNode } from 'react'
 import { SupplierMatchControl } from './SupplierMatchControl'
 import type { ProveedorListItem } from '@shared/api/api'
 
-// ── Fixtures ──────────────────────────────────────────────────────────────────
+// ── Fixtures (C-41, D9: wire shape — saldo as a string) ─────────────────────
+//
+// Every use of this factory goes through MSW (`/buscar` search results, the
+// POST /proveedores create response) — never a direct component prop — so
+// it only needs to produce the wire shape, not the parsed public type.
 
-function makeProveedor(id: string, nombre: string): ProveedorListItem {
+function makeProveedor(id: string, nombre: string) {
   return {
     id,
-    usuario_id: 'user-1',
     nombre,
     cuit: null,
-    telefono: null,
     categoria: 'OTRO',
-    notas: null,
-    saldo: 0,
-    created_at: '2026-07-01T00:00:00',
-    updated_at: '2026-07-01T00:00:00',
-  } as ProveedorListItem
+    saldo: '0',
+    ultima_factura_fecha: null,
+  }
 }
 
 const ACME = makeProveedor('uuid-acme', 'Acme')
 const BETA = makeProveedor('uuid-beta', 'Beta')
 
 /** Exact-match directory: only a UNIQUE normalized-exact hit auto-matches. */
-const DIRECTORY: Record<string, ProveedorListItem[]> = {
+const DIRECTORY: Record<string, ReturnType<typeof makeProveedor>[]> = {
   acme: [ACME],
   beta: [BETA],
   ambiguo: [makeProveedor('a', 'Ambiguo'), makeProveedor('b', 'Ambiguo')],

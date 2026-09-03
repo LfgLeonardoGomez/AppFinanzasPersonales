@@ -148,24 +148,44 @@ export type Categoria = DecimalAsNumber<components['schemas']['CategoriaProveedo
 /**
  * Full supplier object returned by GET /api/proveedores/{id}.
  * saldo is computed on-demand by the backend (RN-SALDO). NEVER computed on frontend.
+ *
+ * Derived from `ProveedorResponse` (C-41, D6 alias). `cuit`, `telefono` and
+ * `notas` are widened back to REQUIRED (`string | null`, not `?: string |
+ * null`): the OpenAPI schema marks them "not required" because that is what
+ * `Optional[str] = None` means at the Pydantic constructor, but FastAPI
+ * still serializes the key on every response — a Decimal-shaped field
+ * missing from the wire would be a truncated response, not an absent key.
+ * `parseProveedor` (`proveedoresApi.ts`) is the boundary that makes this
+ * true; it always writes the key.
  */
-export interface Proveedor {
-  id: string
-  nombre: string
+export type Proveedor = Omit<
+  DecimalAsNumber<components['schemas']['ProveedorResponse'], 'saldo'>,
+  'cuit' | 'telefono' | 'notas'
+> & {
   cuit: string | null
   telefono: string | null
-  categoria: Categoria
   notas: string | null
-  saldo: number
-  created_at: string
-  updated_at: string
 }
 
 /**
- * Item in the paginated list (GET /api/proveedores).
- * Same shape as Proveedor — saldo is the aggregate computed by the backend.
+ * Item in the paginated list (GET /api/proveedores) — a LEANER row than
+ * `Proveedor`, not the same shape: the backend omits `telefono`, `notas`,
+ * `created_at` and `updated_at`, and adds `ultima_factura_fecha` (Home
+ * redesign). The old hand-written `extends Proveedor {}` was wrong — it
+ * promised fields (`telefono`, `notas`, timestamps) the list endpoint never
+ * sends, which is exactly the kind of drift this file exists to end.
+ *
+ * Derived from `ProveedorListItem`. Same `cuit` required-widening rationale
+ * as `Proveedor`; `ultima_factura_fecha` follows the same reasoning too —
+ * always present, `null` when the supplier has no active facturas.
  */
-export interface ProveedorListItem extends Proveedor {}
+export type ProveedorListItem = Omit<
+  DecimalAsNumber<components['schemas']['ProveedorListItem'], 'saldo'>,
+  'cuit' | 'ultima_factura_fecha'
+> & {
+  cuit: string | null
+  ultima_factura_fecha: string | null
+}
 
 /**
  * Payload for POST /api/proveedores (create).

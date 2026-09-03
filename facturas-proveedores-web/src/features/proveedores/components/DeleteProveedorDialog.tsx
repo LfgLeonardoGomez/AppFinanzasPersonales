@@ -27,11 +27,12 @@
  * silently).
  */
 import * as Dialog from '@radix-ui/react-dialog'
-import type { Proveedor } from '@shared/api/api'
+import type { Proveedor, ProveedorListItem } from '@shared/api/api'
 
 interface DeleteProveedorDialogProps {
   open: boolean
-  proveedor: Proveedor | null
+  /** C-41: accepts either shape — only `.id` and `.nombre` are read. */
+  proveedor: Proveedor | ProveedorListItem | null
   hasDependencies: boolean
   onConfirm: () => void
   onCancel: () => void

@@ -18,27 +18,38 @@ import {
   useDeleteProveedor,
   useBuscarProveedores,
 } from './proveedoresHooks'
-import type {
-  Proveedor,
-  ProveedorListItem,
-  ProveedorDeleteResponse,
-} from '@shared/api/api'
+import type { ProveedorDeleteResponse } from '@shared/api/api'
 
-// ── Fixtures ──────────────────────────────────────────────────────────────────
+// ── Fixtures (C-41, D9: wire shape — saldo as a string) ─────────────────────
+//
+// `mockProveedor` is the full-`Proveedor` wire shape (GET /{id}, POST,
+// PATCH). `mockListItem` is the SEPARATE, leaner `ProveedorListItem` wire
+// shape (GET /proveedores, /proveedores/buscar) — no `telefono`/`notas`/
+// timestamps, plus `ultima_factura_fecha`. They stopped being the same
+// object once `ProveedorListItem`'s known drift was resolved.
 
-const mockProveedor: Proveedor = {
+const mockProveedor = {
   id: 'uuid-1',
   nombre: 'Proveedor Test SA',
   cuit: '20-12345678-9',
   telefono: null,
   categoria: 'SERVICIO',
   notas: null,
-  saldo: 1500.5,
+  saldo: '1500.5',
   created_at: '2026-06-21T10:00:00',
   updated_at: '2026-06-21T10:00:00',
 }
 
-const mockListResponse: ProveedorListItem[] = [mockProveedor]
+const mockListItem = {
+  id: 'uuid-1',
+  nombre: 'Proveedor Test SA',
+  cuit: '20-12345678-9',
+  categoria: 'SERVICIO',
+  saldo: '1500.5',
+  ultima_factura_fecha: null,
+}
+
+const mockListResponse = [mockListItem]
 
 // ── MSW Server ────────────────────────────────────────────────────────────────
 
@@ -58,7 +69,7 @@ const server = setupServer(
     if (!nombre || nombre.length < 2) {
       return HttpResponse.json([])
     }
-    return HttpResponse.json([mockProveedor])
+    return HttpResponse.json([mockListItem])
   }),
 
   http.get('/api/proveedores/:id', ({ params }) => {

@@ -12,32 +12,34 @@ import type { ReactNode } from 'react'
 import SupplierSearch from './SupplierSearch'
 import type { ProveedorListItem } from '@shared/api/api'
 
-// ── Fixtures ──────────────────────────────────────────────────────────────────
+// ── Fixtures (C-41, D9) ──────────────────────────────────────────────────────
+//
+// `mockResults` is the PUBLIC, already-parsed shape — used both as a direct
+// `value` prop and to assert what `onChange` receives (the component's own
+// parsed output). `mockResultsWire` is what MSW actually serves: the same
+// data with `saldo` as the wire's string, so the test exercises the parse
+// boundary instead of bypassing it.
 
 const mockResults: ProveedorListItem[] = [
   {
     id: 'uuid-1',
     nombre: 'Transportes García',
     cuit: null,
-    telefono: null,
     categoria: 'SERVICIO',
-    notas: null,
     saldo: 0,
-    created_at: '2026-06-01T00:00:00',
-    updated_at: '2026-06-01T00:00:00',
+    ultima_factura_fecha: null,
   },
   {
     id: 'uuid-2',
     nombre: 'García Distribuciones',
     cuit: null,
-    telefono: null,
     categoria: 'OTRO',
-    notas: null,
     saldo: 0,
-    created_at: '2026-06-01T00:00:00',
-    updated_at: '2026-06-01T00:00:00',
+    ultima_factura_fecha: null,
   },
 ]
+
+const mockResultsWire = mockResults.map((r) => ({ ...r, saldo: String(r.saldo) }))
 
 // ── MSW Server ────────────────────────────────────────────────────────────────
 
@@ -46,7 +48,7 @@ const server = setupServer(
     const url = new URL(request.url)
     const nombre = url.searchParams.get('nombre') ?? ''
     if (nombre.length < 2) return HttpResponse.json([])
-    if (nombre.toLowerCase().includes('garc')) return HttpResponse.json(mockResults)
+    if (nombre.toLowerCase().includes('garc')) return HttpResponse.json(mockResultsWire)
     return HttpResponse.json([])
   }),
 )

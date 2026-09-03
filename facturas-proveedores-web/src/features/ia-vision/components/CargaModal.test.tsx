@@ -153,15 +153,11 @@ describe('CargaModal — clearing the prefilled supplier (c-26)', () => {
    */
   const PREFILL = {
     id: 'prov-1',
-    usuario_id: 'user-1',
     nombre: 'Pencamar',
     cuit: null,
-    telefono: null,
     categoria: 'OTRO' as const,
-    notas: null,
     saldo: 0,
-    created_at: '2026-07-01T00:00:00',
-    updated_at: '2026-07-01T00:00:00',
+    ultima_factura_fecha: null,
   }
 
   async function reachReviewWithPrefill() {
@@ -395,12 +391,9 @@ const PROVEEDOR: import('@shared/api/api').ProveedorListItem = {
   id: 'prov-1',
   nombre: 'Acme SA',
   cuit: null,
-  telefono: null,
   categoria: 'OTRO',
-  notas: null,
   saldo: 0,
-  created_at: '2026-08-20T10:00:00',
-  updated_at: '2026-08-20T10:00:00',
+  ultima_factura_fecha: null,
 }
 
 const PAGO_CREADO = {

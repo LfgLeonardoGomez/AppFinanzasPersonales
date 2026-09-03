@@ -30,10 +30,22 @@
  *   D6's 15 aliases (Proveedor, Factura, Cliente, Pago, Venta, Usuario,
  *   FacturaItem, RegistroBody, MeResponse) DO have drift beyond the name and
  *   are task group 7's job, not this one.
+ *
+ * Also covered (task group 3 — the proveedores client, the first one with
+ * REAL drift and REAL money conversion):
+ *   - `Proveedor` (~ ProveedorResponse, D6 alias) and `ProveedorListItem` —
+ *     `saldo` converted string→number via `DecimalAsNumber`, plus
+ *     `cuit`/`telefono`/`notas`/`ultima_factura_fecha` widened back to
+ *     required (FastAPI always serializes them, `Optional[...] = None` only
+ *     means "optional at the constructor" — see the section below).
+ *   - `ProveedorListItem` SHALL NOT carry `telefono`/`notas` — it is a
+ *     genuinely LEANER row than `Proveedor`, not `extends Proveedor {}`.
  */
 import type { components } from './api.generated'
 import type {
   DecimalAsNumber,
+  Proveedor,
+  ProveedorListItem,
   AvatarUpdate,
   ClienteCreate,
   EstadoFactura,
@@ -133,6 +145,63 @@ const _selectivity: [_ProveedorSaldoConverted, _ProveedorNombreUntouched, _Prove
   true,
 ]
 void _selectivity
+
+// ── Proveedor / ProveedorListItem (task group 3) ────────────────────────────
+//
+// Not zero-drift like the section above — `Proveedor` and `ProveedorListItem`
+// both deliberately widen fields the schema marks "not required" back to
+// required (`cuit`/`telefono`/`notas` on `Proveedor`; `cuit`/
+// `ultima_factura_fecha` on `ProveedorListItem` — FastAPI/Pydantic always
+// serializes these keys, `Optional[...] = None` only means "optional at the
+// constructor"). These assertions are a REGRESSION LOCK, not a schema
+// equality check: they fail if a future edit silently reintroduces
+// hand-transcription instead of updating the `Omit<..., ...> & {...}`
+// override in `api.d.ts`.
+
+type _Proveedor = Assert<
+  'Proveedor~ProveedorResponse (saldo converted, cuit/telefono/notas required)',
+  Eq<
+    Proveedor,
+    Omit<DecimalAsNumber<S['ProveedorResponse'], 'saldo'>, 'cuit' | 'telefono' | 'notas'> & {
+      cuit: string | null
+      telefono: string | null
+      notas: string | null
+    }
+  >
+>
+
+type _ProveedorListItem = Assert<
+  'ProveedorListItem (lean row — NOT Proveedor; saldo converted, ultima_factura_fecha required)',
+  Eq<
+    ProveedorListItem,
+    Omit<DecimalAsNumber<S['ProveedorListItem'], 'saldo'>, 'cuit' | 'ultima_factura_fecha'> & {
+      cuit: string | null
+      ultima_factura_fecha: string | null
+    }
+  >
+>
+
+// `ProveedorListItem` SHALL NOT carry `telefono`/`notas` — the old hand-
+// written `extends Proveedor {}` promised fields the list endpoint never
+// sends (design.md task 3.5's known drift). If either key reappears, this
+// assertion is the one that catches it.
+type _ProveedorListItemFields = keyof ProveedorListItem
+type _AssertNoTelefonoInListItem = Assert<
+  'ProveedorListItem SHALL NOT have telefono',
+  'telefono' extends _ProveedorListItemFields ? false : true
+>
+type _AssertNoNotasInListItem = Assert<
+  'ProveedorListItem SHALL NOT have notas',
+  'notas' extends _ProveedorListItemFields ? false : true
+>
+
+const _proveedorAssertions: [
+  _Proveedor,
+  _ProveedorListItem,
+  _AssertNoTelefonoInListItem,
+  _AssertNoNotasInListItem,
+] = [true, true, true, true]
+void _proveedorAssertions
 
 const _assertions: [
   _AvatarUpdate, _ClienteCreate, _EstadoFactura, _EstadoVentaFiada, _FormaPago,

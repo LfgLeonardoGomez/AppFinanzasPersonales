@@ -39,7 +39,7 @@ const mockProveedor = {
   telefono: null,
   categoria: 'SERVICIO' as const,
   notas: null,
-  saldo: 0,
+  saldo: '0', // C-41, D9: wire shape
   created_at: '2026-06-01T00:00:00',
   updated_at: '2026-06-01T00:00:00',
 }

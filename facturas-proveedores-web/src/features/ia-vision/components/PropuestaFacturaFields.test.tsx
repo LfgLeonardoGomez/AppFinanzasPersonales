@@ -23,15 +23,40 @@ import type { ReactNode } from 'react'
 import type { PropuestaFactura, ProveedorListItem } from '@shared/api/api'
 import { PropuestaFacturaFields } from './PropuestaFacturaFields'
 
+/** Public, already-parsed shape — for passing directly as a component prop. */
 function proveedor(overrides: Partial<ProveedorListItem>): ProveedorListItem {
   return {
     id: 'prov-1',
     nombre: 'Acme SA',
     cuit: null,
+    categoria: 'OTRO',
+    saldo: 0,
+    ultima_factura_fecha: null,
+    ...overrides,
+  }
+}
+
+/**
+ * Wire shape (C-41, D9) — for MSW response bodies. `saldo` is a string;
+ * separate from `proveedor()` above because a fixture reused for both a
+ * component prop and a simulated response would either type-error as
+ * `ProveedorListItem` or stop exercising the parse boundary.
+ */
+function wireListItem(overrides: Partial<ReturnType<typeof proveedor>> = {}) {
+  const item = proveedor(overrides)
+  return { ...item, saldo: String(item.saldo) }
+}
+
+/** Wire shape for the POST /api/proveedores (full `Proveedor`) response. */
+function wireProveedor(overrides: { id?: string; nombre?: string } = {}) {
+  return {
+    id: 'prov-created-1',
+    nombre: 'Acme SA',
+    cuit: null,
     telefono: null,
     categoria: 'OTRO',
     notas: null,
-    saldo: 0,
+    saldo: '0',
     created_at: '2026-06-01T00:00:00',
     updated_at: '2026-06-01T00:00:00',
     ...overrides,
@@ -127,7 +152,7 @@ describe('PropuestaFacturaFields — Task 4.1', () => {
 describe('PropuestaFacturaFields — Task 4.1/4.4, auto-match (D4)', () => {
   it('pre-selects the supplier on a normalized-exact unique match (Confirmar-enabling state)', async () => {
     server.use(
-      http.get('/api/proveedores/buscar', () => HttpResponse.json([proveedor({ nombre: 'Acme SA' })])),
+      http.get('/api/proveedores/buscar', () => HttpResponse.json([wireListItem({ nombre: 'Acme SA' })])),
     )
     const onProveedorChange = vi.fn()
     render(
@@ -146,7 +171,7 @@ describe('PropuestaFacturaFields — Task 4.1/4.4, auto-match (D4)', () => {
 
   it('shows the match as a changeable chip once selected (clear button present)', async () => {
     server.use(
-      http.get('/api/proveedores/buscar', () => HttpResponse.json([proveedor({ nombre: 'Acme SA' })])),
+      http.get('/api/proveedores/buscar', () => HttpResponse.json([wireListItem({ nombre: 'Acme SA' })])),
     )
     const matched = proveedor({ nombre: 'Acme SA' })
     render(
@@ -191,7 +216,7 @@ describe('PropuestaFacturaFields — Task 4.2, inline create on no-match (D5)', 
       http.post('/api/proveedores', async ({ request }) => {
         const body = (await request.json()) as { nombre: string; categoria?: string }
         expect(body).toEqual({ nombre: 'Acme SA', categoria: 'OTRO' })
-        return HttpResponse.json(proveedor({ id: 'prov-created-1', nombre: body.nombre }), { status: 201 })
+        return HttpResponse.json(wireProveedor({ id: 'prov-created-1', nombre: body.nombre }), { status: 201 })
       }),
     )
     const onProveedorChange = vi.fn()

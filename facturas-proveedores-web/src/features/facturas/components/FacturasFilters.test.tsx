@@ -12,18 +12,16 @@ import { setupServer } from 'msw/node'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { FacturasFilters } from './FacturasFilters'
-import type { ProveedorListItem, FacturasFilters as FacturasFiltersType } from '@shared/api/api'
+import type { FacturasFilters as FacturasFiltersType } from '@shared/api/api'
 
-const mockProveedor: ProveedorListItem = {
+// C-41, D9: wire shape — only ever served through MSW, saldo as a string.
+const mockProveedor = {
   id: 'prov-uuid-1',
   nombre: 'Proveedor Test SA',
   cuit: null,
-  telefono: null,
   categoria: 'OTRO',
-  notas: null,
-  saldo: 0,
-  created_at: '2026-06-01T00:00:00',
-  updated_at: '2026-06-01T00:00:00',
+  saldo: '0',
+  ultima_factura_fecha: null,
 }
 
 const server = setupServer(

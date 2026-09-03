@@ -10,32 +10,26 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import ProveedoresList from './ProveedoresList'
-import type { ProveedorListItem, ProveedorDeleteResponse } from '@shared/api/api'
+import type { ProveedorDeleteResponse } from '@shared/api/api'
 
-// ── Fixtures ──────────────────────────────────────────────────────────────────
+// ── Fixtures (C-41, D9: wire shape — saldo as a string) ─────────────────────
 
-const mockPage1: ProveedorListItem[] = [
+const mockPage1 = [
   {
     id: 'uuid-1',
     nombre: 'Proveedor Alfa',
     cuit: null,
-    telefono: null,
     categoria: 'SERVICIO',
-    notas: null,
-    saldo: 2500.0,
-    created_at: '2026-06-01T00:00:00',
-    updated_at: '2026-06-01T00:00:00',
+    saldo: '2500.00',
+    ultima_factura_fecha: null,
   },
   {
     id: 'uuid-2',
     nombre: 'Proveedor Beta',
     cuit: '20-99887766-5',
-    telefono: null,
     categoria: 'OTRO',
-    notas: null,
-    saldo: 0,
-    created_at: '2026-06-02T00:00:00',
-    updated_at: '2026-06-02T00:00:00',
+    saldo: '0',
+    ultima_factura_fecha: null,
   },
 ]
 

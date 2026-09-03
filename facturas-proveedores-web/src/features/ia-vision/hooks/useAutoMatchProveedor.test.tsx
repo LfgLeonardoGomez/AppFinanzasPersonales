@@ -12,20 +12,17 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import type { ReactNode } from 'react'
-import type { ProveedorListItem } from '@shared/api/api'
 import { useAutoMatchProveedor } from './useAutoMatchProveedor'
 
-function proveedor(overrides: Partial<ProveedorListItem>): ProveedorListItem {
+// C-41, D9: wire shape — only ever served through MSW, saldo as a string.
+function proveedor(overrides: { id?: string; nombre?: string } = {}) {
   return {
     id: 'prov-1',
     nombre: 'Acme SA',
     cuit: null,
-    telefono: null,
     categoria: 'OTRO',
-    notas: null,
-    saldo: 0,
-    created_at: '2026-06-01T00:00:00',
-    updated_at: '2026-06-01T00:00:00',
+    saldo: '0',
+    ultima_factura_fecha: null,
     ...overrides,
   }
 }

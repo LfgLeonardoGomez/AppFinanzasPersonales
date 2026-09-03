@@ -4,29 +4,29 @@
 
 ## 1. Andamiaje: el generado entra sin que nada lo consuma
 
-- [ ] 1.1 Reconstruir la imagen del backend (`docker compose build api`) y confirmar que `http://localhost:8000/openapi.json` responde `200`, para no generar contra un contenedor viejo (regla de C-39 en `CLAUDE.md`)
-- [ ] 1.2 Apuntar el script `generate-types` del `package.json` a `src/shared/api/api.generated.d.ts` (D7) — hoy apunta a `api.d.ts` y correrlo destruye el archivo a mano
-- [ ] 1.3 Generar `src/shared/api/api.generated.d.ts` con `npm run generate-types` y commitearlo, con un encabezado que diga que es derivado y no se edita a mano
-- [ ] 1.4 Verificar que `tsc --noEmit` y la suite siguen en el baseline: nada consume el generado todavía, así que nada debe haber cambiado
+- [x] 1.1 ~~Reconstruir la imagen del backend (`docker compose build api`) y confirmar que `http://localhost:8000/openapi.json` responde `200`~~ **DESVIACIÓN**: Docker Desktop no está disponible en este entorno. Se generó el schema directamente desde el código fuente (`uv run python -c "import json; from app.main import app; print(json.dumps(app.openapi(), indent=2))"`), que es estrictamente más confiable que un contenedor — imposible que quede desactualizado, que es exactamente el modo de falla que C-39 documentó. Confirmado: 66 schemas, 39 paths — coincide exacto con la medición de `design.md`.
+- [x] 1.2 Apuntar el script `generate-types` del `package.json` a `src/shared/api/api.generated.d.ts` (D7) — hoy apunta a `api.d.ts` y correrlo destruye el archivo a mano
+- [x] 1.3 Generar `src/shared/api/api.generated.d.ts` con `npm run generate-types` (apuntado al JSON generado desde fuente en vez de `http://localhost:8000/openapi.json`, mismo resultado) y commitearlo — el encabezado estándar de `openapi-typescript` ya dice "Do not make direct changes to the file"
+- [x] 1.4 Verificar que `tsc --noEmit` y la suite siguen en el baseline: nada consume el generado todavía, así que nada debe haber cambiado
 
 ## 2. El helper de conversión y el guard, probados sobre lo que ya coincide
 
-- [ ] 2.1 RED — escribir las aserciones de compilación del guard general para los 22 tipos que la medición dio idénticos, importando desde `api.generated.d.ts`; verificar que fallan mientras el helper no existe
-- [ ] 2.2 GREEN — implementar `DecimalAsNumber<T, K>` (D2) y derivar esos 22 tipos en `api.d.ts` hasta que `tsc --noEmit` pase
-- [ ] 2.3 TRIANGULAR — verificar por mutación que el guard sirve: alterar a mano un campo del generado, confirmar que `tsc` falla señalando el tipo, revertir
-- [ ] 2.4 TRIANGULAR — verificar que `DecimalAsNumber` convierte solo las claves nombradas: una aserción que falle si un campo no nombrado cambia de tipo
-- [ ] 2.5 Confirmar suite y typecheck en verde antes de tocar ningún tipo con drift
+- [x] 2.1 RED — escribir las aserciones de compilación del guard general para los 22 tipos que la medición dio idénticos, importando desde `api.generated.d.ts`; verificar que fallan mientras el helper no existe
+- [x] 2.2 GREEN — implementar `DecimalAsNumber<T, K>` (D2) y derivar esos 22 tipos en `api.d.ts` hasta que `tsc --noEmit` pase
+- [x] 2.3 TRIANGULAR — verificar por mutación que el guard sirve: alterar a mano un campo del generado, confirmar que `tsc` falla señalando el tipo, revertir
+- [x] 2.4 TRIANGULAR — verificar que `DecimalAsNumber` convierte solo las claves nombradas: una aserción que falle si un campo no nombrado cambia de tipo
+- [x] 2.5 Confirmar suite y typecheck en verde antes de tocar ningún tipo con drift
 
 ## 3. Cliente de proveedores — y medición del costo real de los fixtures
 
-- [ ] 3.1 Medir y reportar cuántos archivos de test simulan respuestas de proveedores con montos, antes de migrar ninguno (Open Question de `design.md`)
-- [ ] 3.2 RED — escribir el test del parseo en el borde de `proveedoresApi`: la respuesta simulada trae `saldo` como cadena, el cliente debe devolver número
-- [ ] 3.3 RED — escribir el test del decimal malformado: debe lanzar, no devolver `0` (D4, D-88)
-- [ ] 3.4 GREEN — implementar el parseo en `proveedoresApi` con las formas `Raw*` internas al módulo, siguiendo `estadisticasParse.ts`
-- [ ] 3.5 Derivar `Proveedor` y `ProveedorListItem` del generado; resolver el drift conocido de `ProveedorListItem` (a mano extiende `Proveedor`, el backend devuelve un subconjunto con `ultima_factura_fecha`)
-- [ ] 3.6 Migrar los fixtures de proveedores a la forma del wire (D9): un fixture que ya devuelve número deja el parseo sin ejercitar
-- [ ] 3.7 Agregar al guard las aserciones de los tipos de proveedores
-- [ ] 3.8 Typecheck, lint y suite en verde; reportar el costo medido en 3.1 antes de seguir
+- [x] 3.1 Medir y reportar cuántos archivos de test simulan respuestas de proveedores con montos, antes de migrar ninguno (Open Question de `design.md`) — **21 archivos** (medido por análisis de mecanismo de mock, no solo grep de `saldo`)
+- [x] 3.2 RED — escribir el test del parseo en el borde de `proveedoresApi`: la respuesta simulada trae `saldo` como cadena, el cliente debe devolver número
+- [x] 3.3 RED — escribir el test del decimal malformado: debe lanzar, no devolver `0` (D4, D-88)
+- [x] 3.4 GREEN — implementar el parseo en `proveedoresApi` con las formas `Raw*` internas al módulo, siguiendo `estadisticasParse.ts`
+- [x] 3.5 Derivar `Proveedor` y `ProveedorListItem` del generado; resolver el drift conocido de `ProveedorListItem` (a mano extiende `Proveedor`, el backend devuelve un subconjunto con `ultima_factura_fecha`) — resuelto; la resolución hizo aflorar y corregir 6 call sites de producción que trataban ambos tipos como intercambiables
+- [x] 3.6 Migrar los fixtures de proveedores a la forma del wire (D9): un fixture que ya devuelve número deja el parseo sin ejercitar
+- [x] 3.7 Agregar al guard las aserciones de los tipos de proveedores
+- [x] 3.8 Typecheck, lint y suite en verde; reportar el costo medido en 3.1 antes de seguir
 
 ## 4. Cliente de facturas
 

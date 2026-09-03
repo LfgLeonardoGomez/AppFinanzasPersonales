@@ -22,7 +22,13 @@ import { useCreateProveedor, useUpdateProveedor } from '../api/proveedoresHooks'
 import { InputField } from '@shared/components/InputField/InputField'
 import { Card } from '@shared/components/Card/Card'
 import { Button } from '@shared/components/Button/Button'
-import type { Proveedor, ProveedorCreate, ProveedorUpdate, Categoria } from '@shared/api/api'
+import type {
+  Proveedor,
+  ProveedorListItem,
+  ProveedorCreate,
+  ProveedorUpdate,
+  Categoria,
+} from '@shared/api/api'
 
 const CUIT_REGEX = /^\d{2}-\d{8}-\d{1}$/
 
@@ -33,7 +39,13 @@ const CATEGORIAS: { value: Categoria; label: string }[] = [
 ]
 
 interface ProveedorFormProps {
-  proveedor?: Proveedor
+  /**
+   * C-41: accepts either shape. `ProveedorListItem` (the caller's grid-row
+   * shape) has no `telefono`/`notas` — `initialState` degrades those two
+   * fields to `''` when given one, matching the runtime result editing
+   * from the grid already had before `ProveedorListItem`'s drift was fixed.
+   */
+  proveedor?: Proveedor | ProveedorListItem
   onSuccess: (saved: Proveedor) => void
   onCancel: () => void
   /** Renders "Eliminar proveedor" (edit mode only) when provided. */
@@ -54,13 +66,13 @@ interface FormErrors {
   backend?: string
 }
 
-function initialState(proveedor?: Proveedor): FormState {
+function initialState(proveedor?: Proveedor | ProveedorListItem): FormState {
   return {
     nombre: proveedor?.nombre ?? '',
     cuit: proveedor?.cuit ?? '',
-    telefono: proveedor?.telefono ?? '',
+    telefono: proveedor && 'telefono' in proveedor ? proveedor.telefono ?? '' : '',
     categoria: proveedor?.categoria ?? 'OTRO',
-    notas: proveedor?.notas ?? '',
+    notas: proveedor && 'notas' in proveedor ? proveedor.notas ?? '' : '',
   }
 }
 

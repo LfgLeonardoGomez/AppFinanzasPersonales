@@ -28,12 +28,9 @@ const mockProveedor: ProveedorListItem = {
   id: 'prov-uuid-1',
   nombre: 'Proveedor Test SA',
   cuit: '20-12345678-9',
-  telefono: null,
   categoria: 'SERVICIO',
-  notas: null,
   saldo: 0,
-  created_at: '2026-06-01T00:00:00',
-  updated_at: '2026-06-01T00:00:00',
+  ultima_factura_fecha: null,
 }
 
 const mockCreatedFactura: FacturaResponse = {

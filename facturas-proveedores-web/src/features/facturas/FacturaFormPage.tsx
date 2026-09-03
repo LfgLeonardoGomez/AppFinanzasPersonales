@@ -28,6 +28,7 @@ import { FacturaForm } from './components/FacturaForm'
 import { useFactura, useCreateFactura } from './api/facturasHooks'
 import { useCreatePago } from '@features/pagos/api/pagosHooks'
 import { useProveedor } from '@features/proveedores/api/proveedoresHooks'
+import { toProveedorListItem } from '@features/proveedores/api/proveedoresApi'
 import { CargaModal } from '@features/ia-vision/components/CargaModal'
 import type { FacturaResponse, PagoResponse, ProveedorListItem } from '@shared/api/api'
 
@@ -54,12 +55,9 @@ function EditFacturaPage({ id }: { id: string }) {
     id: factura.proveedor_id,
     nombre: factura.proveedor_nombre ?? '',
     cuit: null,
-    telefono: null,
     categoria: 'OTRO',
-    notas: null,
     saldo: 0,
-    created_at: factura.created_at,
-    updated_at: factura.updated_at,
+    ultima_factura_fecha: null,
   }
 
   function handleSuccess(_saved: FacturaResponse) {
@@ -101,6 +99,14 @@ function CreateFacturaPage() {
     })
   }
 
+  // C-41: `useProveedor` returns the full `Proveedor` (GET /{id});
+  // `CargaModal`'s `initialSelectedProveedor` is the lean `ProveedorListItem`
+  // shape. They stopped being structurally identical once
+  // `ProveedorListItem`'s known drift was resolved — see `toProveedorListItem`.
+  const prefillListItem = proveedorQuery.data
+    ? toProveedorListItem(proveedorQuery.data)
+    : null
+
   return (
     <CargaModal
       open
@@ -109,7 +115,7 @@ function CreateFacturaPage() {
       onCreated={handleSuccess}
       createFactura={(payload) => createFacturaMutation.mutateAsync(payload)}
       createPago={(payload) => createPagoMutation.mutateAsync(payload)}
-      initialSelectedProveedor={proveedorQuery.data ?? null}
+      initialSelectedProveedor={prefillListItem}
     />
   )
 }

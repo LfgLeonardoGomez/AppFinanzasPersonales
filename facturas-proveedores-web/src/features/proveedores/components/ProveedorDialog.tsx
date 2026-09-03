@@ -21,11 +21,19 @@ import { ProveedorForm } from './ProveedorForm'
 import { DeleteProveedorDialog } from './DeleteProveedorDialog'
 import { useDeleteProveedor } from '../api/proveedoresHooks'
 import { toast } from '@shared/components/Toaster/toast'
-import type { Proveedor } from '@shared/api/api'
+import type { Proveedor, ProveedorListItem } from '@shared/api/api'
 
 interface ProveedorDialogProps {
   mode: 'create' | 'edit'
-  proveedor?: Proveedor | null
+  /**
+   * C-41: accepts either shape — `ProveedorDetailPage` passes the full
+   * `Proveedor` (its own `useProveedor` fetch); `ProveedoresPage` passes the
+   * lean `ProveedorListItem` straight from the grid, with no extra
+   * round-trip. `ProveedorForm` degrades `telefono`/`notas` to `''` when
+   * given the list shape — the same runtime result editing from the grid
+   * already had before this type was made honest about it.
+   */
+  proveedor?: Proveedor | ProveedorListItem | null
   open: boolean
   onSuccess: (saved: Proveedor) => void
   onCancel: () => void

@@ -24,6 +24,7 @@ import { PagoForm } from './components/PagoForm'
 import { usePago, useCreatePago } from './api/pagosHooks'
 import { useCreateFactura } from '@features/facturas/api/facturasHooks'
 import { useProveedor } from '@features/proveedores/api/proveedoresHooks'
+import { toProveedorListItem } from '@features/proveedores/api/proveedoresApi'
 import { CargaModal } from '@features/ia-vision/components/CargaModal'
 import type { FacturaResponse, PagoResponse, ProveedorListItem } from '@shared/api/api'
 
@@ -58,12 +59,9 @@ function EditPagoPage({ id }: { id: string }) {
     id: pago.proveedor_id,
     nombre: pago.proveedor_nombre ?? '',
     cuit: null,
-    telefono: null,
     categoria: 'OTRO',
-    notas: null,
     saldo: 0,
-    created_at: pago.created_at,
-    updated_at: pago.updated_at,
+    ultima_factura_fecha: null,
   }
 
   // Build a PagoListItem from PagoResponse for the form's pre-fill path.
@@ -128,7 +126,9 @@ function CreatePagoPage() {
       onCreated={handleSuccess}
       createFactura={(payload) => createFacturaMutation.mutateAsync(payload)}
       createPago={(payload) => createPagoMutation.mutateAsync(payload)}
-      initialSelectedProveedor={proveedorQuery.data ?? null}
+      initialSelectedProveedor={
+        proveedorQuery.data ? toProveedorListItem(proveedorQuery.data) : null
+      }
     />
   )
 }

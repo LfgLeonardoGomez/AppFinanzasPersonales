@@ -25,6 +25,12 @@ const existingProveedor: Proveedor = {
   updated_at: '2026-06-01T00:00:00',
 }
 
+// C-41, D9: the wire shape MSW actually serves — `saldo` as a string. Kept
+// SEPARATE from `existingProveedor` (the public, already-parsed shape used
+// as a component prop below): a fixture reused for both purposes would
+// either type-error as `Proveedor` or stop exercising the parse boundary.
+const existingProveedorWire = { ...existingProveedor, saldo: '500' }
+
 // ── MSW Server ────────────────────────────────────────────────────────────────
 
 const server = setupServer(
@@ -32,7 +38,7 @@ const server = setupServer(
     const body = await request.json() as Record<string, unknown>
     return HttpResponse.json(
       {
-        ...existingProveedor,
+        ...existingProveedorWire,
         id: 'uuid-new',
         nombre: body.nombre,
         cuit: body.cuit ?? null,
@@ -43,7 +49,7 @@ const server = setupServer(
 
   http.patch('/api/proveedores/:id', async ({ request }) => {
     const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ ...existingProveedor, ...body })
+    return HttpResponse.json({ ...existingProveedorWire, ...body })
   }),
 )
 

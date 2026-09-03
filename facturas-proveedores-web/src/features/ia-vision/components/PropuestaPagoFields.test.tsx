@@ -23,19 +23,28 @@ import type { ReactNode } from 'react'
 import type { PropuestaPago, ProveedorListItem } from '@shared/api/api'
 import { PropuestaPagoFields } from './PropuestaPagoFields'
 
+/** Public, already-parsed shape — for passing directly as a component prop. */
 function proveedor(overrides: Partial<ProveedorListItem>): ProveedorListItem {
   return {
     id: 'prov-1',
     nombre: 'Acme SA',
     cuit: null,
-    telefono: null,
     categoria: 'OTRO',
-    notas: null,
     saldo: 0,
-    created_at: '2026-06-01T00:00:00',
-    updated_at: '2026-06-01T00:00:00',
+    ultima_factura_fecha: null,
     ...overrides,
   }
+}
+
+/**
+ * Wire shape (C-41, D9) — for MSW response bodies. `saldo` is a string;
+ * separate from `proveedor()` above because a fixture reused for both a
+ * component prop and a simulated response would either type-error as
+ * `ProveedorListItem` or stop exercising the parse boundary.
+ */
+function wireListItem(overrides: Partial<ReturnType<typeof proveedor>> = {}) {
+  const item = proveedor(overrides)
+  return { ...item, saldo: String(item.saldo) }
 }
 
 const server = setupServer()
@@ -137,7 +146,7 @@ describe('PropuestaPagoFields — Task 5.1, supplier control (D4 — mirrors fac
 
   it('pre-selects the supplier on a normalized-exact unique match', async () => {
     server.use(
-      http.get('/api/proveedores/buscar', () => HttpResponse.json([proveedor({ nombre: 'Acme SA' })])),
+      http.get('/api/proveedores/buscar', () => HttpResponse.json([wireListItem({ nombre: 'Acme SA' })])),
     )
     const onProveedorChange = vi.fn()
     render(

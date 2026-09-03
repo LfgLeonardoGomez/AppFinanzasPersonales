@@ -17,7 +17,13 @@ type ModalMode = 'closed' | 'create' | 'edit'
 
 export function ProveedoresPage() {
   const [modalMode, setModalMode] = useState<ModalMode>('closed')
-  const [editTarget, setEditTarget] = useState<Proveedor | null>(null)
+  // C-41: this only ever holds a `ProveedorListItem` — the grid row passed
+  // into `openEdit` — never a full `Proveedor`. It used to be typed
+  // `Proveedor` via an `as` cast that "worked" only because the two types
+  // were structurally identical; now that `ProveedorListItem`'s drift is
+  // resolved, the cast would silently fabricate `telefono`/`notas`/
+  // timestamps that were never fetched.
+  const [editTarget, setEditTarget] = useState<ProveedorListItem | null>(null)
 
   function openCreate() {
     setEditTarget(null)
@@ -25,7 +31,7 @@ export function ProveedoresPage() {
   }
 
   function openEdit(proveedor: ProveedorListItem) {
-    setEditTarget(proveedor as Proveedor)
+    setEditTarget(proveedor)
     setModalMode('edit')
   }
 

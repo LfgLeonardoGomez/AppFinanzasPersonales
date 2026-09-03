@@ -9,23 +9,37 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import ProveedoresPage from './ProveedoresPage'
-import type { ProveedorListItem } from '@shared/api/api'
 
-// ── Fixtures ──────────────────────────────────────────────────────────────────
+// ── Fixtures (C-41, D9: wire shape — saldo as a string) ─────────────────────
+//
+// The list (GET) and the create (POST) responses are DIFFERENT wire shapes
+// now that `ProveedorListItem`'s drift is resolved: the list row has no
+// `telefono`/`notas`/timestamps and does have `ultima_factura_fecha`; the
+// full `Proveedor` a create returns is the opposite. They can no longer
+// share one fixture object.
 
-const mockPagedResponse: ProveedorListItem[] = [
-  {
-    id: 'uuid-1',
-    nombre: 'Proveedor Uno',
-    cuit: null,
-    telefono: null,
-    categoria: 'SERVICIO',
-    notas: null,
-    saldo: 100,
-    created_at: '2026-06-01T00:00:00',
-    updated_at: '2026-06-01T00:00:00',
-  },
-]
+const mockListItem = {
+  id: 'uuid-1',
+  nombre: 'Proveedor Uno',
+  cuit: null,
+  categoria: 'SERVICIO',
+  saldo: '100',
+  ultima_factura_fecha: null,
+}
+
+const mockPagedResponse = [mockListItem]
+
+const mockCreatedProveedor = {
+  id: 'uuid-1',
+  nombre: 'Proveedor Uno',
+  cuit: null,
+  telefono: null,
+  categoria: 'SERVICIO',
+  notas: null,
+  saldo: '100',
+  created_at: '2026-06-01T00:00:00',
+  updated_at: '2026-06-01T00:00:00',
+}
 
 // ── MSW Server ────────────────────────────────────────────────────────────────
 
@@ -34,7 +48,7 @@ const server = setupServer(
   http.post('/api/proveedores', async ({ request }) => {
     const body = await request.json() as Record<string, unknown>
     return HttpResponse.json(
-      { ...mockPagedResponse[0], id: 'uuid-new', nombre: body.nombre },
+      { ...mockCreatedProveedor, id: 'uuid-new', nombre: body.nombre },
       { status: 201 },
     )
   }),

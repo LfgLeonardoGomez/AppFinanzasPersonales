@@ -24,6 +24,7 @@
 import { useEffect, useState } from 'react'
 import { SupplierSearch } from '@shared/components/SupplierSearch/SupplierSearch'
 import { useCreateProveedor } from '@features/proveedores/api/proveedoresHooks'
+import { toProveedorListItem } from '@features/proveedores/api/proveedoresApi'
 import { useAutoMatchProveedor } from '../hooks/useAutoMatchProveedor'
 import type { ProveedorListItem } from '@shared/api/api'
 
@@ -82,7 +83,7 @@ export function SupplierMatchControl({
     createMutation.mutate(
       { nombre, categoria: 'OTRO' },
       {
-        onSuccess: (created) => onProveedorChange(created as ProveedorListItem),
+        onSuccess: (created) => onProveedorChange(toProveedorListItem(created)),
       },
     )
   }

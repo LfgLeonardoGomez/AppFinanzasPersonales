@@ -45,17 +45,14 @@ const propuestaOk: PropuestaPago = {
   error_message: null,
 }
 
+// C-41, D9: wire shape — served via MSW /buscar as a lean list row.
 const matchedProveedor = {
   id: MATCHED_PROVEEDOR_ID,
-  usuario_id: 'user-1',
   nombre: 'Ferretería Sur',
   cuit: null,
-  telefono: null,
   categoria: 'OTRO' as const,
-  notas: null,
-  saldo: 0,
-  created_at: '2026-06-15T00:00:00',
-  updated_at: '2026-06-15T00:00:00',
+  saldo: '0',
+  ultima_factura_fecha: null,
 }
 
 const cloudinaryPreset = {

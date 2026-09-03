@@ -11,6 +11,7 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import { useBuscarProveedores } from '@features/proveedores/api/proveedoresHooks'
 import { useCreateProveedor } from '@features/proveedores/api/proveedoresHooks'
+import { toProveedorListItem } from '@features/proveedores/api/proveedoresApi'
 import { Search, X, Check, Plus } from 'lucide-react'
 import type { ProveedorListItem } from '@shared/api/api'
 
@@ -86,8 +87,10 @@ export function SupplierSearch({
       { nombre, categoria: 'OTRO' },
       {
         onSuccess: (created) => {
-          // The API returns a full Proveedor which extends ProveedorListItem
-          handleSelect(created as ProveedorListItem)
+          // C-41: the API returns a full `Proveedor` — no longer the same
+          // shape as `ProveedorListItem` (that drift is resolved now), so
+          // it needs the adapter instead of a pass-through cast.
+          handleSelect(toProveedorListItem(created))
         },
       },
     )

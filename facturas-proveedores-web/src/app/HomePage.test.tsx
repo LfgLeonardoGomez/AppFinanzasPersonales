@@ -20,7 +20,8 @@ const proveedores = [
     usuario_id: 'u1',
     nombre: 'Distribuidora Norte',
     categoria: 'OTRO',
-    saldo: 148097,
+    // C-41, D9: the wire shape — proveedoresApi now parses this string.
+    saldo: '148097',
     ultima_factura_fecha: '2026-07-17',
   },
 ]

@@ -21,7 +21,7 @@ import { Button } from '@shared/components/Button/Button'
 import { EmptyState } from '@shared/components/EmptyState/EmptyState'
 import { LoadingState } from '@shared/components/LoadingState/LoadingState'
 import { Pencil, Trash2, ArrowUpDown, ChevronLeft, ChevronRight, Search } from 'lucide-react'
-import type { Proveedor, ProveedorListItem } from '@shared/api/api'
+import type { ProveedorListItem } from '@shared/api/api'
 
 type OrderBy = 'nombre' | 'saldo'
 
@@ -55,7 +55,7 @@ export function ProveedoresList({ onNewProveedor, onEditProveedor }: Proveedores
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
 
-  const [pendingDelete, setPendingDelete] = useState<Proveedor | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<ProveedorListItem | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
 
   const { data, isLoading, isError } = useProveedores({ orderBy, page })

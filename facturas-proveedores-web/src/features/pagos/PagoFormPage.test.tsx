@@ -15,15 +15,16 @@ import { PagoFormPage } from './PagoFormPage'
 
 const PROVEEDOR_ID = 'proveedor-uuid-1'
 
+// C-41, D9: wire shape — served via MSW as the GET /{id} response, saldo as
+// a string.
 const mockProveedor = {
   id: PROVEEDOR_ID,
-  usuario_id: 'user-1',
   nombre: 'Proveedor Alfa',
   cuit: null,
   telefono: null,
   categoria: 'SERVICIO' as const,
   notas: null,
-  saldo: 0,
+  saldo: '0',
   created_at: '2026-06-01T00:00:00',
   updated_at: '2026-06-01T00:00:00',
 }
