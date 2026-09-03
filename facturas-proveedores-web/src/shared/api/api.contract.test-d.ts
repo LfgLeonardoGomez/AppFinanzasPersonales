@@ -59,6 +59,34 @@
  *     converted, `cliente_id` widened back to required on `Venta` (nullable)
  *     and required+non-null on `VentaConEstado` (a fiado always has a
  *     customer, RN-VTA-03).
+ *
+ * Also covered (task group 7 — the rest of the derived types, plus the
+ * remaining D6 aliases):
+ *   - The last 5 of D6's 15 aliases that groups 2-6 did not already close:
+ *     `Factura`/`Pago` (plain re-exports of the already-derived
+ *     `FacturaResponse`/`PagoResponse`, asserted equal), `RegistroBody`
+ *     (~ RegistroRequest, zero drift), `Usuario` (~ UsuarioResponse —
+ *     `telefono`/`avatar_url`/`nombre_negocio`/`updated_at` widened to
+ *     required, `tema_preferido` narrowed to the domain enum despite the
+ *     schema typing it as a bare `string` — a real backend inconsistency,
+ *     documented not fixed), `MeResponse` (alias of `Usuario`).
+ *   - `PropuestaFactura`/`PropuestaPago` — the one case in this file where a
+ *     money field (`monto_total`/`monto`) is genuinely nullable, so the
+ *     conversion is a hand override instead of routed through
+ *     `DecimalAsNumber` (the helper's `[P in K]: number` mapping cannot
+ *     express `| null`).
+ *   - `Cliente` (~ ClienteResponse, D6 alias) and `ClienteListItem` (no
+ *     separate schema) — `saldo` stays `string` (not converted), same
+ *     convention as `Venta.monto`.
+ *   - `EntradaHistorial`/`CuentaCorrienteResponse` and their customer-side
+ *     mirror `EntradaHistorialCliente`/`CuentaCorrienteClienteResponse` —
+ *     type derivation only; the parsing at `cuentaCorrienteApi.ts` /
+ *     `cuentaCorrienteClienteApi.ts` predates C-41 and is unchanged.
+ *   - `PeriodoTotal`/`ComprasResponse`/`VentaPeriodo`/`VentasResponse`/
+ *     `ResumenResponse` — also type derivation only (`estadisticasParse.ts`
+ *     predates C-41). `VentaPeriodo.desglose` is a hand override
+ *     (`Record<FormaPago, number>`) because the wire's generic
+ *     `{ [key: string]: string }` cannot be expressed by naming a key.
  */
 import type { components } from './api.generated'
 import type {
@@ -69,9 +97,11 @@ import type {
   FacturaResponse,
   FacturaListItem,
   FacturaConEstado,
+  Factura,
   PagoResponse,
   PagoListItem,
   PagoListResponse,
+  Pago,
   Venta,
   VentaListItem,
   VentaConEstado,
@@ -97,6 +127,22 @@ import type {
   RecuperarBody,
   ResetBody,
   RegistroEmpleadoBody,
+  Usuario,
+  MeResponse,
+  RegistroBody,
+  PropuestaFactura,
+  PropuestaPago,
+  Cliente,
+  ClienteListItem,
+  EntradaHistorial,
+  CuentaCorrienteResponse,
+  EntradaHistorialCliente,
+  CuentaCorrienteClienteResponse,
+  PeriodoTotal,
+  ComprasResponse,
+  VentaPeriodo,
+  VentasResponse,
+  ResumenResponse,
 } from './api'
 
 type S = components['schemas']
@@ -403,6 +449,263 @@ const _ventaAssertions: [
   _VentaClienteIdUntouched,
 ] = [true, true, true, true]
 void _ventaAssertions
+
+// ── D6 aliases finished off (task group 7) ──────────────────────────────────
+//
+// `Factura`/`Pago` were already DERIVED (as `FacturaResponse`/`PagoResponse`)
+// by task groups 4/5 — what was still untested was the plain re-exported
+// name itself. `Usuario`, `RegistroBody` and `Cliente` had no derivation at
+// all until this group (they were still hand-written, drifting from
+// `UsuarioResponse`/`RegistroRequest`/`ClienteResponse`). `MeResponse` stays
+// a structural alias of `Usuario` (`extends Usuario {}`), asserted equal.
+
+type _FacturaAlias = Assert<'Factura~FacturaResponse (alias, D6)', Eq<Factura, FacturaResponse>>
+type _PagoAlias = Assert<'Pago~PagoResponse (alias, D6)', Eq<Pago, PagoResponse>>
+
+type _RegistroBody = Assert<
+  'RegistroBody~RegistroRequest',
+  Eq<RegistroBody, DecimalAsNumber<S['RegistroRequest'], never>>
+>
+
+// `telefono`/`avatar_url`/`nombre_negocio` widened to required — same
+// FastAPI-always-serializes-the-key rationale as `Proveedor.cuit`.
+// `updated_at` widened to required too (the schema itself declares it
+// non-optional; the pre-C-41 hand type marked it optional with no reason
+// to). `tema_preferido` narrowed to the domain enum, non-null — the schema
+// types it as a bare `Optional[str]` (a real backend inconsistency,
+// documented not fixed, Non-Goal) but the model column is the
+// `TemaPreferido` enum with a hard default, never `None`.
+type _Usuario = Assert<
+  'Usuario~UsuarioResponse (telefono/avatar_url/nombre_negocio/updated_at required, tema_preferido narrowed)',
+  Eq<
+    Usuario,
+    Omit<
+      DecimalAsNumber<S['UsuarioResponse'], never>,
+      'telefono' | 'avatar_url' | 'nombre_negocio' | 'tema_preferido' | 'updated_at'
+    > & {
+      telefono: string | null
+      avatar_url: string | null
+      nombre_negocio: string | null
+      tema_preferido: TemaPreferido
+      updated_at: string
+    }
+  >
+>
+
+type _MeResponse = Assert<'MeResponse~UsuarioResponse (alias of Usuario, D6)', Eq<MeResponse, Usuario>>
+
+const _d6Assertions: [_FacturaAlias, _PagoAlias, _RegistroBody, _Usuario, _MeResponse] = [
+  true, true, true, true, true,
+]
+void _d6Assertions
+
+// ── PropuestaFactura / PropuestaPago (task group 7 — ia-vision) ────────────
+//
+// `proveedor_nombre`/`numero`/`fecha_emision`/`error_message` (and, on
+// `PropuestaPago`, `fecha`/`metodo`) are widened to required — same
+// FastAPI-always-serializes-the-key rationale as `Proveedor.cuit`.
+// `monto_total`/`monto` are overridden BY HAND to `number | null` instead of
+// routed through `DecimalAsNumber` — the helper's `[P in K]: number`
+// mapping forces a non-nullable `number`, which would be WRONG here: the
+// vision extractor genuinely returns `null` for an unreadable field
+// (RN-IA-03). The two assertions below the main ones prove the override
+// actually preserves that nullability instead of silently losing it.
+
+type _PropuestaFactura = Assert<
+  'PropuestaFactura (proveedor_nombre/numero/fecha_emision/error_message required, monto_total nullable-converted)',
+  Eq<
+    PropuestaFactura,
+    Omit<
+      DecimalAsNumber<S['PropuestaFactura'], never>,
+      'proveedor_nombre' | 'numero' | 'fecha_emision' | 'monto_total' | 'error_message'
+    > & {
+      proveedor_nombre: string | null
+      numero: string | null
+      fecha_emision: string | null
+      monto_total: number | null
+      error_message: string | null
+    }
+  >
+>
+
+type _PropuestaPago = Assert<
+  'PropuestaPago (proveedor_nombre/fecha/metodo/error_message required, monto nullable-converted)',
+  Eq<
+    PropuestaPago,
+    Omit<
+      DecimalAsNumber<S['PropuestaPago'], never>,
+      'proveedor_nombre' | 'monto' | 'fecha' | 'metodo' | 'error_message'
+    > & {
+      proveedor_nombre: string | null
+      monto: number | null
+      fecha: string | null
+      metodo: MetodoPago | null
+      error_message: string | null
+    }
+  >
+>
+
+// `DecimalAsNumber` selectivity, re-proven on a NULLABLE money field —
+// `PropuestaFactura.monto_total` is the one field in this change the
+// helper itself cannot express, so this locks that the hand override kept
+// `| null` instead of it being silently dropped by a future edit.
+type _PropuestaFacturaMontoNullable = Assert<
+  'PropuestaFactura.monto_total stays nullable (helper cannot express this — hand override must)',
+  null extends PropuestaFactura['monto_total'] ? true : never
+>
+type _PropuestaFacturaNumeroUntouched = Assert<
+  'DecimalAsNumber selectivity: numero (digit-heavy string) untouched by monto_total conversion',
+  Eq<PropuestaFactura['numero'], string | null>
+>
+
+const _iaVisionAssertions: [
+  _PropuestaFactura,
+  _PropuestaPago,
+  _PropuestaFacturaMontoNullable,
+  _PropuestaFacturaNumeroUntouched,
+] = [true, true, true, true]
+void _iaVisionAssertions
+
+// ── Cliente / ClienteListItem (task group 7) ────────────────────────────────
+//
+// `telefono`/`notas`/`saldo` widened to required — same rationale as above.
+// `saldo` stays `string`, NOT run through `DecimalAsNumber` — unlike
+// `Proveedor.saldo`, this backend serializes the Decimal as a JSON string
+// (same convention as `Venta.monto`), so there is nothing to convert.
+// `ClienteListItem` has no separate backend schema (both `GET /api/clientes`
+// and `GET /api/clientes/buscar` return `ClienteResponse[]`) — asserted
+// structurally equal to `Cliente`, mirroring `VentaListItem`.
+
+type _Cliente = Assert<
+  'Cliente~ClienteResponse (telefono/notas/saldo required, saldo stays string)',
+  Eq<
+    Cliente,
+    Omit<DecimalAsNumber<S['ClienteResponse'], never>, 'telefono' | 'notas' | 'saldo'> & {
+      telefono: string | null
+      notas: string | null
+      saldo: string | null
+    }
+  >
+>
+
+type _ClienteListItem = Assert<
+  'ClienteListItem (same shape as Cliente — no separate schema)',
+  Eq<ClienteListItem, Cliente>
+>
+
+const _clienteAssertions: [_Cliente, _ClienteListItem] = [true, true]
+void _clienteAssertions
+
+// ── Cuenta-corriente: EntradaHistorial / CuentaCorrienteResponse and the
+// customer-side mirror (task group 7) ───────────────────────────────────────
+//
+// `EntradaHistorial`/`EntradaHistorialCliente` convert `monto`/
+// `saldo_acumulado`; `archivo_url` is left as the schema's own `?:` (a
+// row predating the field genuinely omits the key — not the
+// FastAPI-always-serializes case). `CuentaCorrienteResponse`/
+// `CuentaCorrienteClienteResponse` convert `saldo` and override their
+// nested arrays to the already-derived public row types, same
+// nested-array reason as `FacturaResponse.items`.
+
+type _EntradaHistorial = Assert<
+  'EntradaHistorial (monto/saldo_acumulado converted)',
+  Eq<EntradaHistorial, DecimalAsNumber<S['EntradaHistorial'], 'monto' | 'saldo_acumulado'>>
+>
+
+type _CuentaCorrienteResponse = Assert<
+  'CuentaCorrienteResponse (saldo converted, facturas_con_estado/historial → derived arrays)',
+  Eq<
+    CuentaCorrienteResponse,
+    Omit<DecimalAsNumber<S['CuentaCorrienteResponse'], 'saldo'>, 'facturas_con_estado' | 'historial'> & {
+      facturas_con_estado: FacturaConEstado[]
+      historial: EntradaHistorial[]
+    }
+  >
+>
+
+type _EntradaHistorialCliente = Assert<
+  'EntradaHistorialCliente (monto/saldo_acumulado converted)',
+  Eq<EntradaHistorialCliente, DecimalAsNumber<S['EntradaHistorialCliente'], 'monto' | 'saldo_acumulado'>>
+>
+
+type _CuentaCorrienteClienteResponse = Assert<
+  'CuentaCorrienteClienteResponse (saldo converted, ventas_con_estado/historial → derived arrays)',
+  Eq<
+    CuentaCorrienteClienteResponse,
+    Omit<
+      DecimalAsNumber<S['CuentaCorrienteClienteResponse'], 'saldo'>,
+      'ventas_con_estado' | 'historial'
+    > & {
+      ventas_con_estado: VentaConEstado[]
+      historial: EntradaHistorialCliente[]
+    }
+  >
+>
+
+const _cuentaCorrienteAssertions: [
+  _EntradaHistorial,
+  _CuentaCorrienteResponse,
+  _EntradaHistorialCliente,
+  _CuentaCorrienteClienteResponse,
+] = [true, true, true, true]
+void _cuentaCorrienteAssertions
+
+// ── Estadísticas: PeriodoTotal / ComprasResponse / VentaPeriodo /
+// VentasResponse / ResumenResponse (task group 7) ───────────────────────────
+//
+// `PeriodoTotal.total` and `ResumenResponse`'s three fields convert via
+// `DecimalAsNumber`. `ComprasResponse.periodos`/`VentasResponse.periodos`
+// override to the derived row arrays, same nested-array reason as above.
+// `VentaPeriodo.desglose` is overridden BY HAND to `Record<FormaPago,
+// number>` — the OpenAPI-generated wire shape is a generic
+// `{ [key: string]: string }` (a Pydantic `dict[FormaPago, Decimal]` loses
+// its key-enum at the OpenAPI boundary), so `DecimalAsNumber` cannot express
+// this conversion by naming a key.
+
+type _PeriodoTotal = Assert<
+  'PeriodoTotal (total converted)',
+  Eq<PeriodoTotal, DecimalAsNumber<S['PeriodoTotal'], 'total'>>
+>
+
+type _ComprasResponse = Assert<
+  'ComprasResponse (periodos → PeriodoTotal[])',
+  Eq<
+    ComprasResponse,
+    Omit<DecimalAsNumber<S['ComprasResponse'], never>, 'periodos'> & { periodos: PeriodoTotal[] }
+  >
+>
+
+type _VentaPeriodo = Assert<
+  'VentaPeriodo (total converted, desglose → Record<FormaPago, number>)',
+  Eq<
+    VentaPeriodo,
+    Omit<DecimalAsNumber<S['VentaPeriodo'], 'total'>, 'desglose'> & {
+      desglose: Record<FormaPago, number>
+    }
+  >
+>
+
+type _VentasResponse = Assert<
+  'VentasResponse (periodos → VentaPeriodo[])',
+  Eq<
+    VentasResponse,
+    Omit<DecimalAsNumber<S['VentasResponse'], never>, 'periodos'> & { periodos: VentaPeriodo[] }
+  >
+>
+
+type _ResumenResponse = Assert<
+  'ResumenResponse (compras/ventas/diferencia converted)',
+  Eq<ResumenResponse, DecimalAsNumber<S['ResumenResponse'], 'compras' | 'ventas' | 'diferencia'>>
+>
+
+const _estadisticasAssertions: [
+  _PeriodoTotal,
+  _ComprasResponse,
+  _VentaPeriodo,
+  _VentasResponse,
+  _ResumenResponse,
+] = [true, true, true, true, true]
+void _estadisticasAssertions
 
 const _assertions: [
   _AvatarUpdate, _ClienteCreate, _EstadoFactura, _EstadoVentaFiada, _FormaPago,

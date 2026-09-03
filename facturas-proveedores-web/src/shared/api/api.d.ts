@@ -57,34 +57,48 @@ export type DecimalAsNumber<T, K extends keyof T> = [K] extends [never]
 // Core domain types
 // ---------------------------------------------------------------------------
 
-export interface Usuario {
-  id: string
-  /** Negocio the session belongs to (C-28, D-27). Output only. */
-  negocio_id: string
-  /** Single privilege flag (C-28, D-29). Gates team management only. */
-  es_admin: boolean
-  email: string
-  nombre: string
-  /** Optional profile fields (C-05). */
-  telefono?: string | null
-  avatar_url?: string | null
-  nombre_negocio?: string | null
-  tema_preferido?: 'CLARO' | 'OSCURO'
-  created_at: string
-  updated_at?: string
+/**
+ * Derived from `UsuarioResponse` (C-41, D6 alias — same shape, renamed on
+ * the backend). `telefono`, `avatar_url` and `nombre_negocio` are widened
+ * back to REQUIRED (`string | null`, not `?: string | null`) — same
+ * FastAPI-always-serializes-the-key rationale as `Proveedor.cuit`:
+ * `Optional[str] = None` only means "optional at the Pydantic constructor",
+ * the key is always on the wire. `updated_at` is widened to REQUIRED too —
+ * unlike the three fields above, the schema itself declares it non-optional
+ * (`datetime`, no default); the pre-C-41 hand-written type marked it
+ * optional with no schema reason to.
+ *
+ * `tema_preferido` is a genuine backend inconsistency, documented rather
+ * than "fixed" (Non-Goal: no backend fix in this change): the OpenAPI
+ * schema (`app/schemas/auth.py::UsuarioResponse`) types the field as a bare
+ * `Optional[str]`, not `Optional[TemaPreferido]` — but the underlying
+ * column (`app/models/usuario.py::Usuario.tema_preferido`) IS the
+ * `TemaPreferido` enum with a hard `default=TemaPreferido.CLARO` (never
+ * `None`). Narrowed here to the domain enum, non-null — matching what the
+ * value on the wire actually and always is, same as the pre-C-41 type.
+ */
+export type Usuario = Omit<
+  DecimalAsNumber<components['schemas']['UsuarioResponse'], never>,
+  'telefono' | 'avatar_url' | 'nombre_negocio' | 'tema_preferido' | 'updated_at'
+> & {
+  telefono: string | null
+  avatar_url: string | null
+  nombre_negocio: string | null
+  tema_preferido: TemaPreferido
+  updated_at: string
 }
 
 // ---------------------------------------------------------------------------
 // Auth request / response bodies
 // ---------------------------------------------------------------------------
 
-export interface RegistroBody {
-  email: string
-  nombre: string
-  password: string
-  /** Optional (C-28): omitted, the backend derives it from the user's name. */
-  nombre_negocio?: string
-}
+/**
+ * Payload for POST /api/auth/registro.
+ * Derived from `RegistroRequest` (C-41, D6 alias — same shape, renamed on
+ * the backend). `nombre_negocio` optional (C-28): omitted, the backend
+ * derives it from the user's name.
+ */
+export type RegistroBody = DecimalAsNumber<components['schemas']['RegistroRequest'], never>
 
 /**
  * Payload for POST /api/auth/registro-empleado (C-29).
@@ -558,10 +572,23 @@ export interface PagosFilters {
 /**
  * Output of POST /api/facturas/extraer-ia (C-14, ia-vision-backend spec).
  *
- * Mirrors the Pydantic `PropuestaFactura` in `app/schemas/factura.py:192`.
  * Every field except `error` is nullable — the vision extractor marks
  * unreadable fields as `null` and the frontend MUST render empty inputs
  * (RN-IA-03: never invent, guess, or compute a value).
+ *
+ * Derived from `PropuestaFactura` (C-41 — same schema name, no D6 alias
+ * needed). `proveedor_nombre`, `numero`, `fecha_emision` and
+ * `error_message` are widened back to REQUIRED (`string | null`, not
+ * `?: string | null`) — same FastAPI-always-serializes-the-key rationale as
+ * `Proveedor.cuit`. `monto_total` is overridden directly to `number | null`
+ * rather than routed through `DecimalAsNumber`: the helper's
+ * `[P in K]: number` mapping forces a non-nullable `number`, but this field
+ * genuinely can be `null` (an unreadable field, RN-IA-03) — so the
+ * conversion is spelled out by hand here, the same way nested arrays like
+ * `FacturaResponse.items` are overridden rather than run through the
+ * helper. `parsePropuestaFactura` (`iaVisionApi.ts`) is the boundary that
+ * makes all of this true — pre-existing, unchanged by this derivation
+ * (D13, mirrors C-13's `parseCuentaCorriente`).
  *
  * INVARIANTS (locked at the type level by `api.iaVision.test-d.ts`):
  *   - NO `id`, `usuario_id`, `proveedor_id`, `origen`, `created_at`,
@@ -569,29 +596,35 @@ export interface PagosFilters {
  *     vision proposals are header-only and identity-less. The `origen=IA`
  *     flag is stamped by the existing `POST /api/facturas` on confirm
  *     (c-15a, OQ-1 Path B).
- *   - `monto_total` is typed as `number` — the API helper parses the
- *     Pydantic-v2 Decimal-string at the boundary (D13, mirrors C-13's
- *     `parseCuentaCorriente`).
  *   - `error: boolean` is required (always present) and `error_message`
  *     is `string | null`. The C-14 contract guarantees these two are
  *     always on the response.
  */
-export interface PropuestaFactura {
+export type PropuestaFactura = Omit<
+  DecimalAsNumber<components['schemas']['PropuestaFactura'], never>,
+  'proveedor_nombre' | 'numero' | 'fecha_emision' | 'monto_total' | 'error_message'
+> & {
   proveedor_nombre: string | null
   numero: string | null
   fecha_emision: string | null
   monto_total: number | null
-  error: boolean
   error_message: string | null
 }
 
 /**
  * Output of POST /api/pagos/extraer-ia (C-14, ia-vision-backend spec).
  *
- * Mirrors the Pydantic `PropuestaPago` in `app/schemas/pago.py:104`.
  * Same nullable contract as `PropuestaFactura`. The C-14 Pydantic
  * normalizes invalid enum values to `None`; the TS type mirrors this
  * with `MetodoPago | null`.
+ *
+ * Derived from `PropuestaPago` (C-41 — same schema name, no D6 alias
+ * needed). Same widening rationale as `PropuestaFactura`, applied to
+ * `proveedor_nombre`, `fecha`, `metodo` and `error_message`; `monto`
+ * overridden the same way `PropuestaFactura.monto_total` is (nullable
+ * decimal, hand-converted rather than routed through `DecimalAsNumber`).
+ * `parsePropuestaPago` (`iaVisionApi.ts`) is the boundary that makes all of
+ * this true — pre-existing, unchanged by this derivation.
  *
  * INVARIANTS (locked at the type level by `api.iaVision.test-d.ts`):
  *   - NO `factura_id` (RN-PAG-01 surface defense in depth).
@@ -599,12 +632,14 @@ export interface PropuestaFactura {
  *     `updated_at`.
  *   - The `metodo` field is `MetodoPago | null` — never a raw string.
  */
-export interface PropuestaPago {
+export type PropuestaPago = Omit<
+  DecimalAsNumber<components['schemas']['PropuestaPago'], never>,
+  'proveedor_nombre' | 'monto' | 'fecha' | 'metodo' | 'error_message'
+> & {
   proveedor_nombre: string | null
   monto: number | null
   fecha: string | null
   metodo: MetodoPago | null
-  error: boolean
   error_message: string | null
 }
 
@@ -660,24 +695,21 @@ export type EntradaHistorialTipo = 'FACTURA' | 'PAGO'
  *
  * `archivo_url` (C-24): the attached file for this row — `Factura.archivo_url`
  * for FACTURA rows, `Pago.comprobante_url` for PAGO rows. `null`/absent when
- * the underlying row has no file attached.
+ * the underlying row has no file attached — genuinely optional (rows
+ * created before the field existed omit it entirely), left as `?:` rather
+ * than widened to required like the other fields in this file.
  *
- * NOTE: hand-edited (not regenerated via `npm run generate-types`) — the
- * running dev API reflects concurrent, unrelated in-progress work from other
- * changes, and a full regeneration produced an unrelated multi-thousand-line
- * diff. Only this one field was added, matching the backend Pydantic schema
- * (`EntradaHistorial.archivo_url: Optional[str] = None`) exactly. Safe to
- * regenerate later once the API is back to a clean/released state — that
- * regeneration should produce an identical shape for this field.
+ * Derived from `EntradaHistorial` (C-41 — this regeneration is the clean
+ * one the previous hand-edit note asked for; the shape it produced for
+ * `archivo_url` is identical to what was hand-added). `monto`/
+ * `saldo_acumulado` converted string→number via `DecimalAsNumber`;
+ * `parseEntradaHistorial` (`cuentaCorrienteApi.ts`) is the boundary that
+ * already did this parsing (predates C-41) — this is type derivation only.
  */
-export interface EntradaHistorial {
-  id: string
-  tipo: EntradaHistorialTipo
-  fecha: string
-  monto: number
-  saldo_acumulado: number
-  archivo_url?: string | null
-}
+export type EntradaHistorial = DecimalAsNumber<
+  components['schemas']['EntradaHistorial'],
+  'monto' | 'saldo_acumulado'
+>
 
 /**
  * Response shape of `GET /api/proveedores/{id}/cuenta-corriente` (C-12).
@@ -685,10 +717,19 @@ export interface EntradaHistorial {
  * consumes the triple verbatim — `saldo`, the FIFO `estado` of each
  * `facturas_con_estado` row, and the `saldo_acumulado` of each `historial`
  * row are NEVER recomputed on the client (RN-SALDO, RN-FIFO, RN-HIST).
+ *
+ * Derived from `CuentaCorrienteResponse` (C-41). `facturas_con_estado` and
+ * `historial` are overridden to the derived public `FacturaConEstado[]` /
+ * `EntradaHistorial[]` — `DecimalAsNumber` only converts top-level keys, so
+ * the nested wire rows (string `monto_total`/`monto`/`saldo_acumulado`)
+ * would otherwise leak through untouched. `parseCuentaCorriente`
+ * (`cuentaCorrienteApi.ts`) is the boundary that already parses the whole
+ * triple (predates C-41) — this change only derives the type.
  */
-export interface CuentaCorrienteResponse {
-  proveedor_id: string
-  saldo: number
+export type CuentaCorrienteResponse = Omit<
+  DecimalAsNumber<components['schemas']['CuentaCorrienteResponse'], 'saldo'>,
+  'facturas_con_estado' | 'historial'
+> & {
   facturas_con_estado: FacturaConEstado[]
   historial: EntradaHistorial[]
 }
@@ -773,32 +814,45 @@ export type InvitacionResponse = DecimalAsNumber<components['schemas']['Invitaci
  * compared, but MUST NEVER be sent in a request payload (design.md D8):
  * identity is decided exclusively by the backend (`app/core/normalizacion.py`).
  */
-export interface Cliente {
-  id: string
-  negocio_id: string
-  nombre: string
-  nombre_normalizado: string
-  telefono?: string | null
-  notas?: string | null
-  created_at: string
-  updated_at: string
-  /**
-   * On-demand balance (backend: `ClienteResponse.saldo: Optional[Decimal] =
-   * None`, app/schemas/cliente.py). Populated ONLY by the plain listing
-   * endpoint (GET /api/clientes with no `buscar` filter) — `null` on
-   * create/get/update/search, which don't pay the extra aggregate query.
-   *
-   * Typed as `string`, not `number`, unlike `Proveedor.saldo` — this
-   * backend serializes `Decimal` fields as JSON strings (confirmed on the
-   * same Decimal-typed field via
-   * `test_c35_cuenta_corriente_cliente_integration.py`: `data["saldo"] ==
-   * "0.00"`), the same convention already used for `Venta.monto`.
-   * `Proveedor.saldo: number` predates this and is not touched here.
-   */
+/**
+ * A customer as the app sees them (backend: app/schemas/cliente.py).
+ *
+ * `nombre_normalizado` is returned for information — it MAY be displayed or
+ * compared, but MUST NEVER be sent in a request payload (design.md D8):
+ * identity is decided exclusively by the backend (`app/core/normalizacion.py`).
+ *
+ * Derived from `ClienteResponse` (C-41, D6 alias — same shape, renamed on
+ * the backend). `telefono` and `notas` are widened back to REQUIRED
+ * (`string | null`, not `?: string | null`) — same
+ * FastAPI-always-serializes-the-key rationale as `Proveedor.cuit`:
+ * `Optional[str] = None` only means "optional at the Pydantic constructor",
+ * the key is always on the wire. `saldo` is widened the same way.
+ *
+ * `saldo` stays `string`, NOT converted to `number` via `DecimalAsNumber` —
+ * unlike `Proveedor.saldo`, this backend serializes the `Decimal` field as a
+ * JSON string (confirmed on the same Decimal-typed field via
+ * `test_c35_cuenta_corriente_cliente_integration.py`: `data["saldo"] ==
+ * "0.00"`), the same convention already used for `Venta.monto`. On-demand
+ * (backend: `ClienteResponse.saldo: Optional[Decimal] = None`, app/schemas/
+ * cliente.py): populated ONLY by the plain listing endpoint (GET
+ * /api/clientes with no `buscar` filter) — `null` (not absent) on
+ * create/get/update/search, which don't pay the extra aggregate query.
+ */
+export type Cliente = Omit<
+  DecimalAsNumber<components['schemas']['ClienteResponse'], never>,
+  'telefono' | 'notas' | 'saldo'
+> & {
+  telefono: string | null
+  notas: string | null
   saldo: string | null
 }
 
-/** Item in the customer list/search results — same shape as Cliente. */
+/**
+ * Item in the customer list/search results — same shape as Cliente; both
+ * `GET /api/clientes` and `GET /api/clientes/buscar` return
+ * `ClienteResponse[]` (no separate list schema on the backend), mirroring
+ * `VentaListItem extends Venta {}`.
+ */
 export interface ClienteListItem extends Cliente {}
 
 /**
@@ -930,8 +984,11 @@ export interface VentaDeleteInput {
 // Cuenta-corriente de clientes + cobros domain types (C-35 backend, C-36
 // frontend, design.md D9)
 //
-// Hand-written, matching the style of every other block in this file — NOT
-// produced by `npm run generate-types` (C-41 owns that migration).
+// Derived from `npm run generate-types` output (C-41), matching every other
+// derived block in this file — `CobroClienteCreate` is the one exception,
+// staying hand-written for the same D5-adjacent reason `VentaCreate`/
+// `FacturaItemCreate` do (a write payload whose wire union is narrowed to
+// the human-typed `string`, not derived).
 //
 // The number/string split below is deliberate, not an oversight:
 //   - Ledger READS (`saldo`, `VentaConEstado.monto`,
@@ -994,25 +1051,34 @@ export type VentaConEstado = Omit<
  * chronologically and computes `saldo_acumulado` as a running sum in the
  * same walk — the frontend renders the array verbatim, never re-sorted
  * (RN-HIST, mirrors `EntradaHistorial`).
+ *
+ * Derived from `EntradaHistorialCliente` (C-41). `monto`/`saldo_acumulado`
+ * converted string→number via `DecimalAsNumber`; `parseEntradaHistorialCliente`
+ * (`cuentaCorrienteClienteApi.ts`) is the boundary that already did this
+ * parsing (predates C-41) — type derivation only.
  */
-export interface EntradaHistorialCliente {
-  id: string
-  tipo: EntradaHistorialClienteTipo
-  fecha: string
-  monto: number
-  saldo_acumulado: number
-  archivo_url?: string | null
-}
+export type EntradaHistorialCliente = DecimalAsNumber<
+  components['schemas']['EntradaHistorialCliente'],
+  'monto' | 'saldo_acumulado'
+>
 
 /**
  * Response shape of `GET /api/clientes/{id}/cuenta-corriente` (C-35). The
  * frontend consumes the triple verbatim — `saldo`, each fiado's `estado`,
  * and each history row's `saldo_acumulado` are NEVER recomputed on the
  * client (RN-SALDO, RN-FIFO, RN-HIST, design.md D1).
+ *
+ * Derived from `CuentaCorrienteClienteResponse` (C-41). `ventas_con_estado`
+ * and `historial` are overridden to the derived public `VentaConEstado[]` /
+ * `EntradaHistorialCliente[]` — same nested-array reason as
+ * `CuentaCorrienteResponse`. `parseCuentaCorrienteCliente`
+ * (`cuentaCorrienteClienteApi.ts`) is the boundary that already parses the
+ * whole triple (predates C-41) — this change only derives the type.
  */
-export interface CuentaCorrienteClienteResponse {
-  cliente_id: string
-  saldo: number
+export type CuentaCorrienteClienteResponse = Omit<
+  DecimalAsNumber<components['schemas']['CuentaCorrienteClienteResponse'], 'saldo'>,
+  'ventas_con_estado' | 'historial'
+> & {
   ventas_con_estado: VentaConEstado[]
   historial: EntradaHistorialCliente[]
 }
@@ -1059,33 +1125,32 @@ export type Granularidad = DecimalAsNumber<components['schemas']['Granularidad']
  * One bucket of the compras series (backend: app/schemas/estadisticas.py
  * PeriodoTotal). `periodo` equals `desde` — the bucket start.
  *
- * DECIMALS: `total` is a `number` here, but it travels the wire as a
- * Pydantic-v2 Decimal STRING. `parseEstadisticas` converts it at the
- * boundary (mirrors `parseCuentaCorriente`, C-13 D13) so no component ever
- * sees a string-encoded decimal.
- *
  * A period with no movement arrives with `total: 0` — the backend zero-fills
  * the series on purpose (C-37 D2) so a chart never draws a straight line
  * between two non-consecutive dates and invents a trend. The frontend must
  * NOT filter those zeros out.
+ *
+ * Derived from `PeriodoTotal` (C-41). `total` converted string→number via
+ * `DecimalAsNumber`; `parsePeriodoTotal` (`estadisticasParse.ts`) is the
+ * boundary that already did this parsing (predates this derivation, C-38,
+ * mirrors `parseCuentaCorriente`, C-13 D13) — type derivation only.
  */
-export interface PeriodoTotal {
-  periodo: string
-  desde: string
-  hasta: string
-  total: number
-}
+export type PeriodoTotal = DecimalAsNumber<components['schemas']['PeriodoTotal'], 'total'>
 
 /**
  * Purchase totals by period (backend: ComprasResponse), optionally scoped to
  * one supplier. A `proveedor_id` belonging to another negocio answers 404,
  * never 403 (negocio_id isolation).
+ *
+ * Derived from `ComprasResponse` (C-41). `periodos` overridden to the
+ * derived public `PeriodoTotal[]` — `DecimalAsNumber` only converts
+ * top-level keys, so the nested wire rows (string `total`) would otherwise
+ * leak through untouched.
  */
-export interface ComprasResponse {
-  desde: string
-  hasta: string
-  granularidad: Granularidad
-  proveedor_id?: string | null
+export type ComprasResponse = Omit<
+  DecimalAsNumber<components['schemas']['ComprasResponse'], never>,
+  'periodos'
+> & {
   periodos: PeriodoTotal[]
 }
 
@@ -1100,20 +1165,36 @@ export interface ComprasResponse {
  *
  * `cobro_cliente` is NEVER part of this (C-37 D3): a fiado was already
  * counted as a sale the day the goods left.
+ *
+ * Derived from `VentaPeriodo` (C-41). `total` converted via
+ * `DecimalAsNumber`; `desglose` is overridden by hand to `Record<FormaPago,
+ * number>` — the OpenAPI-generated wire shape is a generic
+ * `{ [key: string]: string }` (openapi-typescript cannot express "keyed by
+ * every `FormaPago` member" from a Pydantic `dict[FormaPago, Decimal]`), and
+ * `DecimalAsNumber` only converts named top-level keys, not a dict's value
+ * type. `parseVentaPeriodo` (`estadisticasParse.ts`) is the boundary that
+ * already builds this shape (predates this derivation, C-38) — type
+ * derivation only.
  */
-export interface VentaPeriodo {
-  periodo: string
-  desde: string
-  hasta: string
-  total: number
+export type VentaPeriodo = Omit<
+  DecimalAsNumber<components['schemas']['VentaPeriodo'], 'total'>,
+  'desglose'
+> & {
   desglose: Record<FormaPago, number>
 }
 
-/** Sales totals by period, broken down by payment method (backend: VentasResponse). */
-export interface VentasResponse {
-  desde: string
-  hasta: string
-  granularidad: Granularidad
+/**
+ * Sales totals by period, broken down by payment method (backend:
+ * VentasResponse).
+ *
+ * Derived from `VentasResponse` (C-41). `periodos` overridden to the
+ * derived public `VentaPeriodo[]`, same nested-array reason as
+ * `ComprasResponse.periodos`.
+ */
+export type VentasResponse = Omit<
+  DecimalAsNumber<components['schemas']['VentasResponse'], never>,
+  'periodos'
+> & {
   periodos: VentaPeriodo[]
 }
 
@@ -1124,14 +1205,16 @@ export interface VentasResponse {
  * labelled as one (C-37 D6): the system does not know what the goods it sold
  * cost, so calling this "margen" or "rentabilidad" would be a made-up number
  * wearing an accounting label.
+ *
+ * Derived from `ResumenResponse` (C-41). `compras`/`ventas`/`diferencia`
+ * converted string→number via `DecimalAsNumber`; `parseResumen`
+ * (`estadisticasParse.ts`) is the boundary that already did this parsing
+ * (predates this derivation, C-38) — type derivation only.
  */
-export interface ResumenResponse {
-  desde: string
-  hasta: string
-  compras: number
-  ventas: number
-  diferencia: number
-}
+export type ResumenResponse = DecimalAsNumber<
+  components['schemas']['ResumenResponse'],
+  'compras' | 'ventas' | 'diferencia'
+>
 
 /**
  * Structured `detail` of the 422 the backend returns when a range would

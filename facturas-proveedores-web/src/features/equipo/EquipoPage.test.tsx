@@ -37,7 +37,12 @@ const ADMIN = {
   es_admin: true,
   email: 'admin@test.com',
   nombre: 'Dueña',
+  telefono: null,
+  avatar_url: null,
+  nombre_negocio: null,
+  tema_preferido: 'CLARO' as const,
   created_at: '2026-01-01',
+  updated_at: '2026-01-01',
 }
 
 const MIEMBROS: MiembroResponse[] = [

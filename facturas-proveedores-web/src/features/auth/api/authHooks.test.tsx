@@ -257,7 +257,11 @@ describe('useLogout', () => {
     const { useAuthStore } = await import('../store/authStore')
 
     // Simulate logged-in state
-    useAuthStore.getState().login({ id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A', created_at: '' })
+    useAuthStore.getState().login({
+      id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A',
+      telefono: null, avatar_url: null, nombre_negocio: null, tema_preferido: 'CLARO',
+      created_at: '', updated_at: '',
+    })
 
     const { result } = renderHook(() => useLogout(), { wrapper: makeWrapper() })
 
@@ -286,7 +290,11 @@ describe('useLogout', () => {
     qc.setQueryData(AUTH_QUERY_KEYS.me, { id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A', created_at: '' })
     expect(qc.getQueryData(AUTH_QUERY_KEYS.me)).toBeDefined()
 
-    useAuthStore.getState().login({ id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A', created_at: '' })
+    useAuthStore.getState().login({
+      id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A',
+      telefono: null, avatar_url: null, nombre_negocio: null, tema_preferido: 'CLARO',
+      created_at: '', updated_at: '',
+    })
 
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>

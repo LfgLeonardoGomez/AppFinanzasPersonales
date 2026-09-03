@@ -20,14 +20,19 @@ describe('authStore — login action', () => {
   it('populates user and sets isAuthenticated to true after login()', async () => {
     const { useAuthStore } = await import('./authStore')
     const store = useAuthStore.getState()
-    store.login({ id: '1', negocio_id: 'neg-1', es_admin: false, email: 'test@test.com', nombre: 'Test', created_at: '2024-01-01' })
+    store.login({
+      id: '1', negocio_id: 'neg-1', es_admin: false, email: 'test@test.com', nombre: 'Test',
+      telefono: null, avatar_url: null, nombre_negocio: null, tema_preferido: 'CLARO',
+      created_at: '2024-01-01', updated_at: '2024-01-01',
+    })
 
     const state = useAuthStore.getState()
     expect(state.user).toEqual({
       id: '1', negocio_id: 'neg-1', es_admin: false,
       email: 'test@test.com',
       nombre: 'Test',
-      created_at: '2024-01-01',
+      telefono: null, avatar_url: null, nombre_negocio: null, tema_preferido: 'CLARO',
+      created_at: '2024-01-01', updated_at: '2024-01-01',
     })
     expect(state.isAuthenticated).toBe(true)
   })
@@ -45,7 +50,11 @@ describe('authStore — login action', () => {
     const { useAuthStore } = await import('./authStore')
     const store = useAuthStore.getState()
     // First login
-    store.login({ id: '2', negocio_id: 'neg-1', es_admin: false, email: 'b@b.com', nombre: 'B', created_at: '' })
+    store.login({
+      id: '2', negocio_id: 'neg-1', es_admin: false, email: 'b@b.com', nombre: 'B',
+      telefono: null, avatar_url: null, nombre_negocio: null, tema_preferido: 'CLARO',
+      created_at: '', updated_at: '',
+    })
     expect(useAuthStore.getState().isAuthenticated).toBe(true)
 
     // Then logout
@@ -66,7 +75,11 @@ describe('authStore — no tokens in storage', () => {
     const { useAuthStore } = await import('./authStore')
     useAuthStore
       .getState()
-      .login({ id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A', created_at: '' })
+      .login({
+        id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A',
+        telefono: null, avatar_url: null, nombre_negocio: null, tema_preferido: 'CLARO',
+        created_at: '', updated_at: '',
+      })
 
     const tokenPattern = /token|access|refresh|jwt/i
     Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).forEach((k) =>
@@ -78,7 +91,11 @@ describe('authStore — no tokens in storage', () => {
     const { useAuthStore } = await import('./authStore')
     useAuthStore
       .getState()
-      .login({ id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A', created_at: '' })
+      .login({
+        id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A',
+        telefono: null, avatar_url: null, nombre_negocio: null, tema_preferido: 'CLARO',
+        created_at: '', updated_at: '',
+      })
 
     const tokenPattern = /token|access|refresh|jwt/i
     Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.key(i)).forEach((k) =>
@@ -92,7 +109,11 @@ describe('authStore — clearSession (used by Axios interceptor)', () => {
     const { useAuthStore, clearSession } = await import('./authStore')
     useAuthStore
       .getState()
-      .login({ id: '3', negocio_id: 'neg-1', es_admin: false, email: 'c@c.com', nombre: 'C', created_at: '' })
+      .login({
+        id: '3', negocio_id: 'neg-1', es_admin: false, email: 'c@c.com', nombre: 'C',
+        telefono: null, avatar_url: null, nombre_negocio: null, tema_preferido: 'CLARO',
+        created_at: '', updated_at: '',
+      })
     expect(useAuthStore.getState().isAuthenticated).toBe(true)
 
     clearSession()

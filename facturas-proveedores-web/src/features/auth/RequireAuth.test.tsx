@@ -86,7 +86,11 @@ describe('RequireAuth — redirect when not authenticated', () => {
     const { useAuthStore } = await import('./store/authStore')
     useAuthStore
       .getState()
-      .login({ id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A', created_at: '' })
+      .login({
+        id: '1', negocio_id: 'neg-1', es_admin: false, email: 'a@b.com', nombre: 'A',
+        telefono: null, avatar_url: null, nombre_negocio: null, tema_preferido: 'CLARO',
+        created_at: '', updated_at: '',
+      })
 
     await renderWithAuth('/private')
 

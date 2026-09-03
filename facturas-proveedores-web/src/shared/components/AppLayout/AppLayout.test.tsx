@@ -22,7 +22,12 @@ const USUARIO = {
   es_admin: false,
   email: 'alguien@test.com',
   nombre: 'Alguien',
+  telefono: null,
+  avatar_url: null,
+  nombre_negocio: null,
+  tema_preferido: 'CLARO' as const,
   created_at: '2026-01-01',
+  updated_at: '2026-01-01',
 }
 
 afterEach(() => useAuthStore.setState({ user: null }))
