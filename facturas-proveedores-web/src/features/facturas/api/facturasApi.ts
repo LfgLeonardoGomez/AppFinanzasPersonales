@@ -5,6 +5,16 @@
  * estado is NEVER computed here — it arrives from the backend (RN-FAC-09).
  * items_sum_mismatch from the response is the authoritative signal (RN-FAC-04).
  *
+ * INVARIANT (C-41, D3, D9): the backend serializes `monto_total` (header) and
+ * each item's `cantidad` / `precio_unitario` as Pydantic-v2 Decimal STRINGs.
+ * `parseFactura` / `parseFacturaListItem` convert them to the `number` the
+ * public `FacturaResponse` / `FacturaListItem` types promise — mirroring
+ * `parseProveedor` (`proveedoresApi.ts`, task group 3). A malformed Decimal
+ * throws rather than degrading to `0` (D4, D-88). `numero` — a digit-heavy
+ * string like `"0001-00012345"` — is never touched by this conversion (D3).
+ * The `Raw*` interfaces mirror the wire exactly and stay internal to this
+ * module.
+ *
  * C-13 (D6): `deleteFactura` now takes a `FacturaDeleteInput` (carries the
  * `proveedor_id` alongside the `id`) so the cross-feature cache
  * invalidation in `useDeleteFactura` can target the right
@@ -35,11 +45,108 @@ import { classifySuccess } from '@shared/api/submitOutcome'
 import type {
   FacturaListItem,
   FacturaResponse,
+  FacturaItem,
   FacturaCreate,
   FacturaUpdate,
   FacturasFilters,
   FacturaDeleteInput,
+  EstadoFactura,
+  OrigenDocumento,
 } from '@shared/api/api'
+
+// ── Wire (raw) shape — strings for decimals ───────────────────────────────────
+
+interface RawFacturaItem {
+  id: string
+  factura_id: string
+  descripcion: string
+  cantidad: string
+  precio_unitario: string
+}
+
+interface RawFacturaResponse {
+  id: string
+  negocio_id: string
+  proveedor_id: string
+  numero: string | null
+  fecha_emision: string
+  fecha_vencimiento: string | null
+  monto_total: string
+  archivo_url: string | null
+  origen: OrigenDocumento
+  estado: EstadoFactura
+  items: RawFacturaItem[]
+  items_sum_mismatch: boolean
+  created_at: string
+  updated_at: string
+  proveedor_nombre?: string | null
+}
+
+interface RawFacturaListItem {
+  id: string
+  proveedor_id: string
+  numero: string | null
+  fecha_emision: string
+  monto_total: string
+  estado: EstadoFactura
+}
+
+// ── Wire → public boundary ────────────────────────────────────────────────────
+
+function parseFacturaItem(raw: RawFacturaItem): FacturaItem {
+  return {
+    id: raw.id,
+    factura_id: raw.factura_id,
+    descripcion: raw.descripcion,
+    cantidad: toFiniteNumber(raw.cantidad, 'cantidad', 'parseFactura'),
+    precio_unitario: toFiniteNumber(raw.precio_unitario, 'precio_unitario', 'parseFactura'),
+  }
+}
+
+export function parseFactura(raw: RawFacturaResponse): FacturaResponse {
+  return {
+    id: raw.id,
+    negocio_id: raw.negocio_id,
+    proveedor_id: raw.proveedor_id,
+    numero: raw.numero,
+    fecha_emision: raw.fecha_emision,
+    fecha_vencimiento: raw.fecha_vencimiento,
+    monto_total: toFiniteNumber(raw.monto_total, 'monto_total', 'parseFactura'),
+    archivo_url: raw.archivo_url,
+    origen: raw.origen,
+    estado: raw.estado,
+    items: raw.items.map(parseFacturaItem),
+    items_sum_mismatch: raw.items_sum_mismatch,
+    created_at: raw.created_at,
+    updated_at: raw.updated_at,
+    proveedor_nombre: raw.proveedor_nombre ?? null,
+  }
+}
+
+export function parseFacturaListItem(raw: RawFacturaListItem): FacturaListItem {
+  return {
+    id: raw.id,
+    proveedor_id: raw.proveedor_id,
+    numero: raw.numero,
+    fecha_emision: raw.fecha_emision,
+    monto_total: toFiniteNumber(raw.monto_total, 'monto_total', 'parseFacturaListItem'),
+    estado: raw.estado,
+  }
+}
+
+function toFiniteNumber(value: string, field: string, fn: string): number {
+  // `Number('')` is 0, not NaN — an empty string would sail through a plain
+  // `Number.isNaN` check and land on the screen as a real amount.
+  if (value.trim() === '') {
+    throw new Error(`${fn}: malformed Decimal at field "${field}" — got an empty string`)
+  }
+
+  const n = Number(value)
+  if (!Number.isFinite(n)) {
+    throw new Error(`${fn}: malformed Decimal at field "${field}" — got ${JSON.stringify(value)}`)
+  }
+  return n
+}
 
 // ── CloudinaryPreset response shape ──────────────────────────────────────────
 //
@@ -62,15 +169,15 @@ export async function listFacturas(filters: FacturasFilters = {}): Promise<Factu
   if (filters.fecha_hasta) params.fecha_hasta = filters.fecha_hasta
   if (filters.page) params.page = filters.page
 
-  const res = await apiClient.get<FacturaListItem[]>('/facturas', { params })
-  return res.data
+  const res = await apiClient.get<RawFacturaListItem[]>('/facturas', { params })
+  return res.data.map(parseFacturaListItem)
 }
 
 // ── Single ────────────────────────────────────────────────────────────────────
 
 export async function getFactura(id: string): Promise<FacturaResponse> {
-  const res = await apiClient.get<FacturaResponse>(`/facturas/${id}`)
-  return res.data
+  const res = await apiClient.get<RawFacturaResponse>(`/facturas/${id}`)
+  return parseFactura(res.data)
 }
 
 // ── Create (C-43 Fase B — idempotent) ────────────────────────────────────────
@@ -93,12 +200,12 @@ export interface CreateFacturaResult {
 export async function createFactura(data: FacturaCreate): Promise<CreateFacturaResult> {
   const idempotencyKey = getIdempotencyKey(FACTURA_IDEMPOTENCY_NAMESPACE, data)
   try {
-    const res = await apiClient.post<FacturaResponse>('/facturas', data, {
+    const res = await apiClient.post<RawFacturaResponse>('/facturas', data, {
       headers: { 'Idempotency-Key': idempotencyKey },
     })
     confirmIdempotencyKey(FACTURA_IDEMPOTENCY_NAMESPACE, idempotencyKey)
     const outcome = classifySuccess(res)
-    return { factura: res.data, replay: outcome.kind === 'alreadyRecorded' }
+    return { factura: parseFactura(res.data), replay: outcome.kind === 'alreadyRecorded' }
   } catch (err) {
     // A 409 means the key already resolved to a DIFFERENT invoice — that
     // attempt is over, so the pending key goes with it. Everything else
@@ -117,8 +224,8 @@ export async function updateFactura(
   id: string,
   data: FacturaUpdate,
 ): Promise<FacturaResponse> {
-  const res = await apiClient.patch<FacturaResponse>(`/facturas/${id}`, data)
-  return res.data
+  const res = await apiClient.patch<RawFacturaResponse>(`/facturas/${id}`, data)
+  return parseFactura(res.data)
 }
 
 // ── Delete (soft delete on backend) ──────────────────────────────────────────

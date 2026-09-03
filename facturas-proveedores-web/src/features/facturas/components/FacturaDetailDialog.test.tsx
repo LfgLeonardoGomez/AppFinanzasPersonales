@@ -31,7 +31,10 @@ const FACTURA: FacturaListItem = {
   estado: 'PARCIAL',
 }
 
-/** What GET /api/facturas/{id} returns — the fields the list does NOT carry. */
+/**
+ * What GET /api/facturas/{id} returns — the fields the list does NOT carry.
+ * Wire shape (C-41, D9): `monto_total` is a Pydantic-v2 Decimal STRING.
+ */
 function fullFactura(overrides: Record<string, unknown> = {}) {
   return {
     id: 'fac-1',
@@ -40,7 +43,7 @@ function fullFactura(overrides: Record<string, unknown> = {}) {
     numero: '0001-00012345',
     fecha_emision: '2026-07-17',
     fecha_vencimiento: null,
-    monto_total: 150000,
+    monto_total: '150000',
     archivo_url: null,
     origen: 'MANUAL',
     estado: 'PARCIAL',
@@ -117,8 +120,8 @@ describe('FacturaDetailDialog — line items', () => {
         HttpResponse.json(
           fullFactura({
             items: [
-              { id: 'i-1', factura_id: 'fac-1', descripcion: 'Cemento', cantidad: 10, precio_unitario: 5000 },
-              { id: 'i-2', factura_id: 'fac-1', descripcion: 'Arena', cantidad: 2, precio_unitario: 50000 },
+              { id: 'i-1', factura_id: 'fac-1', descripcion: 'Cemento', cantidad: '10', precio_unitario: '5000' },
+              { id: 'i-2', factura_id: 'fac-1', descripcion: 'Arena', cantidad: '2', precio_unitario: '50000' },
             ],
           }),
         ),

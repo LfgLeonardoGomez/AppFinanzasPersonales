@@ -91,7 +91,9 @@ function buildServer() {
           numero: postFacturasBody.numero as string | null,
           fecha_emision: postFacturasBody.fecha_emision as string,
           fecha_vencimiento: null,
-          monto_total: postFacturasBody.monto_total as number,
+          // Wire shape (C-41, D9): the backend always answers with a
+          // Decimal STRING, even though the create payload sent a number.
+          monto_total: String(postFacturasBody.monto_total),
           archivo_url: postFacturasBody.archivo_url as string | null,
           origen: (postFacturasBody.origen as string) ?? 'MANUAL',
           estado: 'PENDIENTE',

@@ -46,6 +46,10 @@ import type {
   DecimalAsNumber,
   Proveedor,
   ProveedorListItem,
+  FacturaItem,
+  FacturaResponse,
+  FacturaListItem,
+  FacturaConEstado,
   AvatarUpdate,
   ClienteCreate,
   EstadoFactura,
@@ -202,6 +206,73 @@ const _proveedorAssertions: [
   _AssertNoNotasInListItem,
 ] = [true, true, true, true]
 void _proveedorAssertions
+
+// ── FacturaItem / FacturaResponse / FacturaListItem / FacturaConEstado
+// (task group 4) ─────────────────────────────────────────────────────────
+//
+// `numero` is widened back to required on `FacturaResponse`, `FacturaListItem`
+// and `FacturaConEstado` — same rationale as `Proveedor.cuit` above: the
+// schema marks it "not required" but FastAPI always serializes the key.
+// `FacturaResponse.items` is overridden to the derived `FacturaItem[]`
+// (`DecimalAsNumber` only converts top-level keys, so the nested wire
+// items — string `cantidad`/`precio_unitario` — would otherwise leak
+// through untouched).
+
+type _FacturaItem = Assert<
+  'FacturaItem~FacturaItemResponse (cantidad/precio_unitario converted)',
+  Eq<FacturaItem, DecimalAsNumber<S['FacturaItemResponse'], 'cantidad' | 'precio_unitario'>>
+>
+
+type _FacturaResponse = Assert<
+  'FacturaResponse (monto_total converted, numero required, items → FacturaItem[])',
+  Eq<
+    FacturaResponse,
+    Omit<DecimalAsNumber<S['FacturaResponse'], 'monto_total'>, 'numero' | 'items'> & {
+      numero: string | null
+      items: FacturaItem[]
+    }
+  >
+>
+
+type _FacturaListItem = Assert<
+  'FacturaListItem (monto_total converted, numero required)',
+  Eq<
+    FacturaListItem,
+    Omit<DecimalAsNumber<S['FacturaListItem'], 'monto_total'>, 'numero'> & {
+      numero: string | null
+    }
+  >
+>
+
+type _FacturaConEstado = Assert<
+  'FacturaConEstado (monto_total converted, numero required)',
+  Eq<
+    FacturaConEstado,
+    Omit<DecimalAsNumber<S['FacturaConEstado'], 'monto_total'>, 'numero'> & {
+      numero: string | null
+    }
+  >
+>
+
+// `DecimalAsNumber` selectivity, re-proven on a nested-array-bearing schema
+// (task 2.4's proveedores case had no arrays): `numero` — a digit-heavy
+// string like "0001-00012345" — must stay untouched by the conversion.
+type _FacturaNumeroUntouched = Assert<
+  'DecimalAsNumber selectivity: numero (digit-heavy string) untouched by monto_total conversion',
+  Eq<
+    DecimalAsNumber<S['FacturaResponse'], 'monto_total'>['numero'],
+    S['FacturaResponse']['numero']
+  >
+>
+
+const _facturaAssertions: [
+  _FacturaItem,
+  _FacturaResponse,
+  _FacturaListItem,
+  _FacturaConEstado,
+  _FacturaNumeroUntouched,
+] = [true, true, true, true, true]
+void _facturaAssertions
 
 const _assertions: [
   _AvatarUpdate, _ClienteCreate, _EstadoFactura, _EstadoVentaFiada, _FormaPago,

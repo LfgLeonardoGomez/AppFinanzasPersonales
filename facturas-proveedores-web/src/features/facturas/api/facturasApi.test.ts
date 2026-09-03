@@ -10,24 +10,32 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { createFactura, updateFactura, deleteFactura } from './facturasApi'
+import { createFactura, updateFactura, deleteFactura, getFactura, listFacturas } from './facturasApi'
 import { createPago } from '@features/pagos/api/pagosApi'
-import type { FacturaResponse, FacturaCreate } from '@shared/api/api'
+import type { FacturaCreate } from '@shared/api/api'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
+//
+// Wire shape (C-41, D9): every field the backend serializes as a Pydantic-v2
+// Decimal STRING is a string here — `monto_total`, and each item's
+// `cantidad` / `precio_unitario`. `parseFactura` / `parseFacturaListItem`
+// (`facturasApi.ts`) are the boundary that converts them to the `number`
+// the public `FacturaResponse` / `FacturaListItem` types promise. A fixture
+// that already returns a JS number is a test that passes without exercising
+// that conversion.
 
-const mockFactura: FacturaResponse = {
+const mockFactura = {
   id: 'factura-1',
   negocio_id: 'negocio-1',
   proveedor_id: 'prov-1',
   numero: 'A-0001',
   fecha_emision: '2026-08-20',
   fecha_vencimiento: null,
-  monto_total: 3000,
+  monto_total: '3000.00',
   archivo_url: null,
   origen: 'MANUAL',
   estado: 'PENDIENTE',
-  items: [],
+  items: [] as { id: string; factura_id: string; descripcion: string; cantidad: string; precio_unitario: string }[],
   items_sum_mismatch: false,
   created_at: '2026-08-20T10:00:00',
   updated_at: '2026-08-20T10:00:00',
@@ -284,5 +292,108 @@ describe('facturas owns its own idempotency namespace', () => {
     expect(facturaKeys[0]).toBe(facturaKeys[1])
     expect(pagoKeys[0]).toBe(pagoKeys[1])
     expect(facturaKeys[0]).not.toBe(pagoKeys[0])
+  })
+})
+
+// ── Wire → public parsing boundary (C-41, D3, D9) ────────────────────────────
+//
+// `monto_total` (header) and `cantidad` / `precio_unitario` (each line item)
+// are Pydantic-v2 Decimal strings on the wire. These tests exercise the
+// conversion at every entry point that returns a `FacturaResponse` /
+// `FacturaListItem` — `getFactura`, `listFacturas`, `createFactura`,
+// `updateFactura` — mirroring `proveedoresApi.test.ts` (task group 3).
+
+describe('getFactura / listFacturas — parse boundary', () => {
+  it('converts monto_total and each item’s cantidad/precio_unitario to number', async () => {
+    server.use(
+      http.get('/api/facturas/:id', () =>
+        HttpResponse.json({
+          ...mockFactura,
+          items: [
+            { id: 'item-1', factura_id: 'factura-1', descripcion: 'Harina', cantidad: '2.50', precio_unitario: '1500.00' },
+          ],
+        }),
+      ),
+    )
+
+    const factura = await getFactura('factura-1')
+
+    expect(factura.monto_total).toBe(3000)
+    expect(factura.items[0]?.cantidad).toBe(2.5)
+    expect(factura.items[0]?.precio_unitario).toBe(1500)
+  })
+
+  it('converts monto_total to number on each row of the paginated list (triangulation)', async () => {
+    server.use(
+      http.get('/api/facturas', () =>
+        HttpResponse.json([
+          { id: 'factura-1', proveedor_id: 'prov-1', numero: 'A-0001', fecha_emision: '2026-08-20', monto_total: '3000.00', estado: 'PENDIENTE' },
+          { id: 'factura-2', proveedor_id: 'prov-1', numero: 'A-0002', fecha_emision: '2026-08-21', monto_total: '4250.75', estado: 'PAGADA' },
+        ]),
+      ),
+    )
+
+    const facturas = await listFacturas()
+
+    expect(facturas[0]?.monto_total).toBe(3000)
+    expect(facturas[1]?.monto_total).toBe(4250.75)
+  })
+
+  it('the invoice numero — a digit-heavy string like "0001-00012345" — is never touched by the money conversion (D3)', async () => {
+    server.use(
+      http.get('/api/facturas/:id', () =>
+        HttpResponse.json({ ...mockFactura, numero: '0001-00012345' }),
+      ),
+    )
+
+    const factura = await getFactura('factura-1')
+
+    expect(factura.numero).toBe('0001-00012345')
+    expect(typeof factura.numero).toBe('string')
+  })
+})
+
+describe('getFactura / listFacturas — malformed decimal throws (D4, D-88)', () => {
+  it('throws instead of returning 0 when monto_total is malformed', async () => {
+    server.use(
+      http.get('/api/facturas/:id', () =>
+        HttpResponse.json({ ...mockFactura, monto_total: 'not-a-number' }),
+      ),
+    )
+
+    await expect(getFactura('factura-1')).rejects.toThrow(/monto_total/)
+  })
+
+  it('throws instead of returning 0 when an item’s precio_unitario is malformed (triangulation)', async () => {
+    server.use(
+      http.get('/api/facturas/:id', () =>
+        HttpResponse.json({
+          ...mockFactura,
+          items: [
+            { id: 'item-1', factura_id: 'factura-1', descripcion: 'Harina', cantidad: '2', precio_unitario: 'garbage' },
+          ],
+        }),
+      ),
+    )
+
+    await expect(getFactura('factura-1')).rejects.toThrow(/precio_unitario/)
+  })
+})
+
+describe('createFactura / updateFactura — parse boundary (triangulation)', () => {
+  it('createFactura converts the response monto_total to number', async () => {
+    server.use(
+      http.post('/api/facturas', () => HttpResponse.json(mockFactura, { status: 201 })),
+    )
+    const result = await createFactura(payload())
+    expect(result.factura.monto_total).toBe(3000)
+  })
+
+  it('updateFactura converts the response monto_total to number', async () => {
+    server.use(
+      http.patch('/api/facturas/:id', () => HttpResponse.json({ ...mockFactura, monto_total: '5000.50' })),
+    )
+    const factura = await updateFactura('factura-1', { monto_total: 5000.5 })
+    expect(factura.monto_total).toBe(5000.5)
   })
 })

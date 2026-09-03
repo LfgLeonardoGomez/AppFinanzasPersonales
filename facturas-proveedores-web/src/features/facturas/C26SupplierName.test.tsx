@@ -26,7 +26,8 @@ function mockFactura(overrides: Record<string, unknown> = {}) {
     numero: 'F-001',
     fecha_emision: '2026-06-01',
     fecha_vencimiento: null,
-    monto_total: 1500,
+    // Wire shape (C-41, D9): monto_total is a Pydantic-v2 Decimal string.
+    monto_total: '1500',
     archivo_url: null,
     origen: 'MANUAL',
     estado: 'PENDIENTE',

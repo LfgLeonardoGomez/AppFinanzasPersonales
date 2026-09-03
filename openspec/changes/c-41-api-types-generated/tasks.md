@@ -30,13 +30,13 @@
 
 ## 4. Cliente de facturas
 
-- [ ] 4.1 RED — test del parseo en el borde de `facturasApi` con `monto_total`, `cantidad` y `precio_unitario` como cadenas
-- [ ] 4.2 RED — test del decimal malformado en facturas: lanza, no degrada
-- [ ] 4.3 GREEN — implementar el parseo en `facturasApi` con las formas `Raw*` internas
-- [ ] 4.4 Derivar `Factura`, `FacturaListItem`, `FacturaConEstado` y `FacturaItem` del generado, resolviendo el drift que aflore
-- [ ] 4.5 Migrar los fixtures de facturas a la forma del wire
-- [ ] 4.6 Agregar al guard las aserciones de los tipos de facturas
-- [ ] 4.7 Typecheck, lint y suite en verde
+- [x] 4.1 RED — test del parseo en el borde de `facturasApi` con `monto_total`, `cantidad` y `precio_unitario` como cadenas
+- [x] 4.2 RED — test del decimal malformado en facturas: lanza, no degrada
+- [x] 4.3 GREEN — implementar el parseo en `facturasApi` con las formas `Raw*` internas — **DESVIACIÓN encontrada al retomar**: `updateFactura` había quedado sin cablear (devolvía `res.data` crudo tipado `FacturaResponse`, una mentira a nivel de tipos). Corregido: ahora pasa por `parseFactura`.
+- [x] 4.4 Derivar `Factura`, `FacturaListItem`, `FacturaConEstado` y `FacturaItem` del generado, resolviendo el drift que aflore — `numero` widened a required (mismo patrón que `cuit`/`telefono`/`notas` de `Proveedor`); `FacturaResponse.items` sobreescrito a `FacturaItem[]` porque `DecimalAsNumber` no toca claves anidadas
+- [x] 4.5 Migrar los fixtures de facturas a la forma del wire — **8 archivos** (medido por mecanismo real de mock MSW): `FacturasPage.test.tsx`, `C26SupplierName.test.tsx`, `facturasHooks.test.tsx`, `FacturaDetailDialog.test.tsx`, `FacturaForm.test.tsx`, `FacturasList.test.tsx`, `cacheInvalidation.test.tsx`, `PropuestaIAModal.e2e.test.tsx`. Dos fixtures (`mockCreatedFactura` en `FacturaForm.test.tsx`, `mockFacturaResponse` en `cacheInvalidation.test.tsx`) servían a la vez de respuesta HTTP simulada y de prop directo de componente — divididas en variantes Raw/pública (D9)
+- [x] 4.6 Agregar al guard las aserciones de los tipos de facturas — verificado por mutación (rename de `numero`→`numero_renamed` en el schema generado, `tsc` falló señalando `_FacturaNumeroUntouched`; revertido)
+- [x] 4.7 Typecheck, lint y suite en verde — 1022/126 (baseline 1015/126 + 7 tests nuevos de `facturasApi.test.ts`), `tsc --noEmit` limpio, `eslint --max-warnings 0` limpio
 
 ## 5. Cliente de pagos
 

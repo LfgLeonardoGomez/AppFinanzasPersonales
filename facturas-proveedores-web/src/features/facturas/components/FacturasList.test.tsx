@@ -15,28 +15,31 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { FacturasList } from './FacturasList'
-import type { FacturaListItem } from '@shared/api/api'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
+//
+// Wire shape (C-41, D9): `monto_total` is a Pydantic-v2 Decimal STRING on
+// the wire. `parseFacturaListItem` (facturasApi.ts) converts it to the
+// `number` the public `FacturaListItem` type promises.
 
-const mockFacturaPendiente: FacturaListItem = {
+const mockFacturaPendiente = {
   id: 'fac-1',
   proveedor_id: 'prov-1',
   numero: 'FAC-001',
   fecha_emision: '2026-06-01',
-  monto_total: 1500,
+  monto_total: '1500',
   estado: 'PENDIENTE',
 }
 
-const mockFacturaPagada: FacturaListItem = {
+const mockFacturaPagada = {
   ...mockFacturaPendiente,
   id: 'fac-2',
   numero: 'FAC-002',
-  monto_total: 2500,
+  monto_total: '2500',
   estado: 'PAGADA',
 }
 
-const mockListResponse: FacturaListItem[] = [mockFacturaPendiente, mockFacturaPagada]
+const mockListResponse = [mockFacturaPendiente, mockFacturaPagada]
 
 // ── MSW Server ────────────────────────────────────────────────────────────────
 

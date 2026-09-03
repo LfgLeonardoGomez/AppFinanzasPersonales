@@ -40,7 +40,6 @@ import {
 import { useCuentaCorriente, CUENTA_CORRIENTE_KEYS } from './cuentaCorrienteHooks'
 import type {
   FacturaResponse,
-  FacturaListItem,
   PagoResponse,
   PagoListItem,
   CuentaCorrienteResponse,
@@ -51,26 +50,41 @@ import type {
 const PROVEEDOR_A = 'proveedor-A'
 const PROVEEDOR_B = 'proveedor-B'
 
-const mockFacturaListItem: FacturaListItem = {
+/**
+ * Wire shape (C-41, D9) — feeds MSW responses for POST/PATCH /api/facturas.
+ * `monto_total` is a Pydantic-v2 Decimal STRING on the wire.
+ *
+ * Split from the public `mockFacturaResponse` below (D9): this fixture used
+ * to serve both a simulated HTTP response AND the `CuentaCorrienteResponse`
+ * prewarm data below, but those two need different shapes now.
+ */
+const mockFacturaListItemRaw = {
   id: 'factura-1',
   proveedor_id: PROVEEDOR_A,
   numero: 'FAC-001',
   fecha_emision: '2026-06-01',
-  monto_total: 1000,
-  estado: 'PENDIENTE',
+  monto_total: '1000.00',
+  estado: 'PENDIENTE' as const,
 }
 
-const mockFacturaResponse: FacturaResponse = {
-  ...mockFacturaListItem,
+const mockFacturaResponseRaw = {
+  ...mockFacturaListItemRaw,
   // c-26: the LEAN list row does not carry these — the full response does.
   negocio_id: 'user-1',
   fecha_vencimiento: null,
   archivo_url: null,
-  origen: 'MANUAL',
+  origen: 'MANUAL' as const,
   created_at: '2026-06-01T10:00:00',
   updated_at: '2026-06-01T10:00:00',
-  items: [],
+  items: [] as { id: string; factura_id: string; descripcion: string; cantidad: string; precio_unitario: string }[],
   items_sum_mismatch: false,
+}
+
+/** Public (parsed) shape — used directly as prewarm cache data, no HTTP round-trip. */
+const mockFacturaResponse: FacturaResponse = {
+  ...mockFacturaResponseRaw,
+  monto_total: 1000,
+  items: [],
 }
 
 const mockPagoListItem: PagoListItem = {
@@ -114,7 +128,7 @@ const server = setupServer(
       saldo: '1000.00',
       facturas_con_estado: [
         {
-          ...mockFacturaListItem,
+          ...mockFacturaListItemRaw,
           monto_total: '1000.00',
         },
       ],
@@ -132,15 +146,33 @@ const server = setupServer(
 
   http.post('/api/facturas', async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>
+    // The create payload sends `monto_total` as a JS number (FacturaCreate);
+    // the mocked response must re-stringify it to stay wire-shaped (D9).
     return HttpResponse.json(
-      { ...mockFacturaResponse, ...body },
+      {
+        ...mockFacturaResponseRaw,
+        ...body,
+        monto_total:
+          body.monto_total !== undefined
+            ? String(body.monto_total)
+            : mockFacturaResponseRaw.monto_total,
+      },
       { status: 201 },
     )
   }),
 
   http.patch('/api/facturas/:id', async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>
-    return HttpResponse.json({ ...mockFacturaResponse, ...body })
+    // The PATCH payload sends `monto_total` as a JS number (FacturaUpdate);
+    // the mocked response must re-stringify it to stay wire-shaped (D9).
+    return HttpResponse.json({
+      ...mockFacturaResponseRaw,
+      ...body,
+      monto_total:
+        body.monto_total !== undefined
+          ? String(body.monto_total)
+          : mockFacturaResponseRaw.monto_total,
+    })
   }),
 
   http.delete('/api/facturas/:id', () => new HttpResponse(null, { status: 204 })),

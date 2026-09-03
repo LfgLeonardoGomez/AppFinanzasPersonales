@@ -21,23 +21,24 @@ import {
   useDeleteFactura,
   useCloudinaryPreset,
 } from './facturasHooks'
-import type {
-  FacturaResponse,
-  FacturaListItem,
-} from '@shared/api/api'
-
 // ── Fixtures ──────────────────────────────────────────────────────────────────
+//
+// Wire shape (C-41, D9): `monto_total` is a Pydantic-v2 Decimal STRING on
+// the wire. `parseFactura` / `parseFacturaListItem` (facturasApi.ts) convert
+// it to the `number` the public `FacturaResponse` / `FacturaListItem` types
+// promise — a fixture that already returns a JS number would exercise
+// nothing.
 
-const mockFacturaListItem: FacturaListItem = {
+const mockFacturaListItem = {
   id: 'factura-uuid-1',
   proveedor_id: 'proveedor-uuid-1',
   numero: 'FAC-001',
   fecha_emision: '2026-06-01',
-  monto_total: 1500.0,
+  monto_total: '1500.00',
   estado: 'PENDIENTE',
 }
 
-const mockFacturaResponse: FacturaResponse = {
+const mockFacturaResponse = {
   ...mockFacturaListItem,
   // c-26: the LEAN list row does not carry these — the full response does.
   negocio_id: 'user-1',
@@ -46,11 +47,11 @@ const mockFacturaResponse: FacturaResponse = {
   origen: 'MANUAL',
   created_at: '2026-06-01T10:00:00',
   updated_at: '2026-06-01T10:00:00',
-  items: [],
+  items: [] as { id: string; factura_id: string; descripcion: string; cantidad: string; precio_unitario: string }[],
   items_sum_mismatch: false,
 }
 
-const mockListResponse: FacturaListItem[] = [mockFacturaListItem]
+const mockListResponse = [mockFacturaListItem]
 
 // ── MSW Server ────────────────────────────────────────────────────────────────
 
@@ -89,7 +90,17 @@ const server = setupServer(
   // PATCH /api/facturas/:id
   http.patch('/api/facturas/:id', async ({ request }) => {
     const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ ...mockFacturaResponse, ...body })
+    // The PATCH payload sends `monto_total` as a JS number (FacturaUpdate);
+    // the backend always answers with a Decimal string, so the echoed
+    // response must re-stringify it to keep the mock wire-shaped (D9).
+    return HttpResponse.json({
+      ...mockFacturaResponse,
+      ...body,
+      monto_total:
+        body.monto_total !== undefined
+          ? String(body.monto_total)
+          : mockFacturaResponse.monto_total,
+    })
   }),
 
   // DELETE /api/facturas/:id

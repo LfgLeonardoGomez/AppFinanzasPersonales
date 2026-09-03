@@ -33,21 +33,38 @@ const mockProveedor: ProveedorListItem = {
   ultima_factura_fecha: null,
 }
 
-const mockCreatedFactura: FacturaResponse = {
+/**
+ * Wire shape (C-41, D9) — feeds MSW responses. `monto_total` is a
+ * Pydantic-v2 Decimal STRING on the wire; `parseFactura` (facturasApi.ts)
+ * converts it to the `number` the public `FacturaResponse` type promises.
+ *
+ * Split from `mockCreatedFactura` below (D9): this fixture used to serve
+ * both a simulated HTTP response AND a direct `FacturaForm` prop, but those
+ * two now need different shapes for the same reason `monto_total` needed
+ * parsing in the first place — a fixture can no longer honestly be both.
+ */
+const mockCreatedFacturaRaw = {
   id: 'factura-uuid-1',
   negocio_id: 'user-1',
   proveedor_id: 'prov-uuid-1',
   numero: null,
   fecha_emision: '2026-06-01',
   fecha_vencimiento: null,
-  monto_total: 1500,
+  monto_total: '1500',
   archivo_url: null,
-  origen: 'MANUAL',
-  estado: 'PENDIENTE',
-  items: [],
+  origen: 'MANUAL' as const,
+  estado: 'PENDIENTE' as const,
+  items: [] as { id: string; factura_id: string; descripcion: string; cantidad: string; precio_unitario: string }[],
   items_sum_mismatch: false,
   created_at: '2026-06-01T10:00:00',
   updated_at: '2026-06-01T10:00:00',
+}
+
+/** Public (parsed) shape — used as a direct `FacturaForm` prop, no HTTP round-trip. */
+const mockCreatedFactura: FacturaResponse = {
+  ...mockCreatedFacturaRaw,
+  monto_total: 1500,
+  items: [],
 }
 
 // ── MSW Server ────────────────────────────────────────────────────────────────
@@ -61,19 +78,19 @@ const server = setupServer(
         { status: 422 },
       )
     }
-    return HttpResponse.json(mockCreatedFactura, { status: 201 })
+    return HttpResponse.json(mockCreatedFacturaRaw, { status: 201 })
   }),
 
   http.get('/api/facturas/:id', ({ params }) => {
     if (params.id === 'factura-uuid-1') {
-      return HttpResponse.json(mockCreatedFactura)
+      return HttpResponse.json(mockCreatedFacturaRaw)
     }
     return HttpResponse.json({ detail: 'Not Found' }, { status: 404 })
   }),
 
   http.patch('/api/facturas/:id', async ({ request }) => {
     const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ ...mockCreatedFactura, ...body })
+    return HttpResponse.json({ ...mockCreatedFacturaRaw, ...body })
   }),
 
   http.get('/api/cloudinary/preset-firmado', () => {
@@ -301,7 +318,7 @@ describe('FacturaForm — triangulate', () => {
     server.use(
       http.post('/api/facturas', async () => {
         return HttpResponse.json(
-          { ...mockCreatedFactura, items_sum_mismatch: true },
+          { ...mockCreatedFacturaRaw, items_sum_mismatch: true },
           { status: 201 },
         )
       }),

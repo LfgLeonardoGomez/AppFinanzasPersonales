@@ -303,18 +303,22 @@ export type OrigenDocumento = DecimalAsNumber<components['schemas']['OrigenDocum
 /**
  * A single line item on an invoice (as returned by the API).
  * cantidad and precio_unitario are JSON numbers — formatted by the UI.
+ * Derived from `FacturaItemResponse` (C-41, D6 alias).
  */
-export interface FacturaItem {
-  id: string
-  factura_id: string
-  descripcion: string
-  cantidad: number
-  precio_unitario: number
-}
+export type FacturaItem = DecimalAsNumber<
+  components['schemas']['FacturaItemResponse'],
+  'cantidad' | 'precio_unitario'
+>
 
 /**
  * Payload for creating/updating a line item.
  * descripcion must be non-empty; cantidad > 0; precio_unitario >= 0.
+ *
+ * NOT derived from `FacturaItemCreate` (D5-adjacent): the backend schema
+ * accepts `number | string` for `cantidad`/`precio_unitario` (Pydantic's
+ * Decimal validator takes either); this type narrows to `number` because
+ * every call site builds the payload from parsed form state, never from a
+ * raw wire string. Same narrowing rationale as `VentaCreate.monto`.
  */
 export interface FacturaItemCreate {
   descripcion: string
@@ -326,36 +330,26 @@ export interface FacturaItemCreate {
  * Full invoice object returned by GET /api/facturas/{id}.
  * estado is computed on-demand by the backend (RN-FAC-09). NEVER computed on frontend.
  * items_sum_mismatch is authoritative — the client sum warning is UX only (RN-FAC-04).
+ *
+ * Derived from `FacturaResponse` (C-41). `numero` is widened back to
+ * REQUIRED (`string | null`, not `?: string | null`) for the same reason
+ * `Proveedor.cuit`/`.telefono`/`.notas` are: the OpenAPI schema marks it
+ * "not required" because that is what `Optional[str] = None` means at the
+ * Pydantic constructor, but FastAPI still serializes the key on every
+ * response. `items` is overridden to the derived public `FacturaItem[]` —
+ * `DecimalAsNumber` only converts top-level keys, so the nested wire items
+ * (string `cantidad`/`precio_unitario`) would otherwise leak through
+ * untouched. `parseFactura` (`facturasApi.ts`) is the boundary that makes
+ * both of these true.
  */
-export interface FacturaResponse {
-  id: string
-  negocio_id: string
-  proveedor_id: string
+export type FacturaResponse = Omit<
+  DecimalAsNumber<components['schemas']['FacturaResponse'], 'monto_total'>,
+  'numero' | 'items'
+> & {
   numero: string | null
-  fecha_emision: string
-  fecha_vencimiento: string | null
-  monto_total: number
-  archivo_url: string | null
-  origen: OrigenDocumento
-  estado: EstadoFactura
   items: FacturaItem[]
-  items_sum_mismatch: boolean
-  created_at: string
-  updated_at: string
-  /**
-   * c-26 (D1): the related supplier's name, populated by the backend
-   * for POST/GET/PATCH responses — mirrors PagoResponse.proveedor_nombre
-   * (C-18, FE-005). `null` when the supplier was soft-deleted (the
-   * factura remains valid; the supplier's absence is informational).
-   * The list endpoint does NOT carry this field on FacturaListItem.
-   */
-  proveedor_nombre?: string | null
 }
 
-/**
- * Item in the paginated invoice list (GET /api/facturas).
- * Carries computed estado; items array is NOT included in list items.
- */
 /**
  * Lean row for the paginated listing — this is what `GET /api/facturas`
  * ACTUALLY returns.
@@ -367,14 +361,15 @@ export interface FacturaResponse {
  * promising fields that arrive as `undefined` at runtime — a compiler that
  * vouches for data the server never sends. Anything needing those fields
  * must fetch the full invoice via `GET /api/facturas/{id}`.
+ *
+ * Derived from `FacturaListItem` (C-41). Same `numero` required-widening
+ * rationale as `FacturaResponse`.
  */
-export interface FacturaListItem {
-  id: string
-  proveedor_id: string
+export type FacturaListItem = Omit<
+  DecimalAsNumber<components['schemas']['FacturaListItem'], 'monto_total'>,
+  'numero'
+> & {
   numero: string | null
-  fecha_emision: string
-  monto_total: number
-  estado: EstadoFactura
 }
 
 /**
@@ -641,19 +636,18 @@ export interface PropuestaPago {
  *     guards in `api.cuentaCorriente.test-d.ts` and `api.pagos.test.ts`
  *     lock the structural absence on the cuenta-corriente surface.
  */
-export interface FacturaConEstado {
-  id: string
-  negocio_id: string
-  proveedor_id: string
+/**
+ * Derived from `FacturaConEstado` (C-41). Same `numero` required-widening
+ * rationale as `FacturaResponse` — the schema marks it "not required" but
+ * FastAPI always serializes the key. `parseFacturaConEstado`
+ * (`cuentaCorrienteApi.ts`) is the boundary that makes this true and
+ * already parses `monto_total`; this change only derives the type.
+ */
+export type FacturaConEstado = Omit<
+  DecimalAsNumber<components['schemas']['FacturaConEstado'], 'monto_total'>,
+  'numero'
+> & {
   numero: string | null
-  fecha_emision: string
-  fecha_vencimiento: string | null
-  monto_total: number
-  archivo_url: string | null
-  origen: OrigenDocumento
-  estado: EstadoFactura
-  created_at: string
-  updated_at: string
 }
 
 /**
