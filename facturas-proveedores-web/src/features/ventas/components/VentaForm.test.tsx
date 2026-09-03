@@ -18,20 +18,32 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { VentaForm } from './VentaForm'
-import type { Venta, ClienteListItem } from '@shared/api/api'
+import type { ClienteListItem, Venta } from '@shared/api/api'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
+//
+// C-41, D9: `mockVentaFiadaRaw` is HTTP-only — it feeds the MSW POST/PATCH
+// responses, so `monto` is a Pydantic-v2 Decimal STRING on the wire.
+// `mockVentaFiada` is a direct `VentaForm` component prop (no HTTP
+// round-trip), so it uses the PUBLIC shape `parseVenta` (ventasApi.ts)
+// would produce — `monto` already a `number`. Mirrors `PagoForm.test.tsx`'s
+// `mockPagoResponse`/`mockPagoListItem` split (task group 5).
 
-const mockVentaFiada: Venta = {
+const mockVentaFiadaRaw = {
   id: 'venta-1',
   negocio_id: 'negocio-1',
   cliente_id: 'cliente-1',
   fecha: '2026-08-10',
   monto: '500.00',
-  forma_pago: 'CUENTA_CORRIENTE',
+  forma_pago: 'CUENTA_CORRIENTE' as const,
   notas: null,
   created_at: '2026-08-10T10:00:00',
   updated_at: '2026-08-10T10:00:00',
+}
+
+const mockVentaFiada: Venta = {
+  ...mockVentaFiadaRaw,
+  monto: 500,
 }
 
 const mockCliente: ClienteListItem = {
@@ -55,13 +67,13 @@ const server = setupServer(
   http.post('/api/ventas', async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>
     lastCreatedBody = body
-    return HttpResponse.json({ ...mockVentaFiada, ...body }, { status: 201 })
+    return HttpResponse.json({ ...mockVentaFiadaRaw, ...body }, { status: 201 })
   }),
 
   http.patch('/api/ventas/:id', async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>
     lastPatchBody = body
-    return HttpResponse.json({ ...mockVentaFiada, ...body })
+    return HttpResponse.json({ ...mockVentaFiadaRaw, ...body })
   }),
 
   // ClienteAutocomplete's underlying calls
@@ -450,7 +462,7 @@ describe('VentaForm — retrying sends the same Idempotency-Key (C-42, task 9.6)
         capturedKeys.push(request.headers.get('Idempotency-Key'))
         if (call === 1) return HttpResponse.error()
         const body = (await request.json()) as Record<string, unknown>
-        return HttpResponse.json({ ...mockVentaFiada, ...body }, { status: 201 })
+        return HttpResponse.json({ ...mockVentaFiadaRaw, ...body }, { status: 201 })
       }),
     )
     render(<VentaForm onSuccess={vi.fn()} onCancel={vi.fn()} />, { wrapper: createWrapper() })
@@ -470,7 +482,7 @@ describe('VentaForm — a deduplicated replay reads as success (C-42, task 9.7)'
   it('reports success with the "already recorded" flag and shows no error', async () => {
     server.use(
       http.post('/api/ventas', () =>
-        HttpResponse.json(mockVentaFiada, { status: 200, headers: { 'Idempotent-Replay': 'true' } }),
+        HttpResponse.json(mockVentaFiadaRaw, { status: 200, headers: { 'Idempotent-Replay': 'true' } }),
       ),
     )
     const onSuccess = vi.fn()

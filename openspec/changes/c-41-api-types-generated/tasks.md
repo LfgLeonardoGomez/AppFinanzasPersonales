@@ -50,13 +50,13 @@
 
 ## 6. Cliente de ventas
 
-- [ ] 6.1 RED — test del parseo en el borde de `ventasApi` con `monto` como cadena
-- [ ] 6.2 RED — test del decimal malformado en ventas: lanza, no degrada
-- [ ] 6.3 GREEN — implementar el parseo en `ventasApi` con las formas `Raw*` internas
-- [ ] 6.4 Derivar `Venta`, `VentaListItem` y `VentaConEstado` del generado, resolviendo el drift que aflore
-- [ ] 6.5 Migrar los fixtures de ventas a la forma del wire
-- [ ] 6.6 Agregar al guard las aserciones de los tipos de ventas
-- [ ] 6.7 Typecheck, lint y suite en verde
+- [x] 6.1 RED — test del parseo en el borde de `ventasApi` con `monto` como cadena
+- [x] 6.2 RED — test del decimal malformado en ventas: lanza, no degrada
+- [x] 6.3 GREEN — implementar el parseo en `ventasApi` con las formas `Raw*` internas
+- [x] 6.4 Derivar `Venta`, `VentaListItem` y `VentaConEstado` del generado, resolviendo el drift que aflore — **corrección de drift real**: `Venta.monto`/`VentaListItem.monto` era `string` a mano (deliberado, "parseado solo en el borde de agregación" según un comentario de C-34/C-42 previo a C-41); medido contra la propia regla del change (D3, todo decimal nombrado se convierte en el borde de CADA cliente) y contra la lista de campos de dinero del scope ("ventas → monto"), es el mismo antipatrón que 3/4/5 ya cerraron. Corregido: ahora `number`, parseado en `ventasApi.ts`. `VentaCreate`/`VentaUpdate` (payloads de escritura) quedan `string` — el monto lo tipea un humano y se reenvía tal cual, nunca se parsea a float (D2 original, sigue vigente para escritura). `cliente_id` widened a required (`string | null`) en `Venta`, y a required no-nulo (`string`) en `VentaConEstado` (un fiado siempre tiene cliente, RN-VTA-03). `VentaListItem` no tiene schema propio — se afirma estructuralmente igual a `Venta`. `VentaConEstado` ya se parseaba en `cuentaCorrienteClienteApi.ts` (predata C-41) — esta tarea fue solo derivación de tipo, mismo hallazgo que `FacturaConEstado` en el grupo 4.
+- [x] 6.5 Migrar los fixtures de ventas a la forma del wire — **11 archivos**: 6 con fixtures MSW-only migrados a wire string (`ventasApi.test.ts`, `ventasHooks.test.tsx`, `VentasList.test.tsx`, `VentaFormPage.test.tsx`, `VentasPage.test.tsx`, y el mock de `POST /api/ventas` en `pagosApi.test.ts` — este último **fuera** del feature `ventas`, encontrado roto por la suite completa: devolvía `{ id: 'venta-1' }` sin `monto`, y `parseVenta` tira `TypeError` al no poder `.trim()` un `undefined`); 2 con fixtures directas de prop migradas a forma pública/número (`VentaCard.test.tsx`, `TotalesDelDia.test.tsx`, más `totales.test.ts`); 1 con split D9 (`VentaForm.test.tsx`: `mockVentaFiadaRaw` HTTP-only vs `mockVentaFiada` prop directo — mismo patrón que `PagoForm.test.tsx` del grupo 5, y dos usos residuales de la fixture pública colada como respuesta MSW encontrados y corregidos). `totales.ts`'s `toCentavos` cambió de `string`→`number` de entrada; sus tests de "monto malformado" (strings no numéricos) se reescribieron porque ya no son representables en el tipo — la guarda primaria contra Decimal inválido se movió al borde de la API (`parseVentaListItem`, que lanza); lo que queda en `toCentavos` es defensa en profundidad contra un `NaN`/negativo real, no contra un string.
+- [x] 6.6 Agregar al guard las aserciones de los tipos de ventas — verificado por mutación (rename de `cliente_id`→`cliente_id_renamed` en el schema generado de `VentaResponse`, `tsc` falló señalando `_VentaClienteIdUntouched`; revertido)
+- [x] 6.7 Typecheck, lint y suite en verde — 1035/126, `tsc --noEmit` limpio, `eslint --max-warnings 0` limpio
 
 ## 7. El resto de los tipos derivados y los alias de nombre
 

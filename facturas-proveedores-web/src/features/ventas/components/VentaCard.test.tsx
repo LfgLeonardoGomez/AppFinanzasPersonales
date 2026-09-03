@@ -17,7 +17,7 @@ function venta(overrides: Partial<VentaListItem>): VentaListItem {
     negocio_id: 'negocio-1',
     cliente_id: null,
     fecha: '2026-08-13',
-    monto: '1000.00',
+    monto: 1000,
     forma_pago: 'EFECTIVO',
     notas: null,
     created_at: '2026-08-13T10:00:00',
@@ -29,7 +29,7 @@ function venta(overrides: Partial<VentaListItem>): VentaListItem {
 describe('VentaCard — payment-method badge per row (task 7.1)', () => {
   it('renders the forma_pago badge and the formatted amount', () => {
     render(
-      <VentaCard venta={venta({ forma_pago: 'TARJETA', monto: '2500.00' })} onEdit={vi.fn()} onDelete={vi.fn()} />,
+      <VentaCard venta={venta({ forma_pago: 'TARJETA', monto: 2500 })} onEdit={vi.fn()} onDelete={vi.fn()} />,
     )
     expect(screen.getByText('TARJETA')).toBeInTheDocument()
     expect(screen.getByText(/\$\s?2\.500,00/)).toBeInTheDocument()

@@ -42,6 +42,22 @@
  *   - The resolved `replay` flag comes from `classifySuccess` (real
  *     status + real `Idempotent-Replay` header), not from guessing at the
  *     body — the body is identical between a creation and a replay.
+ *
+ * INVARIANT (C-41, D3, D9): the backend serializes `monto` as a Pydantic-v2
+ * Decimal STRING. `parseVenta` / `parseVentaListItem` convert it to the
+ * `number` the public `Venta` / `VentaListItem` types promise — mirroring
+ * `parsePago` (`pagosApi.ts`, task group 5). A malformed Decimal throws
+ * rather than degrading to `0` (D4, D-88). `cliente_id` — a UUID, never a
+ * money field — is never touched by this conversion. The `Raw*` interfaces
+ * mirror the wire exactly and stay internal to this module.
+ *
+ * `VentaCreate` / `VentaUpdate` (the write payloads) are DELIBERATELY left
+ * as `string` — unlike pagos/facturas, the ventas write path never parses
+ * the human-typed amount into a float (design.md D2 predates C-41: "the
+ * amount is typed by a human and sent back untouched; parsing it into a
+ * float and re-serializing it is where a cent goes missing"). This
+ * boundary only converts what the backend RETURNS, never what this app
+ * SENDS.
  */
 import { isAxiosError } from 'axios'
 import { apiClient } from '@shared/api/client'
@@ -54,7 +70,56 @@ import type {
   VentaUpdate,
   VentasFilters,
   VentaDeleteInput,
+  FormaPago,
 } from '@shared/api/api'
+
+// ── Wire (raw) shape — strings for decimals ───────────────────────────────────
+
+interface RawVenta {
+  id: string
+  negocio_id: string
+  cliente_id: string | null
+  fecha: string
+  monto: string
+  forma_pago: FormaPago
+  notas?: string | null
+  created_at: string
+  updated_at: string
+}
+
+// ── Wire → public boundary ────────────────────────────────────────────────────
+
+function parseVenta(raw: RawVenta): Venta {
+  return {
+    id: raw.id,
+    negocio_id: raw.negocio_id,
+    cliente_id: raw.cliente_id,
+    fecha: raw.fecha,
+    monto: toFiniteNumber(raw.monto, 'monto', 'parseVenta'),
+    forma_pago: raw.forma_pago,
+    notas: raw.notas ?? null,
+    created_at: raw.created_at,
+    updated_at: raw.updated_at,
+  }
+}
+
+function parseVentaListItem(raw: RawVenta): VentaListItem {
+  return parseVenta(raw)
+}
+
+function toFiniteNumber(value: string, field: string, fn: string): number {
+  // `Number('')` is 0, not NaN — an empty string would sail through a plain
+  // `Number.isNaN` check and land on the screen as a real amount.
+  if (value.trim() === '') {
+    throw new Error(`${fn}: malformed Decimal at field "${field}" — got an empty string`)
+  }
+
+  const n = Number(value)
+  if (!Number.isFinite(n)) {
+    throw new Error(`${fn}: malformed Decimal at field "${field}" — got ${JSON.stringify(value)}`)
+  }
+  return n
+}
 
 // ── List (unpaginated — design.md D2, GET /api/ventas returns a bare list) ────
 
@@ -65,15 +130,15 @@ export async function listVentas(filters: VentasFilters = {}): Promise<VentaList
   if (filters.forma_pago) params.forma_pago = filters.forma_pago
   if (filters.cliente_id) params.cliente_id = filters.cliente_id
 
-  const res = await apiClient.get<VentaListItem[]>('/ventas', { params })
-  return res.data
+  const res = await apiClient.get<RawVenta[]>('/ventas', { params })
+  return res.data.map(parseVentaListItem)
 }
 
 // ── Single ────────────────────────────────────────────────────────────────────
 
 export async function getVenta(id: string): Promise<Venta> {
-  const res = await apiClient.get<Venta>(`/ventas/${id}`)
-  return res.data
+  const res = await apiClient.get<RawVenta>(`/ventas/${id}`)
+  return parseVenta(res.data)
 }
 
 // ── Create (C-42 — idempotent) ─────────────────────────────────────────────
@@ -97,7 +162,7 @@ export interface CreateVentaResult {
 export async function createVenta(data: VentaCreate): Promise<CreateVentaResult> {
   const idempotencyKey = getIdempotencyKey(VENTA_IDEMPOTENCY_NAMESPACE, data)
   try {
-    const res = await apiClient.post<Venta>('/ventas', data, {
+    const res = await apiClient.post<RawVenta>('/ventas', data, {
       headers: { 'Idempotency-Key': idempotencyKey },
     })
     // Identity-aware (review fix, finding 1): confirms ONLY if the slot
@@ -106,7 +171,7 @@ export async function createVenta(data: VentaCreate): Promise<CreateVentaResult>
     // wipe that newer attempt's bookkeeping.
     confirmIdempotencyKey(VENTA_IDEMPOTENCY_NAMESPACE, idempotencyKey)
     const outcome = classifySuccess(res)
-    return { venta: res.data, replay: outcome.kind === 'alreadyRecorded' }
+    return { venta: parseVenta(res.data), replay: outcome.kind === 'alreadyRecorded' }
   } catch (err) {
     // A 409 means the key already resolved to a DIFFERENT sale — that
     // attempt is over, so the pending key is discarded too (design.md D7).
@@ -122,8 +187,8 @@ export async function createVenta(data: VentaCreate): Promise<CreateVentaResult>
 // ── Update (partial) ──────────────────────────────────────────────────────────
 
 export async function updateVenta(id: string, data: VentaUpdate): Promise<Venta> {
-  const res = await apiClient.patch<Venta>(`/ventas/${id}`, data)
-  return res.data
+  const res = await apiClient.patch<RawVenta>(`/ventas/${id}`, data)
+  return parseVenta(res.data)
 }
 
 // ── Delete (soft delete on backend) ───────────────────────────────────────────

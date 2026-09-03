@@ -51,6 +51,14 @@
  *   - `PagoResponse`, `PagoListItem`, `PagoListResponse` — `monto` converted,
  *     `comprobante_url` widened back to required, `PagoListResponse.items`
  *     overridden to `PagoListItem[]` for the same nested-array reason above.
+ *
+ * Also covered (task group 6 — the ventas client):
+ *   - `Venta` (~ VentaResponse, D6 alias), `VentaListItem` (same shape as
+ *     `Venta` — the backend has no separate list schema) and
+ *     `VentaConEstado` (same schema name, no alias needed) — `monto`
+ *     converted, `cliente_id` widened back to required on `Venta` (nullable)
+ *     and required+non-null on `VentaConEstado` (a fiado always has a
+ *     customer, RN-VTA-03).
  */
 import type { components } from './api.generated'
 import type {
@@ -64,6 +72,9 @@ import type {
   PagoResponse,
   PagoListItem,
   PagoListResponse,
+  Venta,
+  VentaListItem,
+  VentaConEstado,
   AvatarUpdate,
   ClienteCreate,
   EstadoFactura,
@@ -340,6 +351,58 @@ const _pagoAssertions: [
   _PagoProveedorIdUntouched,
 ] = [true, true, true, true]
 void _pagoAssertions
+
+// ── Venta / VentaListItem / VentaConEstado (task group 6) ──────────────────
+//
+// `cliente_id` is widened back to required on `Venta` (`string | null`, not
+// `?: string | null`) — same rationale as `Proveedor.cuit`/`Pago.
+// comprobante_url` above. `VentaListItem` has no separate backend schema
+// (the list endpoint returns the same shape as the single-item endpoint,
+// design.md D2) — it is asserted structurally equal to `Venta`, not
+// re-derived from a second schema. `VentaConEstado` widens `cliente_id`
+// further, to required AND non-null (a fiado always has a customer,
+// RN-VTA-03) — stricter than the general `Venta.cliente_id`.
+
+type _Venta = Assert<
+  'Venta~VentaResponse (monto converted, cliente_id required)',
+  Eq<
+    Venta,
+    Omit<DecimalAsNumber<S['VentaResponse'], 'monto'>, 'cliente_id'> & {
+      cliente_id: string | null
+    }
+  >
+>
+
+type _VentaListItem = Assert<'VentaListItem (same shape as Venta — no separate schema)', Eq<VentaListItem, Venta>>
+
+type _VentaConEstado = Assert<
+  'VentaConEstado (monto converted, cliente_id required and non-null)',
+  Eq<
+    VentaConEstado,
+    Omit<DecimalAsNumber<S['VentaConEstado'], 'monto'>, 'cliente_id'> & {
+      cliente_id: string
+    }
+  >
+>
+
+// `DecimalAsNumber` selectivity, re-proven on the ventas schema: `cliente_id`
+// — a UUID, never a money field — must stay untouched by the `monto`
+// conversion.
+type _VentaClienteIdUntouched = Assert<
+  'DecimalAsNumber selectivity: cliente_id (UUID) untouched by monto conversion',
+  Eq<
+    DecimalAsNumber<S['VentaResponse'], 'monto'>['cliente_id'],
+    S['VentaResponse']['cliente_id']
+  >
+>
+
+const _ventaAssertions: [
+  _Venta,
+  _VentaListItem,
+  _VentaConEstado,
+  _VentaClienteIdUntouched,
+] = [true, true, true, true]
+void _ventaAssertions
 
 const _assertions: [
   _AvatarUpdate, _ClienteCreate, _EstadoFactura, _EstadoVentaFiada, _FormaPago,

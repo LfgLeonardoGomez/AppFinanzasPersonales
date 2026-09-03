@@ -9,30 +9,37 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { listVentas, createVenta, updateVenta, deleteVenta } from './ventasApi'
-import type { Venta, VentaListItem } from '@shared/api/api'
+import { listVentas, getVenta, createVenta, updateVenta, deleteVenta } from './ventasApi'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
+//
+// Wire shape (C-41, D9): `monto` is a Pydantic-v2 Decimal STRING on the
+// wire. `parseVenta` / `parseVentaListItem` (ventasApi.ts) convert it to
+// the `number` the public `Venta` / `VentaListItem` types promise — a
+// fixture that already returns a JS number is a test that passes without
+// exercising that conversion. `VentaCreate`/`VentaUpdate` stay `string`
+// (write side, untouched by C-41 — the amount is typed by a human and
+// forwarded as-is, never parsed into a float and re-serialized).
 
-const mockVentaEfectivo: VentaListItem = {
+const mockVentaEfectivo = {
   id: 'venta-1',
   negocio_id: 'negocio-1',
   cliente_id: null,
   fecha: '2026-08-10',
   monto: '1000.00',
-  forma_pago: 'EFECTIVO',
+  forma_pago: 'EFECTIVO' as const,
   notas: null,
   created_at: '2026-08-10T10:00:00',
   updated_at: '2026-08-10T10:00:00',
 }
 
-const mockVentaFiada: Venta = {
+const mockVentaFiada = {
   id: 'venta-2',
   negocio_id: 'negocio-1',
   cliente_id: 'cliente-1',
   fecha: '2026-08-10',
   monto: '500.00',
-  forma_pago: 'CUENTA_CORRIENTE',
+  forma_pago: 'CUENTA_CORRIENTE' as const,
   notas: null,
   created_at: '2026-08-10T10:00:00',
   updated_at: '2026-08-10T10:00:00',
@@ -48,6 +55,11 @@ const server = setupServer(
   http.get('/api/ventas', ({ request }) => {
     capturedUrl = request.url
     return HttpResponse.json([mockVentaEfectivo])
+  }),
+
+  http.get('/api/ventas/:id', ({ params }) => {
+    if (params.id === 'venta-2') return HttpResponse.json(mockVentaFiada)
+    return HttpResponse.json({ detail: 'Not Found' }, { status: 404 })
   }),
 
   http.post('/api/ventas', async ({ request }) => {
@@ -352,5 +364,81 @@ describe('deleteVenta', () => {
     await expect(
       deleteVenta({ id: 'venta-1', cliente_id: null, forma_pago: 'EFECTIVO' }),
     ).resolves.toBeUndefined()
+  })
+})
+
+// ── Wire → public parsing boundary (C-41, D3, D9, tasks 6.1/6.2) ────────────
+//
+// `monto` is a Pydantic-v2 Decimal string on the wire. These tests exercise
+// the conversion at every entry point that returns a `Venta` / `VentaListItem`
+// — `getVenta`, `listVentas`, `createVenta`, `updateVenta` — mirroring
+// `pagosApi.test.ts` (task group 5).
+
+describe('getVenta / listVentas — parse boundary', () => {
+  it('converts monto to number', async () => {
+    const venta = await getVenta('venta-2')
+    expect(venta.monto).toBe(500)
+  })
+
+  it('converts monto to number on each row of the unpaginated list (triangulation)', async () => {
+    server.use(
+      http.get('/api/ventas', () =>
+        HttpResponse.json([
+          { ...mockVentaEfectivo, id: 'venta-1', monto: '1000.00' },
+          { ...mockVentaFiada, id: 'venta-2', monto: '2500.75' },
+        ]),
+      ),
+    )
+
+    const ventas = await listVentas()
+
+    expect(ventas[0]?.monto).toBe(1000)
+    expect(ventas[1]?.monto).toBe(2500.75)
+  })
+
+  it('the cliente_id — a UUID, never a money field — is never touched by the money conversion (D3)', async () => {
+    const venta = await getVenta('venta-2')
+    expect(venta.cliente_id).toBe('cliente-1')
+    expect(typeof venta.cliente_id).toBe('string')
+  })
+})
+
+describe('getVenta / listVentas — malformed decimal throws (D4, D-88)', () => {
+  it('throws instead of returning 0 when monto is malformed', async () => {
+    server.use(
+      http.get('/api/ventas/:id', () =>
+        HttpResponse.json({ ...mockVentaFiada, monto: 'not-a-number' }),
+      ),
+    )
+    await expect(getVenta('venta-2')).rejects.toThrow(/monto/)
+  })
+
+  it('throws instead of returning 0 when monto is an empty string (triangulation)', async () => {
+    server.use(
+      http.get('/api/ventas/:id', () => HttpResponse.json({ ...mockVentaFiada, monto: '' })),
+    )
+    await expect(getVenta('venta-2')).rejects.toThrow(/monto/)
+  })
+})
+
+describe('createVenta / updateVenta — parse boundary (triangulation)', () => {
+  it('createVenta converts the response monto to number', async () => {
+    server.use(http.post('/api/ventas', () => HttpResponse.json(mockVentaFiada, { status: 201 })))
+
+    const result = await createVenta({ monto: '500.00', fecha: '2026-08-10', forma_pago: 'CUENTA_CORRIENTE', cliente_id: 'cliente-1' })
+
+    expect(result.venta.monto).toBe(500)
+  })
+
+  it('updateVenta converts the response monto to number', async () => {
+    server.use(
+      http.patch('/api/ventas/:id', () =>
+        HttpResponse.json({ ...mockVentaFiada, monto: '750.25' }),
+      ),
+    )
+
+    const venta = await updateVenta('venta-2', { monto: '750.25' })
+
+    expect(venta.monto).toBe(750.25)
   })
 })

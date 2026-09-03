@@ -13,9 +13,13 @@ import { setupServer } from 'msw/node'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { VentasList } from './VentasList'
-import type { VentaListItem, ClienteListItem } from '@shared/api/api'
+import type { ClienteListItem } from '@shared/api/api'
 
-const ventaEfectivo: VentaListItem = {
+// Wire shape (C-41, D9): `monto` is a Pydantic-v2 Decimal STRING on the
+// wire. `parseVentaListItem` (ventasApi.ts) converts it to the `number` the
+// public `VentaListItem` type promises.
+
+const ventaEfectivo = {
   id: 'venta-1',
   negocio_id: 'negocio-1',
   cliente_id: null,
@@ -27,7 +31,7 @@ const ventaEfectivo: VentaListItem = {
   updated_at: '2026-08-10T10:00:00',
 }
 
-const ventaFiada: VentaListItem = {
+const ventaFiada = {
   id: 'venta-2',
   negocio_id: 'negocio-1',
   cliente_id: 'cliente-1',

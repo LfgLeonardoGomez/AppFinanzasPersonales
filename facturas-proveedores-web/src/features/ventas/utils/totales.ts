@@ -13,20 +13,26 @@
  * it only ever sees the page it was handed. Call it with the full result of
  * `useVentas(filters)`, never with a page slice.
  *
- * `monto` is a Decimal string on the wire (design.md D4). It is parsed here,
- * at the aggregation boundary, and summed in integer cents so repeated
- * addition of arbitrary decimal amounts cannot drift the way raw
- * floating-point addition can (e.g. 0.10 + 0.20 !== 0.30 in IEEE 754). The
- * public result is converted back to plain decimal numbers for display.
+ * `monto` was a Decimal string on the wire, parsed here at the aggregation
+ * boundary — that changed with C-41 (design.md D3): `VentaListItem.monto`
+ * is now `number`, converted by `parseVentaListItem` (`ventasApi.ts`) at
+ * the API client's boundary, which THROWS on a malformed Decimal (D4,
+ * D-88) rather than letting one reach this function. This function still
+ * sums in integer cents so repeated addition of arbitrary decimal amounts
+ * cannot drift the way raw floating-point addition can (e.g.
+ * 0.10 + 0.20 !== 0.30 in IEEE 754). The public result is converted back to
+ * plain decimal numbers for display.
  *
- * A malformed (non-numeric) or negative `monto` both contribute 0 cents,
- * never a subtraction. The backend guarantees `monto > 0` (`Field(gt=0)`,
- * venta.py) for every sale it persists, so either shape reaching this
- * function means the data is corrupted, not that a discount or refund is
- * intended. Silently letting a negative amount subtract would misstate the
- * day's cash instead of surfacing the corruption — this function must not
- * throw (it renders the counter screen's daily totals and one bad row must
- * not take the whole screen down), so it excludes the row instead.
+ * A NaN or negative `monto` both contribute 0 cents, never a subtraction —
+ * this is now DEFENSE IN DEPTH rather than the primary decimal-validity
+ * guard (that job moved to `parseVentaListItem`), because `number` does not
+ * rule out `NaN` at the type level. The backend guarantees `monto > 0`
+ * (`Field(gt=0)`, venta.py) for every sale it persists, so a negative value
+ * reaching here means the data is corrupted, not that a discount or refund
+ * is intended. Silently letting a negative amount subtract would misstate
+ * the day's cash instead of surfacing the corruption — this function must
+ * not throw (it renders the counter screen's daily totals and one bad row
+ * must not take the whole screen down), so it excludes the row instead.
  */
 import type { FormaPago, VentaListItem } from '@shared/api/api'
 
@@ -35,10 +41,9 @@ export interface TotalesDelDia {
   porFormaPago: Partial<Record<FormaPago, number>>
 }
 
-function toCentavos(monto: string): number {
-  const n = Number(monto)
-  if (!Number.isFinite(n) || n < 0) return 0
-  return Math.round(n * 100)
+function toCentavos(monto: number): number {
+  if (!Number.isFinite(monto) || monto < 0) return 0
+  return Math.round(monto * 100)
 }
 
 export function calcularTotalesDelDia(

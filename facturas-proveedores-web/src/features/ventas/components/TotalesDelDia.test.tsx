@@ -24,7 +24,7 @@ function venta(overrides: Partial<VentaListItem>): VentaListItem {
     negocio_id: 'negocio-1',
     cliente_id: null,
     fecha: '2026-08-13',
-    monto: '100.00',
+    monto: 100,
     forma_pago: 'EFECTIVO',
     notas: null,
     created_at: '2026-08-13T10:00:00',
@@ -36,9 +36,9 @@ function venta(overrides: Partial<VentaListItem>): VentaListItem {
 describe('TotalesDelDia — the total (task 7.6)', () => {
   it('shows $4.000 total for $1.000 EFECTIVO + $2.500 TARJETA + $500 CUENTA_CORRIENTE, broken down by method', () => {
     const ventas = [
-      venta({ id: 'v-1', monto: '1000.00', forma_pago: 'EFECTIVO' }),
-      venta({ id: 'v-2', monto: '2500.00', forma_pago: 'TARJETA' }),
-      venta({ id: 'v-3', monto: '500.00', forma_pago: 'CUENTA_CORRIENTE' }),
+      venta({ id: 'v-1', monto: 1000, forma_pago: 'EFECTIVO' }),
+      venta({ id: 'v-2', monto: 2500, forma_pago: 'TARJETA' }),
+      venta({ id: 'v-3', monto: 500, forma_pago: 'CUENTA_CORRIENTE' }),
     ]
     render(<TotalesDelDia ventas={ventas} isLoading={false} />)
 

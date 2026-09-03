@@ -232,7 +232,24 @@ describe('pagos owns its own idempotency namespace (task 10.6)', () => {
         ventaKeys.push(request.headers.get('Idempotency-Key'))
         // The venta's first attempt is ambiguous, so its key stays pending.
         if (ventaKeys.length === 1) return HttpResponse.error()
-        return HttpResponse.json({ id: 'venta-1' }, { status: 201 })
+        // C-41, D9: `monto` is a Pydantic-v2 Decimal STRING on the wire —
+        // `parseVenta` (ventasApi.ts) requires it even though this test
+        // only cares about the Idempotency-Key header, not the response
+        // body's shape.
+        return HttpResponse.json(
+          {
+            id: 'venta-1',
+            negocio_id: 'negocio-1',
+            cliente_id: null,
+            fecha: '2026-08-20',
+            monto: '400.00',
+            forma_pago: 'EFECTIVO',
+            notas: null,
+            created_at: '2026-08-20T10:00:00',
+            updated_at: '2026-08-20T10:00:00',
+          },
+          { status: 201 },
+        )
       }),
       http.post('/api/pagos', () => HttpResponse.json(mockPago, { status: 201 })),
     )

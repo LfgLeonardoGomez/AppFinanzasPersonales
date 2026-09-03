@@ -32,11 +32,15 @@ import {
   useDeleteVenta,
 } from './ventasHooks'
 import { useClientes } from '@features/clientes/api/clientesHooks'
-import type { Venta, VentaListItem, ClienteListItem } from '@shared/api/api'
+import type { ClienteListItem } from '@shared/api/api'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
+//
+// Wire shape (C-41, D9): `monto` is a Pydantic-v2 Decimal STRING on the
+// wire. `parseVenta` / `parseVentaListItem` (ventasApi.ts) convert it to
+// the `number` the public `Venta` / `VentaListItem` types promise.
 
-const mockVentaEfectivo: VentaListItem = {
+const mockVentaEfectivo = {
   id: 'venta-1',
   negocio_id: 'negocio-1',
   cliente_id: null,
@@ -48,7 +52,7 @@ const mockVentaEfectivo: VentaListItem = {
   updated_at: '2026-08-10T10:00:00',
 }
 
-const mockVentaFiada: Venta = {
+const mockVentaFiada = {
   id: 'venta-2',
   negocio_id: 'negocio-1',
   cliente_id: 'cliente-1',

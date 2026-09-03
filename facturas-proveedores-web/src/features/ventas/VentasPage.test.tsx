@@ -14,14 +14,17 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { VentasPage } from './VentasPage'
-import type { VentaListItem } from '@shared/api/api'
 
 vi.mock('@shared/utils/date', async () => {
   const actual = await vi.importActual<typeof import('@shared/utils/date')>('@shared/utils/date')
   return { ...actual, getTodayInArgentina: () => '2026-08-13' }
 })
 
-const mockVenta: VentaListItem = {
+// Wire shape (C-41, D9): `monto` is a Pydantic-v2 Decimal STRING on the
+// wire. `parseVentaListItem` (ventasApi.ts) converts it to the `number` the
+// public `VentaListItem` type promises.
+
+const mockVenta = {
   id: 'venta-1',
   negocio_id: 'negocio-1',
   cliente_id: null,

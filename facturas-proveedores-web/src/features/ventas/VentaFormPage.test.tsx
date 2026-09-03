@@ -13,11 +13,15 @@ import { setupServer } from 'msw/node'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { VentaFormPage } from './VentaFormPage'
-import type { Venta, ClienteListItem } from '@shared/api/api'
+import type { ClienteListItem } from '@shared/api/api'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
+//
+// Wire shape (C-41, D9): `monto` is a Pydantic-v2 Decimal STRING on the
+// wire. `parseVenta` (ventasApi.ts) converts it to the `number` the public
+// `Venta` type promises.
 
-const mockVentaFiada: Venta = {
+const mockVentaFiada = {
   id: 'venta-1',
   negocio_id: 'negocio-1',
   cliente_id: 'cliente-1',
@@ -102,7 +106,14 @@ describe('VentaFormPage — edit mode', () => {
     renderAt('/ventas/venta-1/editar')
     await waitFor(() => expect(screen.getAllByText(/editar venta/i).length).toBeGreaterThan(0))
     const montoInput = screen.getByLabelText(/monto/i) as HTMLInputElement
-    await waitFor(() => expect(montoInput.value).toBe('500.00'))
+    // C-41: `venta.monto` is now a parsed `number` (500), and `VentaForm`
+    // prefills the input with `String(venta.monto)` (matches the
+    // `PagoForm`/`FacturaForm` precedent, groups 4/5) — trailing zeros from
+    // the wire's Decimal string representation ("500.00") are not
+    // preserved. This is a deliberate, documented consequence of the type
+    // fix, not a formatting regression: the wire value is still parsed
+    // exactly (500), only its string round-trip changed.
+    await waitFor(() => expect(montoInput.value).toBe('500'))
   })
 
   it('shows an error state for a venta that does not exist (triangulation)', async () => {

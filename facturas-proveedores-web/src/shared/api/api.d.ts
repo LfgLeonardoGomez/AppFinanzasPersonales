@@ -846,23 +846,26 @@ export type FormaPago = DecimalAsNumber<components['schemas']['FormaPago'], neve
  * database CHECK enforces it, `venta_service._validar_par` enforces it, and
  * the frontend form's shape enforces it too (design.md D1).
  *
- * `monto` is typed `string` on the wire, like every other `Decimal` in this
- * API — it is parsed only at the aggregation boundary (design.md D2), never
- * accumulated as a float.
- *
  * NO `estado`, NO `saldo` — there is nothing to compute per sale; RN-VTA-05
  * totals are aggregated on demand from the list, never persisted (D-01).
+ *
+ * Derived from `VentaResponse` (C-41). `monto` is converted string→number
+ * via `DecimalAsNumber` at the `ventasApi.ts` boundary (D3) — like every
+ * other Decimal in this API, NOT special-cased for ventas anymore (an
+ * earlier version of this type declared `monto: string`, deferring the
+ * parse to the aggregation boundary in `totales.ts`; C-41 measured that as
+ * drift against its own rule and closed it — see `totales.ts` for what
+ * changed there). `cliente_id` is widened back to required (`string | null`,
+ * not `?: string | null`) — same FastAPI-always-serializes-the-key
+ * rationale as `Proveedor.cuit`: `Optional[...] = None` only means
+ * "optional at the constructor", but the key is always on the wire.
+ * `parseVenta` (`ventasApi.ts`) is the boundary that makes this true.
  */
-export interface Venta {
-  id: string
-  negocio_id: string
+export type Venta = Omit<
+  DecimalAsNumber<components['schemas']['VentaResponse'], 'monto'>,
+  'cliente_id'
+> & {
   cliente_id: string | null
-  fecha: string
-  monto: string
-  forma_pago: FormaPago
-  notas?: string | null
-  created_at: string
-  updated_at: string
 }
 
 /** Item in the sales list (GET /api/ventas) — same shape as Venta. */
@@ -970,18 +973,20 @@ export type EntradaHistorialClienteTipo = 'VENTA' | 'COBRO'
  * on-demand FIFO `estado` from the C-35 service layer (RN-FIFO). No
  * `numero`, no `fecha_vencimiento`, no `origen` — a fiado is a `Venta`, not
  * a `Factura`, and has none of them (design.md D3).
+ *
+ * Derived from `VentaConEstado` (C-41 — same schema name, no D6 alias
+ * needed). `monto` converted string→number via `DecimalAsNumber`, already
+ * parsed by `parseVentaConEstado` (`cuentaCorrienteClienteApi.ts`, predates
+ * C-41) — this is a type-derivation-only change, mirroring `FacturaConEstado`
+ * (task group 4). `cliente_id` is widened back to required AND non-null
+ * (`string`, not `string | null`) — a fiado always has a customer by
+ * definition (RN-VTA-03), unlike the general `Venta.cliente_id`.
  */
-export interface VentaConEstado {
-  id: string
-  negocio_id: string
+export type VentaConEstado = Omit<
+  DecimalAsNumber<components['schemas']['VentaConEstado'], 'monto'>,
+  'cliente_id'
+> & {
   cliente_id: string
-  fecha: string
-  monto: number
-  forma_pago: FormaPago
-  notas?: string | null
-  estado: EstadoVentaFiada
-  created_at: string
-  updated_at: string
 }
 
 /**
