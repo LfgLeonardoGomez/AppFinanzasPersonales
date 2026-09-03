@@ -27,32 +27,33 @@ import {
   useCloudinaryPreset,
 } from './pagosHooks'
 import type {
-  PagoListItem,
-  PagoResponse,
-  PagoListResponse,
   PagoCreate,
 } from '@shared/api/api'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
+//
+// Wire shape (C-41, D9): `monto` is a Pydantic-v2 Decimal STRING on the
+// wire. `parsePago` / `parsePagoListItem` (pagosApi.ts) convert it to the
+// `number` the public `PagoResponse` / `PagoListItem` types promise.
 
-const mockPagoListItem: PagoListItem = {
+const mockPagoListItem = {
   id: 'pago-uuid-1',
   proveedor_id: 'proveedor-uuid-1',
-  monto: 2500.0,
+  monto: '2500.00',
   fecha: '2026-06-15',
-  metodo: 'TRANSFERENCIA',
-  origen: 'MANUAL',
+  metodo: 'TRANSFERENCIA' as const,
+  origen: 'MANUAL' as const,
   created_at: '2026-06-15T10:00:00',
 }
 
-const mockPagoResponse: PagoResponse = {
+const mockPagoResponse = {
   ...mockPagoListItem,
   negocio_id: 'user-1',
   comprobante_url: null,
   updated_at: '2026-06-15T10:00:00',
 }
 
-const mockPagoListResponse: PagoListResponse = {
+const mockPagoListResponse = {
   items: [mockPagoListItem],
   total: 1,
   page: 1,
@@ -63,15 +64,7 @@ const mockPagoListResponse: PagoListResponse = {
 
 const server = setupServer(
   // GET /api/pagos — supports proveedor_id, page
-  http.get('/api/pagos', ({ request }) => {
-    const url = new URL(request.url)
-    const proveedorId = url.searchParams.get('proveedor_id')
-    const page = url.searchParams.get('page')
-    return HttpResponse.json({
-      ...mockPagoListResponse,
-      _filters: { proveedorId, page },
-    })
-  }),
+  http.get('/api/pagos', () => HttpResponse.json(mockPagoListResponse)),
 
   // GET /api/pagos/:id
   http.get('/api/pagos/:id', ({ params }) => {
@@ -91,8 +84,14 @@ const server = setupServer(
         { status: 422 },
       )
     }
+    // The create payload sends `monto` as a JS number (PagoCreate); the
+    // mocked response must re-stringify it to stay wire-shaped (D9).
     return HttpResponse.json(
-      { ...mockPagoResponse, ...body },
+      {
+        ...mockPagoResponse,
+        ...body,
+        monto: body.monto !== undefined ? String(body.monto) : mockPagoResponse.monto,
+      },
       { status: 201 },
     )
   }),
@@ -106,7 +105,12 @@ const server = setupServer(
         { status: 422 },
       )
     }
-    return HttpResponse.json({ ...mockPagoResponse, id: params.id, ...body })
+    return HttpResponse.json({
+      ...mockPagoResponse,
+      id: params.id,
+      ...body,
+      monto: body.monto !== undefined ? String(body.monto) : mockPagoResponse.monto,
+    })
   }),
 
   // DELETE /api/pagos/:id
@@ -157,14 +161,26 @@ describe('usePagos', () => {
   })
 
   it('passes proveedor_id as a query param', async () => {
+    // Asserts on the ACTUAL outgoing request (captured by the MSW handler),
+    // not on data smuggled back through the response body — a fixture that
+    // echoes filters into `_filters` would let `parsePagoListResponse`
+    // silently strip an unknown property and still pass, proving nothing.
+    let capturedProveedorId: string | null = null
+    server.use(
+      http.get('/api/pagos', ({ request }) => {
+        const url = new URL(request.url)
+        capturedProveedorId = url.searchParams.get('proveedor_id')
+        return HttpResponse.json(mockPagoListResponse)
+      }),
+    )
+
     const { result } = renderHook(
       () => usePagos({ proveedor_id: 'proveedor-uuid-1' }),
       { wrapper: createWrapper() },
     )
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    const data = result.current.data as unknown as Record<string, unknown>
-    const filters = data._filters as Record<string, unknown>
-    expect(filters.proveedorId).toBe('proveedor-uuid-1')
+
+    expect(capturedProveedorId).toBe('proveedor-uuid-1')
   })
 })
 

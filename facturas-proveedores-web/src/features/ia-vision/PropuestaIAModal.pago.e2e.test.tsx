@@ -90,7 +90,9 @@ function buildServer() {
           id: 'pago-new-1',
           usuario_id: 'user-1',
           proveedor_id: postPagosBody.proveedor_id as string,
-          monto: postPagosBody.monto as number,
+          // C-41, D9: `monto` is a Pydantic-v2 Decimal STRING on the wire.
+          // `parsePago` (pagosApi.ts) converts it back to `number`.
+          monto: String(postPagosBody.monto),
           fecha: postPagosBody.fecha as string,
           metodo: postPagosBody.metodo as string,
           comprobante_url: postPagosBody.comprobante_url as string | null,

@@ -40,6 +40,17 @@
  *     means "optional at the constructor" — see the section below).
  *   - `ProveedorListItem` SHALL NOT carry `telefono`/`notas` — it is a
  *     genuinely LEANER row than `Proveedor`, not `extends Proveedor {}`.
+ *
+ * Also covered (task group 4 — the facturas client):
+ *   - `FacturaItem`, `FacturaResponse`, `FacturaListItem`, `FacturaConEstado`
+ *     — `monto_total`/`cantidad`/`precio_unitario` converted, `numero`
+ *     widened back to required, `FacturaResponse.items` overridden to
+ *     `FacturaItem[]` (nested arrays are NOT converted by `DecimalAsNumber`).
+ *
+ * Also covered (task group 5 — the pagos client):
+ *   - `PagoResponse`, `PagoListItem`, `PagoListResponse` — `monto` converted,
+ *     `comprobante_url` widened back to required, `PagoListResponse.items`
+ *     overridden to `PagoListItem[]` for the same nested-array reason above.
  */
 import type { components } from './api.generated'
 import type {
@@ -50,6 +61,9 @@ import type {
   FacturaResponse,
   FacturaListItem,
   FacturaConEstado,
+  PagoResponse,
+  PagoListItem,
+  PagoListResponse,
   AvatarUpdate,
   ClienteCreate,
   EstadoFactura,
@@ -273,6 +287,59 @@ const _facturaAssertions: [
   _FacturaNumeroUntouched,
 ] = [true, true, true, true, true]
 void _facturaAssertions
+
+// ── PagoResponse / PagoListItem / PagoListResponse (task group 5) ──────────
+//
+// `comprobante_url` is widened back to required on `PagoResponse` — same
+// rationale as `Proveedor.cuit`/`Factura.numero` above: the schema marks it
+// "not required" but FastAPI always serializes the key. `PagoListResponse.
+// items` is overridden to the derived `PagoListItem[]` — `DecimalAsNumber`
+// only converts top-level keys, so the nested wire items (string `monto`)
+// would otherwise leak through untouched.
+
+type _PagoResponse = Assert<
+  'PagoResponse (monto converted, comprobante_url required)',
+  Eq<
+    PagoResponse,
+    Omit<DecimalAsNumber<S['PagoResponse'], 'monto'>, 'comprobante_url'> & {
+      comprobante_url: string | null
+    }
+  >
+>
+
+type _PagoListItem = Assert<
+  'PagoListItem (monto converted)',
+  Eq<PagoListItem, DecimalAsNumber<S['PagoListItem'], 'monto'>>
+>
+
+type _PagoListResponse = Assert<
+  'PagoListResponse (items → PagoListItem[])',
+  Eq<
+    PagoListResponse,
+    Omit<DecimalAsNumber<S['PagoListResponse'], never>, 'items'> & {
+      items: PagoListItem[]
+    }
+  >
+>
+
+// `DecimalAsNumber` selectivity, re-proven on the pagos schema: `proveedor_id`
+// — a UUID, never a money field — must stay untouched by the `monto`
+// conversion.
+type _PagoProveedorIdUntouched = Assert<
+  'DecimalAsNumber selectivity: proveedor_id (UUID) untouched by monto conversion',
+  Eq<
+    DecimalAsNumber<S['PagoResponse'], 'monto'>['proveedor_id'],
+    S['PagoResponse']['proveedor_id']
+  >
+>
+
+const _pagoAssertions: [
+  _PagoResponse,
+  _PagoListItem,
+  _PagoListResponse,
+  _PagoProveedorIdUntouched,
+] = [true, true, true, true]
+void _pagoAssertions
 
 const _assertions: [
   _AvatarUpdate, _ClienteCreate, _EstadoFactura, _EstadoVentaFiada, _FormaPago,

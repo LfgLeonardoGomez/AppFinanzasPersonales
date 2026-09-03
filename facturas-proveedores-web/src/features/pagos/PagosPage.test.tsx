@@ -12,12 +12,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { PagosPage } from './PagosPage'
-import type { PagoListItem, PagoListResponse } from '@shared/api/api'
 
-const mockPago: PagoListItem = {
+// Wire shape (C-41, D9): `monto` is a Pydantic-v2 Decimal STRING on the
+// wire. `parsePagoListItem` (pagosApi.ts) converts it to the `number` the
+// public `PagoListItem` type promises.
+const mockPago = {
   id: 'pago-1',
   proveedor_id: 'prov-1',
-  monto: 1500,
+  monto: '1500',
   fecha: '2026-06-15',
   metodo: 'EFECTIVO',
   origen: 'MANUAL',
@@ -31,7 +33,7 @@ const server = setupServer(
       total: 1,
       page: 1,
       page_size: 50,
-    } as PagoListResponse),
+    }),
   ),
   http.get('/api/proveedores/buscar', () => HttpResponse.json([])),
   http.get('/api/proveedores', () => HttpResponse.json([])),

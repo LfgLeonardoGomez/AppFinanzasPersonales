@@ -136,7 +136,9 @@ const server = setupServer(
         id: 'pago-1',
         usuario_id: 'user-1',
         proveedor_id: body.proveedor_id as string,
-        monto: body.monto as number,
+        // C-41, D9: `monto` is a Pydantic-v2 Decimal STRING on the wire.
+        // `parsePago` (pagosApi.ts) converts it back to `number`.
+        monto: String(body.monto),
         fecha: body.fecha as string,
         metodo: body.metodo as string,
         comprobante_url: null,

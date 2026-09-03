@@ -37,6 +37,15 @@
  *   - `updatePago` / `deletePago` deliberately send NO key: the backend
  *     does not dedupe them, and sending one would suggest a guarantee
  *     that does not exist.
+ *
+ * INVARIANT (C-41, D3, D9): the backend serializes `monto` as a Pydantic-v2
+ * Decimal STRING. `parsePago` / `parsePagoListItem` convert it to the
+ * `number` the public `PagoResponse` / `PagoListItem` types promise —
+ * mirroring `parseFactura` (`facturasApi.ts`, task group 4). A malformed
+ * Decimal throws rather than degrading to `0` (D4, D-88). `proveedor_id` —
+ * a UUID, never a money field — is never touched by this conversion. The
+ * `Raw*` interfaces mirror the wire exactly and stay internal to this
+ * module.
  */
 import { isAxiosError } from 'axios'
 import { apiClient } from '@shared/api/client'
@@ -44,12 +53,101 @@ import { getIdempotencyKey, confirmIdempotencyKey } from '@shared/api/idempotenc
 import { classifySuccess } from '@shared/api/submitOutcome'
 import type {
   PagoResponse,
+  PagoListItem,
   PagoListResponse,
   PagoCreate,
   PagoUpdate,
   PagosFilters,
   PagoDeleteInput,
+  MetodoPago,
+  OrigenDocumento,
 } from '@shared/api/api'
+
+// ── Wire (raw) shape — strings for decimals ───────────────────────────────────
+
+interface RawPagoResponse {
+  id: string
+  negocio_id: string
+  proveedor_id: string
+  monto: string
+  fecha: string
+  metodo: MetodoPago
+  comprobante_url: string | null
+  origen: OrigenDocumento
+  created_at: string
+  updated_at: string
+  proveedor_nombre?: string | null
+}
+
+interface RawPagoListItem {
+  id: string
+  proveedor_id: string
+  monto: string
+  fecha: string
+  metodo: MetodoPago
+  origen: OrigenDocumento
+  created_at: string
+}
+
+interface RawPagoListResponse {
+  items: RawPagoListItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+// ── Wire → public boundary ────────────────────────────────────────────────────
+
+function parsePago(raw: RawPagoResponse): PagoResponse {
+  return {
+    id: raw.id,
+    negocio_id: raw.negocio_id,
+    proveedor_id: raw.proveedor_id,
+    monto: toFiniteNumber(raw.monto, 'monto', 'parsePago'),
+    fecha: raw.fecha,
+    metodo: raw.metodo,
+    comprobante_url: raw.comprobante_url,
+    origen: raw.origen,
+    created_at: raw.created_at,
+    updated_at: raw.updated_at,
+    proveedor_nombre: raw.proveedor_nombre ?? null,
+  }
+}
+
+function parsePagoListItem(raw: RawPagoListItem): PagoListItem {
+  return {
+    id: raw.id,
+    proveedor_id: raw.proveedor_id,
+    monto: toFiniteNumber(raw.monto, 'monto', 'parsePagoListItem'),
+    fecha: raw.fecha,
+    metodo: raw.metodo,
+    origen: raw.origen,
+    created_at: raw.created_at,
+  }
+}
+
+function parsePagoListResponse(raw: RawPagoListResponse): PagoListResponse {
+  return {
+    items: raw.items.map(parsePagoListItem),
+    total: raw.total,
+    page: raw.page,
+    page_size: raw.page_size,
+  }
+}
+
+function toFiniteNumber(value: string, field: string, fn: string): number {
+  // `Number('')` is 0, not NaN — an empty string would sail through a plain
+  // `Number.isNaN` check and land on the screen as a real amount.
+  if (value.trim() === '') {
+    throw new Error(`${fn}: malformed Decimal at field "${field}" — got an empty string`)
+  }
+
+  const n = Number(value)
+  if (!Number.isFinite(n)) {
+    throw new Error(`${fn}: malformed Decimal at field "${field}" — got ${JSON.stringify(value)}`)
+  }
+  return n
+}
 
 // ── List (paginated, filtered) ────────────────────────────────────────────────
 
@@ -58,15 +156,15 @@ export async function listPagos(filters: PagosFilters = {}): Promise<PagoListRes
   if (filters.proveedor_id) params.proveedor_id = filters.proveedor_id
   if (filters.page) params.page = filters.page
 
-  const res = await apiClient.get<PagoListResponse>('/pagos', { params })
-  return res.data
+  const res = await apiClient.get<RawPagoListResponse>('/pagos', { params })
+  return parsePagoListResponse(res.data)
 }
 
 // ── Single ────────────────────────────────────────────────────────────────────
 
 export async function getPago(id: string): Promise<PagoResponse> {
-  const res = await apiClient.get<PagoResponse>(`/pagos/${id}`)
-  return res.data
+  const res = await apiClient.get<RawPagoResponse>(`/pagos/${id}`)
+  return parsePago(res.data)
 }
 
 // ── Create (C-43 Fase B — idempotent) ────────────────────────────────────────
@@ -90,12 +188,12 @@ export interface CreatePagoResult {
 export async function createPago(data: PagoCreate): Promise<CreatePagoResult> {
   const idempotencyKey = getIdempotencyKey(PAGO_IDEMPOTENCY_NAMESPACE, data)
   try {
-    const res = await apiClient.post<PagoResponse>('/pagos', data, {
+    const res = await apiClient.post<RawPagoResponse>('/pagos', data, {
       headers: { 'Idempotency-Key': idempotencyKey },
     })
     confirmIdempotencyKey(PAGO_IDEMPOTENCY_NAMESPACE, idempotencyKey)
     const outcome = classifySuccess(res)
-    return { pago: res.data, replay: outcome.kind === 'alreadyRecorded' }
+    return { pago: parsePago(res.data), replay: outcome.kind === 'alreadyRecorded' }
   } catch (err) {
     // A 409 means the key already resolved to a DIFFERENT payment — that
     // attempt is over, so the pending key goes with it. Everything else
@@ -114,8 +212,8 @@ export async function updatePago(
   id: string,
   data: PagoUpdate,
 ): Promise<PagoResponse> {
-  const res = await apiClient.patch<PagoResponse>(`/pagos/${id}`, data)
-  return res.data
+  const res = await apiClient.patch<RawPagoResponse>(`/pagos/${id}`, data)
+  return parsePago(res.data)
 }
 
 // ── Delete (soft delete on backend) ───────────────────────────────────────────

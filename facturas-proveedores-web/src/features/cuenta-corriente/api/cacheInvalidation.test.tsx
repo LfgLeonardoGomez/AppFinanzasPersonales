@@ -40,8 +40,6 @@ import {
 import { useCuentaCorriente, CUENTA_CORRIENTE_KEYS } from './cuentaCorrienteHooks'
 import type {
   FacturaResponse,
-  PagoResponse,
-  PagoListItem,
   CuentaCorrienteResponse,
 } from '@shared/api/api'
 
@@ -87,18 +85,21 @@ const mockFacturaResponse: FacturaResponse = {
   items: [],
 }
 
-const mockPagoListItem: PagoListItem = {
+// Wire shape (C-41, D9): `monto` is a Pydantic-v2 Decimal STRING on the
+// wire. `parsePago` (pagosApi.ts) converts it to the `number` the public
+// `PagoResponse` type promises.
+const mockPagoListItemRaw = {
   id: 'pago-1',
   proveedor_id: PROVEEDOR_A,
-  monto: 500,
+  monto: '500.00',
   fecha: '2026-06-10',
-  metodo: 'EFECTIVO',
-  origen: 'MANUAL',
+  metodo: 'EFECTIVO' as const,
+  origen: 'MANUAL' as const,
   created_at: '2026-06-10T10:00:00',
 }
 
-const mockPagoResponse: PagoResponse = {
-  ...mockPagoListItem,
+const mockPagoResponseRaw = {
+  ...mockPagoListItemRaw,
   negocio_id: 'user-1',
   comprobante_url: null,
   updated_at: '2026-06-10T10:00:00',
@@ -179,15 +180,25 @@ const server = setupServer(
 
   http.post('/api/pagos', async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>
+    // The create payload sends `monto` as a JS number (PagoCreate); the
+    // mocked response must re-stringify it to stay wire-shaped (D9).
     return HttpResponse.json(
-      { ...mockPagoResponse, ...body },
+      {
+        ...mockPagoResponseRaw,
+        ...body,
+        monto: body.monto !== undefined ? String(body.monto) : mockPagoResponseRaw.monto,
+      },
       { status: 201 },
     )
   }),
 
   http.patch('/api/pagos/:id', async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>
-    return HttpResponse.json({ ...mockPagoResponse, ...body })
+    return HttpResponse.json({
+      ...mockPagoResponseRaw,
+      ...body,
+      monto: body.monto !== undefined ? String(body.monto) : mockPagoResponseRaw.monto,
+    })
   }),
 
   http.delete('/api/pagos/:id', () => new HttpResponse(null, { status: 204 })),

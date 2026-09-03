@@ -455,42 +455,29 @@ export type MetodoPago = DecimalAsNumber<components['schemas']['MetodoPago'], ne
  *     (2) PagoCreate / PagoUpdate don't declare the field;
  *     (3) `extra="forbid"` on both schemas rejects any payload that tries.
  *   - `origen` is always MANUAL for now (C-14 will introduce IA pagos).
+ *
+ * Derived from `PagoResponse` (C-41). `comprobante_url` is widened back to
+ * REQUIRED (`string | null`, not `?: string | null`) — same
+ * FastAPI-always-serializes-the-key rationale as `Proveedor.cuit`: the
+ * schema marks it "not required" because that is what `Optional[str] =
+ * None` means at the Pydantic constructor, but the key is always on the
+ * wire. `parsePago` (`pagosApi.ts`) is the boundary that makes this true.
  */
-export interface PagoResponse {
-  id: string
-  negocio_id: string
-  proveedor_id: string
-  monto: number
-  fecha: string
-  metodo: MetodoPago
+export type PagoResponse = Omit<
+  DecimalAsNumber<components['schemas']['PagoResponse'], 'monto'>,
+  'comprobante_url'
+> & {
   comprobante_url: string | null
-  origen: OrigenDocumento
-  created_at: string
-  updated_at: string
-  /**
-   * C-18 (FE-005): the related supplier's name, populated by the
-   * backend for POST/GET/PATCH responses. `None` when the supplier
-   * was soft-deleted (the pago remains valid; the supplier's
-   * absence is informational). The list endpoint does NOT carry
-   * this field on PagoListItem.
-   */
-  proveedor_nombre?: string | null
 }
 
 /**
  * Item in the paginated payment list (GET /api/pagos).
  * Lean row — drops comprobante_url and updated_at to keep the payload small.
  * Mirrors FacturaListItem (C-08). NO factura_id (RN-PAG-01).
+ *
+ * Derived from `PagoListItem` (C-41).
  */
-export interface PagoListItem {
-  id: string
-  proveedor_id: string
-  monto: number
-  fecha: string
-  metodo: MetodoPago
-  origen: OrigenDocumento
-  created_at: string
-}
+export type PagoListItem = DecimalAsNumber<components['schemas']['PagoListItem'], 'monto'>
 
 /**
  * Alias for the full Pago (returned on create/update — same as PagoResponse).
@@ -501,12 +488,17 @@ export interface Pago extends PagoResponse {}
  * Paginated response wrapper for GET /api/pagos.
  * Mirrors PaginatedFacturas (note: no `total_pages` — backend C-10 returns
  * `{items, total, page, page_size}`; the client computes total_pages if needed).
+ *
+ * Derived from `PagoListResponse` (C-41). `items` is overridden to the
+ * derived public `PagoListItem[]` — `DecimalAsNumber` only converts
+ * top-level keys, so the nested wire items (string `monto`) would
+ * otherwise leak through untouched.
  */
-export interface PagoListResponse {
+export type PagoListResponse = Omit<
+  DecimalAsNumber<components['schemas']['PagoListResponse'], never>,
+  'items'
+> & {
   items: PagoListItem[]
-  total: number
-  page: number
-  page_size: number
 }
 
 /**

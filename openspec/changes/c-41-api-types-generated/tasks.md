@@ -40,13 +40,13 @@
 
 ## 5. Cliente de pagos
 
-- [ ] 5.1 RED — test del parseo en el borde de `pagosApi` con `monto` como cadena
-- [ ] 5.2 RED — test del decimal malformado en pagos: lanza, no degrada
-- [ ] 5.3 GREEN — implementar el parseo en `pagosApi` con las formas `Raw*` internas
-- [ ] 5.4 Derivar `Pago`, `PagoListItem` y `PagoListResponse` del generado, resolviendo el drift que aflore
-- [ ] 5.5 Migrar los fixtures de pagos a la forma del wire
-- [ ] 5.6 Agregar al guard las aserciones de los tipos de pagos
-- [ ] 5.7 Typecheck, lint y suite en verde
+- [x] 5.1 RED — test del parseo en el borde de `pagosApi` con `monto` como cadena
+- [x] 5.2 RED — test del decimal malformado en pagos: lanza, no degrada
+- [x] 5.3 GREEN — implementar el parseo en `pagosApi` con las formas `Raw*` internas
+- [x] 5.4 Derivar `Pago`, `PagoListItem` y `PagoListResponse` del generado, resolviendo el drift que aflore
+- [x] 5.5 Migrar los fixtures de pagos a la forma del wire — **9 archivos** de la sesión inherited-WIP (`pagosApi.test.ts`, `pagosHooks.test.tsx`, `PagosPage.test.tsx`, `FE005.test.tsx`, `PagoForm.test.tsx`, `PagosList.test.tsx`, `cacheInvalidation.test.tsx`) **más 2 archivos que la sesión encontró rotos y migró**: `ProveedorDetailPage.integration.test.tsx` (`src/features/proveedores/`) y `PropuestaIAModal.pago.e2e.test.tsx` (`src/features/ia-vision/`) — ninguno de los dos estaba en la lista de WIP heredado, ambos mockeaban `POST /api/pagos` con `monto` como `number` crudo en vez de string, y ambos rompían en la suite completa hasta que se corrigieron.
+- [x] 5.6 Agregar al guard las aserciones de los tipos de pagos — verificado por mutación (rename de `proveedor_id`→`proveedor_id_renamed` en el schema generado, `tsc` falló señalando `_PagoProveedorIdUntouched` y `_PagoResponse`; revertido)
+- [x] 5.7 Typecheck, lint y suite en verde — 1029/126, `tsc --noEmit` limpio, `eslint --max-warnings 0` limpio
 
 ## 6. Cliente de ventas
 

@@ -30,7 +30,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { PagoForm } from './PagoForm'
-import type { PagoResponse, ProveedorListItem, PagoListItem } from '@shared/api/api'
+import type { ProveedorListItem, PagoListItem } from '@shared/api/api'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -43,19 +43,23 @@ const mockProveedor: ProveedorListItem = {
   ultima_factura_fecha: null,
 }
 
-const mockPagoResponse: PagoResponse = {
+// Wire shape (C-41, D9) — feeds MSW responses. `monto` is a Pydantic-v2
+// Decimal STRING on the wire; `parsePago` (pagosApi.ts) converts it to the
+// `number` the public `PagoResponse` type promises.
+const mockPagoResponse = {
   id: 'pago-uuid-1',
   negocio_id: 'user-1',
   proveedor_id: 'prov-uuid-1',
-  monto: 1500,
+  monto: '1500',
   fecha: '2026-06-15',
-  metodo: 'TRANSFERENCIA',
+  metodo: 'TRANSFERENCIA' as const,
   comprobante_url: null,
-  origen: 'MANUAL',
+  origen: 'MANUAL' as const,
   created_at: '2026-06-15T10:00:00',
   updated_at: '2026-06-15T10:00:00',
 }
 
+/** Public (parsed) shape — used as a direct `PagoForm` prop, no HTTP round-trip. */
 const mockPagoListItem: PagoListItem = {
   id: 'pago-uuid-1',
   proveedor_id: 'prov-uuid-1',
@@ -81,7 +85,16 @@ const server = setupServer(
         { status: 422 },
       )
     }
-    return HttpResponse.json({ ...mockPagoResponse, ...body }, { status: 201 })
+    // The create payload sends `monto` as a JS number (PagoCreate); the
+    // mocked response must re-stringify it to stay wire-shaped (D9).
+    return HttpResponse.json(
+      {
+        ...mockPagoResponse,
+        ...body,
+        monto: body.monto !== undefined ? String(body.monto) : mockPagoResponse.monto,
+      },
+      { status: 201 },
+    )
   }),
 
   http.patch('/api/pagos/:id', async ({ request }) => {
@@ -93,7 +106,11 @@ const server = setupServer(
         { status: 422 },
       )
     }
-    return HttpResponse.json({ ...mockPagoResponse, ...body })
+    return HttpResponse.json({
+      ...mockPagoResponse,
+      ...body,
+      monto: body.monto !== undefined ? String(body.monto) : mockPagoResponse.monto,
+    })
   }),
 
   http.get('/api/pagos/:id', ({ params }) => {

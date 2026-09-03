@@ -9,21 +9,27 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { createPago, updatePago, deletePago } from './pagosApi'
+import { createPago, updatePago, deletePago, getPago, listPagos } from './pagosApi'
 import { createVenta } from '@features/ventas/api/ventasApi'
-import type { PagoResponse, PagoCreate } from '@shared/api/api'
+import type { PagoCreate } from '@shared/api/api'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
+//
+// Wire shape (C-41, D9): `monto` is a Pydantic-v2 Decimal STRING on the
+// wire. `parsePago` / `parsePagoListItem` (pagosApi.ts) convert it to the
+// `number` the public `PagoResponse` / `PagoListItem` types promise — a
+// fixture that already returns a JS number is a test that passes without
+// exercising that conversion.
 
-const mockPago: PagoResponse = {
+const mockPago = {
   id: 'pago-1',
   negocio_id: 'negocio-1',
   proveedor_id: 'prov-1',
-  monto: 1000,
+  monto: '1000.00',
   fecha: '2026-08-20',
-  metodo: 'EFECTIVO',
+  metodo: 'EFECTIVO' as const,
   comprobante_url: null,
-  origen: 'MANUAL',
+  origen: 'MANUAL' as const,
   created_at: '2026-08-20T10:00:00',
   updated_at: '2026-08-20T10:00:00',
   proveedor_nombre: 'Proveedor Uno',
@@ -274,5 +280,88 @@ describe('pagos owns its own idempotency namespace (task 10.6)', () => {
     expect(ventaKeys[0]).toBe(ventaKeys[1])
     expect(pagoKeys[0]).toBe(pagoKeys[1])
     expect(ventaKeys[0]).not.toBe(pagoKeys[0])
+  })
+})
+
+// ── Wire → public parsing boundary (C-41, D3, D9, tasks 5.1/5.2) ────────────
+//
+// `monto` is a Pydantic-v2 Decimal string on the wire. These tests exercise
+// the conversion at every entry point that returns a `PagoResponse` /
+// `PagoListItem` — `getPago`, `listPagos`, `createPago`, `updatePago` —
+// mirroring `facturasApi.test.ts` (task group 4).
+
+describe('getPago / listPagos — parse boundary', () => {
+  it('converts monto to number', async () => {
+    server.use(http.get('/api/pagos/:id', () => HttpResponse.json(mockPago)))
+
+    const pago = await getPago('pago-1')
+
+    expect(pago.monto).toBe(1000)
+  })
+
+  it('converts monto to number on each row of the paginated list (triangulation)', async () => {
+    server.use(
+      http.get('/api/pagos', () =>
+        HttpResponse.json({
+          items: [
+            { ...mockPago, id: 'pago-1', monto: '1000.00' },
+            { ...mockPago, id: 'pago-2', monto: '2500.75' },
+          ],
+          total: 2,
+          page: 1,
+          page_size: 20,
+        }),
+      ),
+    )
+
+    const result = await listPagos()
+
+    expect(result.items[0]?.monto).toBe(1000)
+    expect(result.items[1]?.monto).toBe(2500.75)
+  })
+
+  it('the proveedor_id — a UUID, never a money field — is never touched by the money conversion (D3)', async () => {
+    server.use(http.get('/api/pagos/:id', () => HttpResponse.json(mockPago)))
+
+    const pago = await getPago('pago-1')
+
+    expect(pago.proveedor_id).toBe('prov-1')
+    expect(typeof pago.proveedor_id).toBe('string')
+  })
+})
+
+describe('getPago / listPagos — malformed decimal throws (D4, D-88)', () => {
+  it('throws instead of returning 0 when monto is malformed', async () => {
+    server.use(
+      http.get('/api/pagos/:id', () => HttpResponse.json({ ...mockPago, monto: 'not-a-number' })),
+    )
+
+    await expect(getPago('pago-1')).rejects.toThrow(/monto/)
+  })
+
+  it('throws instead of returning 0 when monto is an empty string (triangulation)', async () => {
+    server.use(http.get('/api/pagos/:id', () => HttpResponse.json({ ...mockPago, monto: '' })))
+
+    await expect(getPago('pago-1')).rejects.toThrow(/monto/)
+  })
+})
+
+describe('createPago / updatePago — parse boundary (triangulation)', () => {
+  it('createPago converts the response monto to number', async () => {
+    server.use(http.post('/api/pagos', () => HttpResponse.json(mockPago, { status: 201 })))
+
+    const result = await createPago(payload())
+
+    expect(result.pago.monto).toBe(1000)
+  })
+
+  it('updatePago converts the response monto to number', async () => {
+    server.use(
+      http.patch('/api/pagos/:id', () => HttpResponse.json({ ...mockPago, monto: '750.25' })),
+    )
+
+    const pago = await updatePago('pago-1', { monto: 750.25 })
+
+    expect(pago.monto).toBe(750.25)
   })
 })
