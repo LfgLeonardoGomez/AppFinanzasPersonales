@@ -48,7 +48,7 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 
 ## Roadmap de Changes
 
-44 entradas en 13 fases — índice completo en [`CHANGES.md`](CHANGES.md). **43 archivadas, 1 pendiente.**
+44 entradas en 13 fases — índice completo en [`CHANGES.md`](CHANGES.md). **43 archivadas, 1 implementada y pendiente de `opsx:archive` — el roadmap ya no tiene changes sin empezar.**
 
 **MVP (C-01 → C-27): COMPLETO.** El sistema es funcional en producción desde C-13 (cuenta corriente de proveedores). C-14/C-15 cerraron la IA de visión; C-15a…C-27 fueron housekeeping, fixes y cierre de deudas. El rediseño de UX/UI se entregó fuera de la numeración de changes.
 
@@ -56,8 +56,8 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 
 **Camino crítico de la etapa:** `C-28 ✓ → C-32 ✓ → C-33 ✓ → C-34 ✓ → C-35 ✓ → C-36 ✓ → C-39 ✓`, con `C-29/C-30/C-31` (equipo + recuperación de contraseña, todos ✓) y `C-37 ✓ / C-38 ✓` (estadísticas) en paralelo. **El camino crítico está cerrado**: `C-37`, `C-39` y `C-43` se archivaron el 2026-08-25 (commit `155bcd3`), y `C-38` el 2026-08-28. **Cero changes activos.**
 
-**Pendiente — el último del roadmap:**
-- `C-41` **api-types-generated** — tipos TS generados desde OpenAPI; deuda detectada en `C-30`. Sin empezar.
+**El último pendiente del roadmap ya se implementó:**
+- `C-41` **api-types-generated** — tipos TS generados desde OpenAPI; deuda detectada en `C-30`. **Implementado el 2026-09-03**, ver el bloque `✅ C-41` más abajo. Pendiente el paso mecánico de `opsx:archive`.
 
 > ✅ **C-28 archivado el 2026-08-09**: el eje de aislamiento ya es `negocio_id` en todo el sistema. Lo sostiene el test estructural `tests/test_c28_scoping_axis_guard.py`, que recorre el AST de `services/` y `repositories/` y falla si `usuario_id` reaparece como filtro fuera de la lista blanca. Ese guard está parametrizado sobre los archivos que encuentra: agregar o quitar un archivo en esos directorios **cambia el conteo de tests colectados**, y no es un error.
 
@@ -81,7 +81,15 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 >
 > 🐳 **Si la API no levanta con `ModuleNotFoundError`, la imagen del contenedor quedó vieja — no es un bug del código.** Pasó el 2026-08-28: `facturas_api` moría con `No module named 'xlsxwriter'`, una dependencia que **C-39 agregó a `pyproject.toml`** y que la imagen construida antes de ese change no tenía. Se arregla con `docker compose build api`. Regla: **después de archivar un change que suma dependencias de Python, reconstruir la imagen** — `docker compose up -d` sola reutiliza la imagen vieja y el fallo aparece mucho después, en un change que no tiene nada que ver.
 
-> ⚠️ **Los tipos de estadísticas en `api.d.ts` están escritos A MANO** porque `C-41` sigue pendiente. Los blinda `api.estadisticas.test-d.ts` (compile-time, lo dispara `tsc --noEmit`; verificado por mutación). Cuando C-41 genere los tipos desde OpenAPI, ese archivo es el que va a avisar si difieren.
+> ✅ **C-41 implementado el 2026-09-03 (frontend puro, cero cambios en el backend).** `src/shared/api/api.d.ts` dejó de ser un archivo escrito a mano cinco años sin regenerar: ahora deriva sus 79 nombres públicos exportados desde `api.generated.d.ts` (salida cruda de `openapi-typescript`, nunca editado a mano). Suite frontend 1005 → **1035 passed** (126 archivos), `tsc`/`eslint` limpios. Detalle completo en `knowledge-base/09_decisiones_y_supuestos.md` D-91 a D-99 y `knowledge-base/10_preguntas_abiertas.md` §Deuda técnica descubierta — C-41.
+>
+> 🔴 **La regla que este change deja instalada, para cualquiera que toque `api.d.ts` de nuevo:** un tipo del contrato del backend se DERIVA de `api.generated.d.ts` con el helper `DecimalAsNumber<T, K>` (nombrando la clave si es un campo de dinero) — nunca se transcribe a mano. Si el tipo NO tiene un schema del backend detrás (filtro de query, envoltorio de paginación, forma de error armada por el cliente), va bajo el rótulo `// Hand-written types — no backend schema counterpart (design.md D5)` al final del archivo, con el motivo explícito. No hay un tercer lugar. **Volver a escribir un tipo del contrato a mano, aunque sea "por ahora", es exactamente cómo este archivo llegó a tener 40 tipos con drift antes de que alguien lo midiera.**
+>
+> ⚠️ **Los decimales del wire son STRING** (Pydantic v2 serializa `Decimal` así, D-88) y se parsean en el borde de CADA cliente de API (`proveedoresApi`, `facturasApi`, `pagosApi`, `ventasApi`, más `cuentaCorrienteApi`/`cuentaCorrienteClienteApi`/`estadisticasParse.ts` que ya lo hacían desde antes) — **nunca en un interceptor global**: un interceptor que adivinara "esto parece un número" corrompería el CUIT y cualquier identificador numérico. Un decimal malformado LANZA, nunca degrada a `0` (D-94, mismo criterio que D-88).
+>
+> ⚠️ **`api.estadisticas.test-d.ts` ya NO existe** — se retiró (D8) recién después de probar por mutación que `api.contract.test-d.ts` detecta el mismo drift. Si necesitás blindar un tipo nuevo de estadísticas (o de cualquier dominio), agregalo ahí, no reinventes un archivo de guard por feature. Y si estás depurando por qué el guard general "no explota" al mutar un campo: las aserciones `Eq<A, B>` de ese archivo son un **regression lock contra el hand-edit**, no un detector de drift del schema en campos no nombrados por `DecimalAsNumber` — ambos lados de esas comparaciones referencian el MISMO schema generado y mutan en conjunto. El detector real de drift del schema es la sección de aserciones estructurales al final del archivo (`'campo' extends keyof T`, literales fijos) — esas sí reaccionan porque solo un lado de la comparación está fijo.
+>
+> ⚠️ **`toFiniteNumber` (parseo decimal-string→number con `throw`) está duplicado en ~7 módulos** — deliberado, no un descuido: extraer un helper compartido antes de que existieran los 7 casos habría sido adivinar la forma de la abstracción. Ahora que existen, es un candidato razonable a un housekeeping chico; no se hizo en C-41 por disciplina de scope. Ver `knowledge-base/10_preguntas_abiertas.md`.
 
 > ✅ **C-37 archivado el 2026-08-25 (backend puro).** Tres endpoints de solo lectura (`GET /api/estadisticas/compras|ventas|resumen`), todo por agregación SQL on-demand (RN-VTA-05), cero columnas nuevas, cero dependencias nuevas. `app/services/estadisticas_engine.py` es el único motor compartido (bucketing + relleno de huecos, D-75) — compras y ventas conservan cada una su propia query porque una necesita filtro por `proveedor_id` y la otra desglose por `forma_pago`.
 >

@@ -858,17 +858,26 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 - **Leer antes**: `knowledge-base/09_decisiones_y_supuestos.md` D-24 (baseline de lint), `docker-compose.override.yml`
 
 ### [C-41] `api-types-generated`
-- **Estado**: `[ ]`
-- **Por qué**: `src/shared/api/api.d.ts` es un archivo **escrito a mano**, pese a que su propio encabezado y el script `generate-types` del `package.json` sugieren lo contrario. Exporta 48 tipos con nombre que importan **84 archivos**. Correr `npm run generate-types` produce la forma de `openapi-typescript` (`components['schemas']`, `paths`) y **rompe 262 imports** — medido, no estimado. De los 48 tipos, **24 no tienen contraparte en el backend** (`FacturaDeleteInput`, `PagosFilters`, `HTTPError`, `MeResponse`…): son invenciones del frontend y no se pueden generar.
+- **Estado**: `[x]` **implementado 2026-09-03** (las 54 tareas de `tasks.md` en verde), sin deuda residual dentro de su propio alcance. Pendiente el paso de `opsx:archive`.
+- **Corrección a la afirmación original de esta entrada**: la medición de 2026-08-11 (`8e085f1`) decía que los 24 tipos sin contraparte "son invenciones del frontend y no se pueden generar". **Medido de nuevo el 2026-08-28 contra el `openapi.json` real, es falso para 15 de ellos** — tienen contraparte en el backend, con otro nombre (`Proveedor→ProveedorResponse`, `LoginBody→LoginRequest`, `Categoria→CategoriaProveedor`, y 12 más; `knowledge-base/09_decisiones_y_supuestos.md` D-96). Solo un puñado genuino queda sin contraparte: filtros de query, envoltorios de paginación y formas de error que el backend arma como dict crudo, no como modelo Pydantic (`knowledge-base/09_decisiones_y_supuestos.md` D-95). Los números de "48 tipos / 84 archivos / 262 imports" de la medición original también quedaron desactualizados por los changes intermedios (C-32…C-40 agregaron tipos y call sites) — la medición vigente al momento de ejecutar el change fue **66 schemas del backend, 79 tipos exportados, 139 archivos importadores** (`design.md`, medición del 2026-08-28).
+- **Por qué (texto original, histórico — ver la corrección arriba)**: `src/shared/api/api.d.ts` es un archivo **escrito a mano**, pese a que su propio encabezado y el script `generate-types` del `package.json` sugieren lo contrario. Exporta 48 tipos con nombre que importan **84 archivos**. Correr `npm run generate-types` produce la forma de `openapi-typescript` (`components['schemas']`, `paths`) y **rompe 262 imports** — medido, no estimado. De los 48 tipos, **24 no tienen contraparte en el backend** (`FacturaDeleteInput`, `PagosFilters`, `HTTPError`, `MeResponse`…): son invenciones del frontend y no se pueden generar.
 - **Scope propuesto** (opción B evaluada en C-30):
   - El generado va a `api.generated.d.ts`; `api.d.ts` deriva sus nombres de ahí (`export type X = components['schemas']['X']`).
   - Los 24 tipos sin contraparte quedan escritos a mano y **marcados como tales**, para que se note qué es contrato y qué es invención.
   - Alinear el drift que aparezca. Ya se sabe de uno preexistente: `ProveedorListItem extends Proveedor`, pero el backend devuelve una forma más chica y con `ultima_factura_fecha`.
-- **Riesgo**: **alcance desconocido**. Al atar los tipos a la realidad va a aflorar drift que hoy nadie ve. Por eso no entró en C-30.
-- **Beneficio**: el backend pasa a ser la fuente de verdad y este tipo de deriva deja de ser invisible.
+- **Entregado** (9 tandas, cada una cerrando con `tsc`/suite/lint en verde — `knowledge-base/09_decisiones_y_supuestos.md` D-91 a D-99):
+  - `api.generated.d.ts` (salida cruda de `openapi-typescript`) + `api.d.ts` derivando sus 79 nombres públicos, con el helper `DecimalAsNumber<T, K>` marcando explícitamente los 22 campos de dinero que el backend serializa como string.
+  - El parseo string→número se sumó en el borde de los cuatro clientes que no lo tenían (`proveedoresApi`, `facturasApi`, `pagosApi`, `ventasApi`) — con `throw` en decimal malformado, nunca un `0` fabricado (D-94).
+  - Drift real cerrado, no solo el de dinero: 6 call sites de producción trataban `Proveedor` y `ProveedorListItem` como intercambiables; `updateFactura` devolvía la respuesta cruda sin pasar por el parseo; `Venta.monto` estaba hand-tipado `string` cuando el resto del archivo ya convertía a `number`.
+  - Los tipos sin contraparte quedaron agrupados bajo una única sección rotulada al final de `api.d.ts`, cada uno con su motivo (D-95) — y `HTTPValidationError`, que SÍ tenía schema y nunca se había migrado, se derivó en vez de quedar ahí.
+  - `api.estadisticas.test-d.ts` se retiró recién después de probar por mutación que el guard general lo reemplaza (D-98).
+  - `generate-types` deja de poder destruir `api.d.ts` (D-97).
+  - **Cero de los 139 archivos importadores tuvo que cambiar su import** — verificado con `tsc --noEmit` limpio en cada una de las 9 tandas, no solo al cierre.
+- **Riesgo materializado**: sí afloró drift más allá de los 22 campos de dinero (nullabilidad, campos "not required" que el backend siempre serializa, formas de lista más chicas de lo declarado) — exactamente lo previsto, atacado tanda por tanda como estaba planeado, sin desbordar el change.
+- **Beneficio**: el backend es la fuente de verdad y la deriva vuelve a fallar en `tsc`, no a quedar invisible cinco años como pasó con este mismo archivo.
 - **Dependencias**: ninguna (conviene después de C-30 para no competir por los mismos archivos)
 - **Governance**: MEDIO
-- **Leer antes**: el mensaje del commit `8e085f1`, que documenta la medición y por qué C-30 no lo hizo
+- **Leer antes**: `openspec/changes/c-41-api-types-generated/` (`design.md`/`tasks.md` completos, hasta que `opsx:archive` lo mueva) — `knowledge-base/09_decisiones_y_supuestos.md` D-91 a D-99; `knowledge-base/10_preguntas_abiertas.md` §Deuda técnica descubierta — C-41 (`toFiniteNumber` duplicado en ~7 módulos, inconsistencia de `tema_preferido` en el backend)
 
 ---
 
@@ -953,7 +962,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | **C-38** | **estadisticas-frontend** | BAJO | C-34 ✓, C-37 ✓ — archivado 2026-08-28 |
 | **C-39** | **exportacion-pdf-xls** | MEDIO | C-36 |
 | C-40 | dev-setup-lint-guard | BAJO | — (deuda detectada en C-30, archivado 2026-08-15) |
-| **C-41** | **api-types-generated** | MEDIO | — (deuda detectada en C-30) |
+| C-41 | api-types-generated | MEDIO | — (deuda detectada en C-30, implementado 2026-09-03, pendiente de archivar) |
 | C-42 | idempotencia-registro-venta | ALTO | C-34 (deuda detectada revisando C-34, archivado 2026-08-16) |
 | **C-43** | **idempotencia-resto-de-escrituras** | ALTO | C-42 |
 
