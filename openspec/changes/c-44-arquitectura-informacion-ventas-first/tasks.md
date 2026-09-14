@@ -78,9 +78,9 @@
 
 > Cada subtarea es un borrado con su corrida completa detrás. No agrupar: si algo rompe, el borrado que lo causó tiene que ser identificable de un vistazo.
 
-- [ ] 10.1 Eliminar `getCompras` y `ComprasQuery` de `estadisticasApi.ts`, y sus casos de `estadisticasApi.test.ts`. Correr `npm test`.
-- [ ] 10.2 Eliminar `useCompras` y la clave `compras` de `ESTADISTICAS_KEYS` en `estadisticasHooks.ts`, y sus casos de `estadisticasHooks.test.tsx`. Correr `npm test`.
-- [ ] 10.3 Eliminar `parseCompras`, `parsePeriodoTotal` y `RawComprasResponse` de `estadisticasParse.ts`, y sus casos de `estadisticasParse.test.ts`. Correr `npm test`.
+- [x] 10.1 Eliminar `getCompras` y `ComprasQuery` de `estadisticasApi.ts`, y sus casos de `estadisticasApi.test.ts`. Correr `npm test`.
+- [x] 10.2 Eliminar `useCompras` y la clave `compras` de `ESTADISTICAS_KEYS` en `estadisticasHooks.ts`, y sus casos de `estadisticasHooks.test.tsx`. Correr `npm test`.
+- [x] 10.3 Eliminar `parseCompras`, `parsePeriodoTotal` y `RawComprasResponse` de `estadisticasParse.ts`, y sus casos de `estadisticasParse.test.ts`. Correr `npm test`.
 - [ ] 10.4 Simplificar `utils/rangos.ts`: eliminar la variante `compras` de `VistaEstadisticas` y la rama de 12 meses de `rangoPorDefecto`, dejando la firma con un solo parámetro (design.md Open Question 4 de D5). Actualizar `useRangoGranularidad` y `rangos.test.ts`. Correr `npm test`.
 - [ ] 10.5 **RED/GREEN** — eliminar la clasificación `proveedor-inexistente` de `clasificarError.ts` y su copy de `EstadisticasError.tsx`, junto con sus tests. Agregar en su lugar el test del escenario nuevo del spec modificado: **un fallo no reconocido cae en el mensaje genérico**, y la vista no ofrece ningún diagnóstico sobre proveedores. Correr `npm test`.
 - [ ] 10.6 **Verificación explícita de lo que NO se toca:** confirmar que `SerieBarras`, `RangoGranularidadSelector`, `useRangoGranularidad` y `etiquetas.ts` siguen en uso desde `EstadisticasPage`, `PanelVentas` y `PanelContraste`, y que `@visx/shape` y `@visx/scale` **siguen siendo dependencias en uso**. No desinstalar nada de `package.json`.

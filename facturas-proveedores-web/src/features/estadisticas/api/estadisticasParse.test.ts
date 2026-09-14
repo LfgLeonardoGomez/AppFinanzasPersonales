@@ -12,72 +12,7 @@
  * number as a true one, and nobody would ever notice.
  */
 import { describe, it, expect } from 'vitest'
-import { parseCompras, parseVentas, parseResumen } from './estadisticasParse'
-
-describe('parseCompras', () => {
-  it('turns the wire Decimal-strings into numbers', () => {
-    const parsed = parseCompras({
-      desde: '2026-01-01',
-      hasta: '2026-03-31',
-      granularidad: 'mes',
-      proveedor_id: null,
-      periodos: [
-        { periodo: '2026-01-01', desde: '2026-01-01', hasta: '2026-01-31', total: '1234.50' },
-        { periodo: '2026-02-01', desde: '2026-02-01', hasta: '2026-02-28', total: '0.00' },
-      ],
-    })
-
-    expect(parsed.periodos[0]!.total).toBe(1234.5)
-    expect(parsed.periodos[1]!.total).toBe(0)
-  })
-
-  it('keeps every period the backend sent, zeros included', () => {
-    const parsed = parseCompras({
-      desde: '2026-01-01',
-      hasta: '2026-03-31',
-      granularidad: 'mes',
-      proveedor_id: null,
-      periodos: [
-        { periodo: '2026-01-01', desde: '2026-01-01', hasta: '2026-01-31', total: '900.00' },
-        { periodo: '2026-02-01', desde: '2026-02-01', hasta: '2026-02-28', total: '0.00' },
-        { periodo: '2026-03-01', desde: '2026-03-01', hasta: '2026-03-31', total: '150.00' },
-      ],
-    })
-
-    expect(parsed.periodos).toHaveLength(3)
-    expect(parsed.periodos.map((p) => p.periodo)).toEqual([
-      '2026-01-01',
-      '2026-02-01',
-      '2026-03-01',
-    ])
-  })
-
-  it('echoes the proveedor_id back when the call was scoped to one supplier', () => {
-    const parsed = parseCompras({
-      desde: '2026-01-01',
-      hasta: '2026-01-31',
-      granularidad: 'dia',
-      proveedor_id: 'ac1b0f2e-0000-4000-8000-000000000001',
-      periodos: [],
-    })
-
-    expect(parsed.proveedor_id).toBe('ac1b0f2e-0000-4000-8000-000000000001')
-  })
-
-  it('THROWS on a malformed decimal instead of degrading it to zero', () => {
-    expect(() =>
-      parseCompras({
-        desde: '2026-01-01',
-        hasta: '2026-01-31',
-        granularidad: 'mes',
-        proveedor_id: null,
-        periodos: [
-          { periodo: '2026-01-01', desde: '2026-01-01', hasta: '2026-01-31', total: 'no-way' },
-        ],
-      }),
-    ).toThrow(/malformed Decimal/i)
-  })
-})
+import { parseVentas, parseResumen } from './estadisticasParse'
 
 describe('parseVentas', () => {
   it('parses the total and every amount in the desglose', () => {

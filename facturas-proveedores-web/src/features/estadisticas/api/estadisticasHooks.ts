@@ -15,22 +15,13 @@
  * These are read-only endpoints: no mutations, so no invalidation graph.
  */
 import { useQuery } from '@tanstack/react-query'
-import { getCompras, getVentas, getResumen } from './estadisticasApi'
-import type { ComprasQuery, VentasQuery, ResumenQuery } from './estadisticasApi'
+import { getVentas, getResumen } from './estadisticasApi'
+import type { VentasQuery, ResumenQuery } from './estadisticasApi'
 
 // ── Query keys ───────────────────────────────────────────────────────────────
 
 export const ESTADISTICAS_KEYS = {
   all: ['estadisticas'] as const,
-  compras: (query: ComprasQuery) =>
-    [
-      'estadisticas',
-      'compras',
-      query.desde,
-      query.hasta,
-      query.granularidad,
-      query.proveedorId ?? null,
-    ] as const,
   ventas: (query: VentasQuery) =>
     ['estadisticas', 'ventas', query.desde, query.hasta, query.granularidad] as const,
   resumen: (query: ResumenQuery) =>
@@ -38,13 +29,6 @@ export const ESTADISTICAS_KEYS = {
 }
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
-
-export function useCompras(query: ComprasQuery) {
-  return useQuery({
-    queryKey: ESTADISTICAS_KEYS.compras(query),
-    queryFn: () => getCompras(query),
-  })
-}
 
 /**
  * Named `useVentasEstadisticas` rather than `useVentas` on purpose: the

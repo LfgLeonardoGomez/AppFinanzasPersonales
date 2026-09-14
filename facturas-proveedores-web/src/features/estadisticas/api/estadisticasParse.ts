@@ -18,31 +18,14 @@
  * module.
  */
 import type {
-  ComprasResponse,
   VentasResponse,
   ResumenResponse,
-  PeriodoTotal,
   VentaPeriodo,
   Granularidad,
   FormaPago,
 } from '@shared/api/api'
 
 // ── Wire (raw) shape — decimals as strings ───────────────────────────────────
-
-interface RawPeriodoTotal {
-  periodo: string
-  desde: string
-  hasta: string
-  total: string
-}
-
-export interface RawComprasResponse {
-  desde: string
-  hasta: string
-  granularidad: Granularidad
-  proveedor_id?: string | null
-  periodos: RawPeriodoTotal[]
-}
 
 interface RawVentaPeriodo {
   periodo: string
@@ -69,16 +52,6 @@ export interface RawResumenResponse {
 
 // ── Wire → public boundary ───────────────────────────────────────────────────
 
-export function parseCompras(raw: RawComprasResponse): ComprasResponse {
-  return {
-    desde: raw.desde,
-    hasta: raw.hasta,
-    granularidad: raw.granularidad,
-    proveedor_id: raw.proveedor_id ?? null,
-    periodos: raw.periodos.map(parsePeriodoTotal),
-  }
-}
-
 export function parseVentas(raw: RawVentasResponse): VentasResponse {
   return {
     desde: raw.desde,
@@ -95,15 +68,6 @@ export function parseResumen(raw: RawResumenResponse): ResumenResponse {
     compras: toFiniteNumber(raw.compras, 'compras'),
     ventas: toFiniteNumber(raw.ventas, 'ventas'),
     diferencia: toFiniteNumber(raw.diferencia, 'diferencia'),
-  }
-}
-
-function parsePeriodoTotal(raw: RawPeriodoTotal): PeriodoTotal {
-  return {
-    periodo: raw.periodo,
-    desde: raw.desde,
-    hasta: raw.hasta,
-    total: toFiniteNumber(raw.total, `periodos[${raw.periodo}].total`),
   }
 }
 

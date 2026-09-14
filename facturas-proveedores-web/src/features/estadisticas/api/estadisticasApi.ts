@@ -10,12 +10,10 @@
  * value would be asking for a supplier whose id is the empty string.
  */
 import { apiClient } from '@shared/api/client'
-import type { ComprasResponse, VentasResponse, ResumenResponse, Granularidad } from '@shared/api/api'
+import type { VentasResponse, ResumenResponse, Granularidad } from '@shared/api/api'
 import {
-  parseCompras,
   parseVentas,
   parseResumen,
-  type RawComprasResponse,
   type RawVentasResponse,
   type RawResumenResponse,
 } from './estadisticasParse'
@@ -26,29 +24,11 @@ export interface RangoGranularidad {
   granularidad: Granularidad
 }
 
-export interface ComprasQuery extends RangoGranularidad {
-  proveedorId?: string
-}
-
 export type VentasQuery = RangoGranularidad
 
 export interface ResumenQuery {
   desde: string
   hasta: string
-}
-
-export async function getCompras(query: ComprasQuery): Promise<ComprasResponse> {
-  const params: Record<string, string> = {
-    desde: query.desde,
-    hasta: query.hasta,
-    granularidad: query.granularidad,
-  }
-  if (query.proveedorId) {
-    params.proveedor_id = query.proveedorId
-  }
-
-  const res = await apiClient.get<RawComprasResponse>('/estadisticas/compras', { params })
-  return parseCompras(res.data)
 }
 
 export async function getVentas(query: VentasQuery): Promise<VentasResponse> {
