@@ -48,11 +48,11 @@
 
 ## 6. La home pasa a ser una superficie de acción (spec `home-y-navegacion`)
 
-- [ ] 6.1 **RED** — reescribir `src/app/HomePage.test.tsx` sobre los escenarios del spec: la acción de venta es la **primera acción del contenido principal en el orden del DOM**; activarla navega a `/ventas/nueva`; la entrada de carga con IA sigue presente.
-- [ ] 6.2 **RED (la aserción que sostiene la restricción)** — agregar los tests negativos: la home **no** renderiza ningún texto con formato de moneda; **no** renderiza ningún gráfico; **no** emite ninguna request HTTP (servidor MSW con `onUnhandledRequest: 'error'` y **cero handlers**); no muestra proveedores frecuentes; no muestra actividad reciente. Estos son los tests que impiden que la home vuelva a ser un tablero por acumulación (D1).
-- [ ] 6.3 **GREEN** — reescribir `src/app/HomePage.tsx`: saludo, acción primaria "Vender ahora" hacia `/ventas/nueva`, entrada de carga con IA conservada con su destino actual (`/facturas/nueva`, sin tocar — design.md Open Question 2). Eliminar las dos secciones, sus subcomponentes y los helpers locales `formatARS` y de tiempo relativo (ya migrados en el grupo 4).
-- [ ] 6.4 **TRIANGULATE (por mutación)** — reintroducir temporalmente un total con formato de moneda en la home y confirmar que el test de 6.2 **falla**. Revertir. Una aserción negativa que no se prueba por mutación no protege nada.
-- [ ] 6.5 Ejecutar `npm test` completo y `npm run typecheck`.
+- [x] 6.1 **RED** — reescribir `src/app/HomePage.test.tsx` sobre los escenarios del spec: la acción de venta es la **primera acción del contenido principal en el orden del DOM**; activarla navega a `/ventas/nueva`; la entrada de carga con IA sigue presente.
+- [x] 6.2 **RED (la aserción que sostiene la restricción)** — agregar los tests negativos: la home **no** renderiza ningún texto con formato de moneda; **no** renderiza ningún gráfico; **no** emite ninguna request HTTP (servidor MSW con `onUnhandledRequest: 'error'` y **cero handlers**); no muestra proveedores frecuentes; no muestra actividad reciente. Estos son los tests que impiden que la home vuelva a ser un tablero por acumulación (D1).
+- [x] 6.3 **GREEN** — reescribir `src/app/HomePage.tsx`: saludo, acción primaria "Vender ahora" hacia `/ventas/nueva`, entrada de carga con IA conservada con su destino actual (`/facturas/nueva`, sin tocar — design.md Open Question 2). Eliminar las dos secciones, sus subcomponentes y los helpers locales `formatARS` y de tiempo relativo (ya migrados en el grupo 4).
+- [x] 6.4 **TRIANGULATE (por mutación)** — reintroducir temporalmente un total con formato de moneda en la home y confirmar que el test de 6.2 **falla**. Revertir. Una aserción negativa que no se prueba por mutación no protege nada.
+- [x] 6.5 Ejecutar `npm test` completo y `npm run typecheck`.
 
 ## 7. Eliminar `features/home/` (D2)
 

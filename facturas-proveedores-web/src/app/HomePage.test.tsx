@@ -1,56 +1,24 @@
 /**
- * Tests for the redesigned HomePage (specs/design/HOME.md).
+ * Tests for the redesigned HomePage (C-44, spec `home-y-navegacion`).
  *
- * Home is now: greeting + IA-carga hero (protagonist) + proveedores frecuentes
- * + actividad reciente. Data comes from GET /api/proveedores?order_by=saldo and
- * GET /api/actividad-reciente. MSW intercepts both — no real backend.
+ * The home is now a surface of ACTION, not a dashboard (D1): "Vender ahora"
+ * (primary, → /ventas/nueva) and "Cargar con IA" (secondary, unchanged
+ * destination), and NOTHING ELSE — no money text, no charts, no HTTP
+ * requests, no proveedores-frecuentes or actividad-reciente sections (those
+ * moved to `/proveedores`, task groups 4-5).
+ *
+ * The MSW server below has ZERO handlers and `onUnhandledRequest: 'error'`
+ * — any request the home issues fails the test immediately. This is the
+ * mechanism behind "the home does not consult the API" (spec scenario).
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import type { ReactNode } from 'react'
 import { HomePage } from './HomePage'
 
-const proveedores = [
-  {
-    id: 'p1',
-    usuario_id: 'u1',
-    nombre: 'Distribuidora Norte',
-    categoria: 'OTRO',
-    // C-41, D9: the wire shape — proveedoresApi now parses this string.
-    saldo: '148097',
-    ultima_factura_fecha: '2026-07-17',
-  },
-]
-
-const actividad = [
-  {
-    tipo: 'factura',
-    id: 'f1',
-    proveedor_id: 'p1',
-    proveedor_nombre: 'Distribuidora Norte',
-    monto: '148097.00',
-    fecha: '2026-07-17',
-    created_at: '2026-07-17T10:00:00',
-  },
-  {
-    tipo: 'pago',
-    id: 'pg1',
-    proveedor_id: 'p1',
-    proveedor_nombre: 'Distribuidora Norte',
-    monto: '5000.00',
-    fecha: '2026-07-16',
-    created_at: '2026-07-16T10:00:00',
-  },
-]
-
-const server = setupServer(
-  http.get('/api/proveedores', () => HttpResponse.json(proveedores)),
-  http.get('/api/actividad-reciente', () => HttpResponse.json(actividad)),
-)
+const server = setupServer()
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
@@ -58,41 +26,85 @@ afterAll(() => server.close())
 
 function renderHome() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const wrapper = (children: ReactNode) => (
+  return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/']}>
         <Routes>
-          <Route path="/" element={children} />
+          <Route path="/" element={<HomePage />} />
+          <Route path="/ventas/nueva" element={<div>VENTA_FORM</div>} />
           <Route path="/facturas/nueva" element={<div>FACTURAS_NUEVA</div>} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>
+    </QueryClientProvider>,
   )
-  return render(wrapper(<HomePage />))
 }
 
-describe('HomePage — redesign', () => {
-  it('shows the greeting and the IA-carga hero as the protagonist', () => {
+/** Every interactive element (button/link) in DOM order — used to prove the
+ *  sale action is FIRST, without relying on visual prominence (unaffirmable
+ *  in a test — design.md D1). */
+function interactiveElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll('a, button'))
+}
+
+describe('HomePage — surface of action (D1)', () => {
+  it('the sale action is the first action of the main content, in DOM order', () => {
+    const { container } = renderHome()
+    const elements = interactiveElements(container)
+    expect(elements.length).toBeGreaterThan(0)
+    expect(elements[0]).toHaveTextContent(/vender ahora/i)
+  })
+
+  it('activating the sale action navigates to /ventas/nueva', () => {
     renderHome()
-    expect(screen.getByText(/hola/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: /vender ahora/i }))
+    expect(screen.getByText('VENTA_FORM')).toBeInTheDocument()
+  })
+
+  it('the IA-carga entry is still present', () => {
+    renderHome()
     expect(screen.getByRole('heading', { name: /cargar con ia/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /subir imagen/i })).toBeInTheDocument()
   })
 
-  it('renders a proveedor frecuente card once loaded', async () => {
-    renderHome()
-    expect(await screen.findByText('Distribuidora Norte')).toBeInTheDocument()
-  })
-
-  it('renders the actividad reciente feed (factura + pago rows) once loaded', async () => {
-    renderHome()
-    expect(await screen.findByText(/Factura · Distribuidora Norte/)).toBeInTheDocument()
-    expect(screen.getByText(/Pago · Distribuidora Norte/)).toBeInTheDocument()
-  })
-
-  it('"Subir imagen" opens the carga flow via SPA navigation', () => {
+  it('activating the IA-carga entry opens the same flow as before (→ /facturas/nueva)', () => {
     renderHome()
     fireEvent.click(screen.getByRole('button', { name: /subir imagen/i }))
     expect(screen.getByText('FACTURAS_NUEVA')).toBeInTheDocument()
+  })
+})
+
+describe('HomePage — does not show business data (D1)', () => {
+  it('renders no currency-formatted text', () => {
+    const { container } = renderHome()
+    // es-AR currency formatting always includes a "$" sign — the simplest,
+    // most direct way to assert "no money text anywhere on the screen".
+    expect(container.textContent).not.toMatch(/\$/)
+  })
+
+  it('renders no chart (no element exposed as role="img")', () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/']}>
+          <HomePage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('does not consult the API — zero HTTP requests', () => {
+    // The `server` above has NO handlers and `onUnhandledRequest: 'error'`.
+    // If the home issued any request, MSW would throw and fail this test.
+    expect(() => renderHome()).not.toThrow()
+  })
+
+  it('no longer shows the "Proveedores frecuentes" section', () => {
+    renderHome()
+    expect(screen.queryByText('Proveedores frecuentes')).not.toBeInTheDocument()
+  })
+
+  it('no longer shows the "Actividad reciente" section', () => {
+    renderHome()
+    expect(screen.queryByText('Actividad reciente')).not.toBeInTheDocument()
   })
 })
