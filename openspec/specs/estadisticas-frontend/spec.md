@@ -5,7 +5,7 @@ TBD - created by archiving change c-38-estadisticas-frontend. Update Purpose aft
 ## Requirements
 ### Requirement: Selector compartido de rango y granularidad
 
-Las tres vistas de estadísticas SHALL compartir un único control de rango (`desde`/`hasta`) y granularidad (`dia` | `semana` | `mes`). El estado del selector SHALL vivir en los search params de la URL, de modo que una vista de estadísticas sea enlazable y sobreviva a un refresh.
+Las vistas de estadísticas de la ruta `/estadisticas` SHALL compartir un único control de rango (`desde`/`hasta`) y granularidad (`dia` | `semana` | `mes`). El estado del selector SHALL vivir en los search params de la URL, de modo que una vista de estadísticas sea enlazable y sobreviva a un refresh.
 
 Al cambiar cualquiera de los tres valores, la vista SHALL volver a pedir los datos al backend. El frontend NO SHALL recalcular, reagrupar ni reinterpretar una serie ya recibida para servir otra granularidad.
 
@@ -27,22 +27,11 @@ Al cambiar cualquiera de los tres valores, la vista SHALL volver a pedir los dat
 - **THEN** el selector se inicializa con un rango y una granularidad que el backend acepta
 - **AND** se emite la request inicial con esos valores
 
-### Requirement: Total comprado por proveedor en su ficha
+#### Scenario: Un solo selector gobierna todas las vistas de la ruta
 
-La ficha de proveedor SHALL mostrar el total comprado a ESE proveedor por período, pidiéndolo a `GET /api/estadisticas/compras` con el `proveedor_id` de la ficha.
-
-La vista SHALL mostrar exactamente los períodos que devolvió el backend, en el orden recibido, sin omitir los que vienen en cero.
-
-#### Scenario: La ficha pide las compras acotadas a su proveedor
-
-- **WHEN** se abre la ficha del proveedor `P`
-- **THEN** la request a `/api/estadisticas/compras` incluye `proveedor_id=P`
-
-#### Scenario: Un período sin compras se muestra en cero, no se saltea
-
-- **WHEN** el backend devuelve una serie donde un período intermedio tiene `total: 0`
-- **THEN** ese período aparece en la vista con valor cero
-- **AND** la cantidad de períodos mostrados es igual a la cantidad de períodos recibidos
+- **WHEN** el usuario abre `/estadisticas`
+- **THEN** existe un único control de rango y granularidad en la pantalla
+- **AND** todas las vistas que la pantalla muestra responden a ese mismo control
 
 ### Requirement: Ventas por período con desglose por forma de pago
 
@@ -112,6 +101,10 @@ Ante el **422** con el que el backend rechaza un rango que supera su tope de per
 
 El backend informa en ese 422 el conteo estimado de períodos, y rechaza con **422** también el rango invertido.
 
+La clasificación SHALL hacerse por la FORMA de la respuesta de error, nunca por el texto en prosa que la acompaña: un mensaje corregido en el backend cambiaría el texto sin cambiar la semántica, y la clasificación por texto rompería en silencio.
+
+Un fallo que la clasificación no reconozca SHALL presentarse con el mensaje genérico. La vista NO SHALL ofrecer un diagnóstico específico que no corresponda a lo que efectivamente pidió: los endpoints que consume no reciben `proveedor_id`, de modo que un mensaje sobre un proveedor inexistente solo podría mostrarse como una afirmación falsa.
+
 #### Scenario: Rango demasiado grande para la granularidad elegida
 
 - **WHEN** el usuario pide un rango que el backend rechaza con 422 por exceder el tope de períodos
@@ -124,10 +117,11 @@ El backend informa en ese 422 el conteo estimado de períodos, y rechaza con **4
 - **WHEN** el usuario deja `hasta` anterior a `desde` y el backend responde 422
 - **THEN** la vista informa que el rango es inválido, sin presentarlo como error inesperado
 
-#### Scenario: Proveedor ajeno al negocio
+#### Scenario: Un fallo no reconocido cae en el mensaje genérico
 
-- **WHEN** la request de compras se hace con un `proveedor_id` que el backend responde con 404
-- **THEN** la vista informa que el proveedor no existe, sin exponer que pertenece a otro negocio
+- **WHEN** una request de estadísticas falla con una respuesta que la clasificación no reconoce
+- **THEN** la vista muestra el mensaje genérico de error
+- **AND** no muestra ningún diagnóstico específico sobre proveedores
 
 ### Requirement: Los gráficos se renderizan en SVG y su información es legible sin el gráfico
 

@@ -209,15 +209,6 @@ The frontend SHALL add a "Ver cuenta corriente" link on each row of the existing
 - **WHEN** `ProveedoresList` renders a row for a supplier with id `X`
 - **THEN** the row contains a "Ver cuenta corriente" link whose `href` is `/proveedores/X` and clicking it navigates to the detail page
 
-### Requirement: Home quick-access surfaces the cuenta-corriente view
-
-The frontend SHALL add a "Ver cuenta corriente" entry in the inlined `HomePage` (`src/app/router.tsx`) that links to `/proveedores` (the supplier list — the user picks a supplier there). The entry SHALL appear alongside the existing "Cargar factura" / "Cargar pago" / "Ver proveedores" / "Ver facturas" / "Ver pagos" quick-access controls and SHALL follow the same visual treatment as the existing entries (F-HOME-01).
-
-#### Scenario: home shows a "Ver cuenta corriente" link
-
-- **WHEN** an authenticated user is on `/`
-- **THEN** the inlined `HomePage` renders a "Ver cuenta corriente" link that navigates to `/proveedores`
-
 ### Requirement: Data layer over the C-12 endpoint
 
 The frontend SHALL implement a `useCuentaCorriente(proveedorId)` hook backed by `getCuentaCorriente(proveedorId)` over the shared Axios client. The hook SHALL use a query key of the shape `['cuenta-corriente', 'detail', proveedorId]`. The hook SHALL be disabled when `proveedorId` is empty. The hook SHALL NOT retry on failure (404 is a real answer, not a transient error). The hook SHALL use `staleTime: 0` so a revisit re-fetches. The raw Axios call SHALL parse the response's `Decimal` strings into `number` at the API boundary (the `parseCuentaCorriente` helper) so the rest of the app sees `number` and never touches string-encoded decimals. The helper SHALL be unit-tested for round-trip of `0`, `0.01`, `-0.01`, `99999999.99`, `-99999999.99`, and a malformed string (asserts the helper throws a typed `Error`).

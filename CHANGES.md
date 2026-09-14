@@ -858,7 +858,7 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 - **Leer antes**: `knowledge-base/09_decisiones_y_supuestos.md` D-24 (baseline de lint), `docker-compose.override.yml`
 
 ### [C-41] `api-types-generated`
-- **Estado**: `[x]` **implementado 2026-09-03** (las 54 tareas de `tasks.md` en verde), sin deuda residual dentro de su propio alcance. Pendiente el paso de `opsx:archive`.
+- **Estado**: `[x]` **archivado 2026-09-03** (commit `f15107c`) — las 54 tareas de `tasks.md` en verde, sin deuda residual dentro de su propio alcance.
 - **Corrección a la afirmación original de esta entrada**: la medición de 2026-08-11 (`8e085f1`) decía que los 24 tipos sin contraparte "son invenciones del frontend y no se pueden generar". **Medido de nuevo el 2026-08-28 contra el `openapi.json` real, es falso para 15 de ellos** — tienen contraparte en el backend, con otro nombre (`Proveedor→ProveedorResponse`, `LoginBody→LoginRequest`, `Categoria→CategoriaProveedor`, y 12 más; `knowledge-base/09_decisiones_y_supuestos.md` D-96). Solo un puñado genuino queda sin contraparte: filtros de query, envoltorios de paginación y formas de error que el backend arma como dict crudo, no como modelo Pydantic (`knowledge-base/09_decisiones_y_supuestos.md` D-95). Los números de "48 tipos / 84 archivos / 262 imports" de la medición original también quedaron desactualizados por los changes intermedios (C-32…C-40 agregaron tipos y call sites) — la medición vigente al momento de ejecutar el change fue **66 schemas del backend, 79 tipos exportados, 139 archivos importadores** (`design.md`, medición del 2026-08-28).
 - **Por qué (texto original, histórico — ver la corrección arriba)**: `src/shared/api/api.d.ts` es un archivo **escrito a mano**, pese a que su propio encabezado y el script `generate-types` del `package.json` sugieren lo contrario. Exporta 48 tipos con nombre que importan **84 archivos**. Correr `npm run generate-types` produce la forma de `openapi-typescript` (`components['schemas']`, `paths`) y **rompe 262 imports** — medido, no estimado. De los 48 tipos, **24 no tienen contraparte en el backend** (`FacturaDeleteInput`, `PagosFilters`, `HTTPError`, `MeResponse`…): son invenciones del frontend y no se pueden generar.
 - **Scope propuesto** (opción B evaluada en C-30):
@@ -917,6 +917,25 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 
 ---
 
+## Arquitectura de información post-etapa
+
+### [C-44] `arquitectura-informacion-ventas-first`
+- **Estado**: `[x]` archivado 2026-09-14
+- **Por qué**: la navegación y la pantalla de inicio seguían describiendo el producto que **fue** ("cargar facturas y pagos de proveedores"), no el que **es**. La home no ofrecía ninguna forma de registrar una venta y dedicaba dos tercios de su superficie a "Proveedores frecuentes" y "Actividad reciente"; Estadísticas ocupaba el tercer lugar del menú pese a ser la pantalla menos usada; la ficha de proveedor arrastraba un panel de compras (C-38) que la cuenta corriente de abajo ya decía mejor. Cambio de **ubicación y jerarquía**, no de funcionalidad: cero endpoints tocados, cero capacidades de negocio agregadas o quitadas, frontend puro.
+- **Scope**:
+  - Home reescrita como superficie de acción: "Vender ahora" (primaria, hacia `/ventas/nueva`) + carga con IA conservada; sin montos, sin gráficos, sin requests HTTP.
+  - "Proveedores frecuentes" y "Actividad reciente" se **mudan** de la home a `/proveedores` (mismos endpoints, `features/home/` se disuelve dentro de `features/proveedores/`).
+  - Navegación reordenada: Estadísticas pasa del tercer lugar a la posición previa a Perfil; una sola definición de `NAV_ITEMS` alimenta sidebar y barra móvil.
+  - Se retira el panel de compras (`PanelComprasProveedor`) de la ficha de proveedor y toda su ruta de datos frontend (`GET /api/estadisticas/compras` sigue especificado por `estadisticas-backend`, solo pierde su único consumidor).
+  - Nueva capability `home-y-navegacion`; deltas `MODIFIED`/`REMOVED` sobre `estadisticas-frontend` y `cuenta-corriente-frontend` (el requisito "Home quick-access..." describía una `HomePage` que el rediseño de UX/UI ya había reemplazado).
+  - Corrección de conformidad de paso: `ActividadRecienteItem` pasa a derivarse del schema OpenAPI (C-41) en vez de estar transcripto a mano.
+- **Verificación**: suite frontend 1035 → 1035 passed tras podar y sumar tests (conteo explicado en `tasks.md` 11.2), `tsc`/`eslint` limpios. Cierre 11.3 por revisión manual del dueño del producto (2026-09-14) sobre la app corriendo, sustituyendo la sesión de navegador que este entorno no tenía disponible durante el apply.
+- **Dependencias**: `C-38` (archivado), `C-41` (archivado) — housekeeping de arquitectura de información sobre la etapa post-MVP completa
+- **Governance**: BAJO
+- **Leer antes**: `openspec/changes/archive/2026-09-14-c-44-arquitectura-informacion-ventas-first/` (`design.md` D1-D8), `knowledge-base/09_decisiones_y_supuestos.md` D-85, D-86, D-88, D-94
+
+---
+
 ## Resumen
 
 | Change | Nombre | Governance | Depende de |
@@ -962,15 +981,16 @@ C-01 → C-02 → C-03 → C-04 → C-07 → C-08 → C-09 → C-10 → C-11 →
 | **C-38** | **estadisticas-frontend** | BAJO | C-34 ✓, C-37 ✓ — archivado 2026-08-28 |
 | **C-39** | **exportacion-pdf-xls** | MEDIO | C-36 |
 | C-40 | dev-setup-lint-guard | BAJO | — (deuda detectada en C-30, archivado 2026-08-15) |
-| C-41 | api-types-generated | MEDIO | — (deuda detectada en C-30, implementado 2026-09-03, pendiente de archivar) |
+| C-41 | api-types-generated | MEDIO | — (deuda detectada en C-30, archivado 2026-09-03) |
 | C-42 | idempotencia-registro-venta | ALTO | C-34 (deuda detectada revisando C-34, archivado 2026-08-16) |
-| **C-43** | **idempotencia-resto-de-escrituras** | ALTO | C-42 |
+| C-43 | idempotencia-resto-de-escrituras | ALTO | C-42 (archivado 2026-08-25) |
+| C-44 | arquitectura-informacion-ventas-first | BAJO | C-38, C-41 (archivado 2026-09-14) |
 
-**Total: 44 entradas (C-01…C-43 + C-15a) · 13 fases · 43 archivadas, 1 pendiente**
+**Total: 45 entradas (C-01…C-44 + C-15a) · 13 fases · 45 archivadas, 0 pendientes**
 
 **Estado del MVP**: completo y archivado desde C-13 (2026-06-27). C-14/C-15 cerraron la IA de visión. C-15a…C-27 fueron housekeeping, fixes y cierre de deudas; el rediseño de UX/UI se entregó fuera de la numeración (ver nota al final de la sección de housekeeping).
 
-**Etapa actual — evolución a sistema de gestión (C-28 → C-39)**: decidida en la charla de diseño del 2026-08-09, documentada en D-27 a D-38. Convierte la app de "registro de facturas a proveedores" en un mini sistema para negocios chicos: equipo multi-usuario, clientes con fiado, ventas y analítica.
+**Etapa actual — evolución a sistema de gestión (C-28 → C-39)**: decidida en la charla de diseño del 2026-08-09, documentada en D-27 a D-38. Convierte la app de "registro de facturas a proveedores" en un mini sistema para negocios chicos: equipo multi-usuario, clientes con fiado, ventas y analítica. **Camino crítico cerrado desde 2026-08-25**; C-44 (2026-09-14) es housekeeping de arquitectura de información sobre esa etapa ya completa — la home y la navegación ahora reflejan que la venta, no la cuenta a proveedores, es la operación central.
 
 **Para el siguiente change**: C-28 ✓ archivado 2026-08-09 (suite 902 passed). El cuello de botella de la etapa quedó destrabado, así que **C-29 (equipo) y C-32 (clientes) pueden correr en paralelo**. Deuda abierta que hereda el primer change de frontend (C-30): `usuario_id` desapareció de las respuestas de proveedores/facturas/pagos; hoy `tsc` pasa porque los tipos generados están viejos, pero rompe al correr `npm run generate-types`.
 
