@@ -23,14 +23,19 @@ import { useAuthStore } from '@features/auth/store/authStore'
 import { useLogout } from '@features/auth/api/authHooks'
 import { VENTA_CREATE_MUTATION_KEY } from '@features/ventas/api/ventasHooks'
 
+// C-44 (spec `home-y-navegacion`, D7): Estadísticas moved from 3rd place to
+// just before Perfil — the only entry this change touches. The rest keep
+// their relative order. This ONE array feeds both the desktop sidebar and
+// the mobile bottom tab bar (see the two `<nav aria-label="Navegación
+// principal">` landmarks below) — there is no second list to edit.
 const NAV_ITEMS = [
   { to: '/', label: 'Home', icon: Home, end: true },
   { to: '/ventas', label: 'Ventas', icon: ShoppingCart, end: false },
-  { to: '/estadisticas', label: 'Estadísticas', icon: BarChart3, end: false },
   { to: '/clientes', label: 'Clientes', icon: UserRound, end: false },
   { to: '/proveedores', label: 'Proveedores', icon: Users, end: false },
   { to: '/facturas', label: 'Facturas', icon: FileText, end: false },
   { to: '/pagos', label: 'Pagos', icon: CreditCard, end: false },
+  { to: '/estadisticas', label: 'Estadísticas', icon: BarChart3, end: false },
   { to: '/perfil', label: 'Perfil', icon: UserCircle, end: false },
 ]
 

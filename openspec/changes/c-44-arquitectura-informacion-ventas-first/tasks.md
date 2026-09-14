@@ -62,10 +62,10 @@
 
 ## 8. Reordenar la navegación principal (spec `home-y-navegacion`, D7)
 
-- [ ] 8.1 **RED** — extender `src/shared/components/AppLayout/AppLayout.test.tsx` con la aserción del orden exacto: `Home, Ventas, Clientes, Proveedores, Facturas, Pagos, Estadísticas, Perfil`. Escribirla **contra los dos landmarks** con `aria-label` "Navegación principal", para que un futuro intento de divergir sidebar y barra inferior rompa acá.
-- [ ] 8.2 **RED** — agregar los tests de los escenarios restantes: Estadísticas queda después de Pagos y antes de Perfil; la entrada de Equipo sigue apareciendo solo para administradores y al final de la lista; activar Estadísticas navega a `/estadisticas` y monta la misma pantalla.
-- [ ] 8.3 **GREEN** — mover la entrada de Estadísticas dentro del array `NAV_ITEMS` de `AppLayout.tsx`. **Un solo movimiento**: ninguna otra entrada cambia de posición relativa, y no se introduce ninguna estructura nueva.
-- [ ] 8.4 Ejecutar `npm test` completo.
+- [x] 8.1 **RED** — extender `src/shared/components/AppLayout/AppLayout.test.tsx` con la aserción del orden exacto: `Home, Ventas, Clientes, Proveedores, Facturas, Pagos, Estadísticas, Perfil`. Escribirla **contra los dos landmarks** con `aria-label` "Navegación principal", para que un futuro intento de divergir sidebar y barra inferior rompa acá.
+- [x] 8.2 **RED** — agregar los tests de los escenarios restantes: Estadísticas queda después de Pagos y antes de Perfil; la entrada de Equipo sigue apareciendo solo para administradores y al final de la lista; activar Estadísticas navega a `/estadisticas` y monta la misma pantalla.
+- [x] 8.3 **GREEN** — mover la entrada de Estadísticas dentro del array `NAV_ITEMS` de `AppLayout.tsx`. **Un solo movimiento**: ninguna otra entrada cambia de posición relativa, y no se introduce ninguna estructura nueva.
+- [x] 8.4 Ejecutar `npm test` completo.
 
 ## 9. Retirar el panel de compras de la ficha de proveedor (spec `estadisticas-frontend`, REMOVED)
 

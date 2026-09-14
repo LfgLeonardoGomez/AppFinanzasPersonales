@@ -9,9 +9,9 @@
  * a path that dead-ends in a permission error they cannot resolve.
  */
 import { describe, it, expect, afterEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-query'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@features/auth/store/authStore'
 import { VENTA_CREATE_MUTATION_KEY } from '@features/ventas/api/ventasHooks'
 import { AppLayout } from './AppLayout'
@@ -92,6 +92,77 @@ function renderLayoutWithLocationProbe() {
     </QueryClientProvider>,
   )
 }
+
+// ── C-44: orden de la navegación principal (spec `home-y-navegacion`, D7) ──
+
+const ORDEN_ESPERADO = [
+  'Home',
+  'Ventas',
+  'Clientes',
+  'Proveedores',
+  'Facturas',
+  'Pagos',
+  'Estadísticas',
+  'Perfil',
+]
+
+describe('AppLayout — orden de la navegación principal (C-44)', () => {
+  it('ofrece las entradas exactamente en el orden definido, en AMBOS landmarks "Navegación principal"', () => {
+    renderLayout(false)
+    const navs = screen.getAllByRole('navigation', { name: /navegación principal/i })
+    expect(navs).toHaveLength(2)
+    for (const nav of navs) {
+      const labels = within(nav)
+        .getAllByRole('link')
+        .map((link) => link.textContent?.trim())
+      expect(labels).toEqual(ORDEN_ESPERADO)
+    }
+  })
+
+  it('Estadísticas queda después de Pagos y antes de Perfil', () => {
+    renderLayout(false)
+    const nav = screen.getAllByRole('navigation', { name: /navegación principal/i })[0]!
+    const labels = within(nav)
+      .getAllByRole('link')
+      .map((link) => link.textContent?.trim())
+    const pagosIdx = labels.indexOf('Pagos')
+    const estadisticasIdx = labels.indexOf('Estadísticas')
+    const perfilIdx = labels.indexOf('Perfil')
+    expect(estadisticasIdx).toBeGreaterThan(pagosIdx)
+    expect(estadisticasIdx).toBeLessThan(perfilIdx)
+  })
+
+  it('la entrada de Equipo sigue apareciendo solo para administradores y al final de la lista', () => {
+    renderLayout(true)
+    const nav = screen.getAllByRole('navigation', { name: /navegación principal/i })[0]!
+    const labels = within(nav)
+      .getAllByRole('link')
+      .map((link) => link.textContent?.trim())
+    expect(labels[labels.length - 1]).toBe('Equipo')
+    expect(labels.slice(0, -1)).toEqual(ORDEN_ESPERADO)
+  })
+
+  it('activar Estadísticas desde su nueva posición navega a /estadisticas y monta la misma pantalla', () => {
+    useAuthStore.setState({ user: { ...USUARIO, es_admin: false } })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<div>HOME_SCREEN</div>} />
+              <Route path="/estadisticas" element={<div>ESTADISTICAS_SCREEN</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    const link = screen.getAllByRole('link', { name: /^estadísticas$/i })[0]!
+    fireEvent.click(link)
+    expect(screen.getByText('ESTADISTICAS_SCREEN')).toBeInTheDocument()
+  })
+})
 
 describe('AppLayout — entrada de Equipo', () => {
   it('se le ofrece al admin', () => {
