@@ -28,9 +28,6 @@ export function HomePage() {
   const firstName = user?.nombre?.split(' ')[0] ?? ''
   const navigate = useNavigate()
 
-  // design.md Open Question 2 — deliberately left pointing at /facturas/nueva
-  // (unchanged, inherited TODO from C-21). Changing this destination is not
-  // in this change's scope.
   const abrirCarga = () => navigate('/facturas/nueva')
 
   return (

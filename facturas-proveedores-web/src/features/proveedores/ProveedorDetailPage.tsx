@@ -15,11 +15,6 @@
  *  - 404 empty state text + link to /proveedores
  *  - "Reintentar" button on generic error
  *  - Action links: Cargar factura, Cargar pago
- *
- * TODO(carga-unificada): once the unified IA/manual carga modal (C-21)
- * lands, "Cargar factura" / "Cargar pago" should open it pre-set to
- * proveedor_id={proveedorId} instead of navigating to /facturas/nueva
- * and /pagos/nuevo.
  */
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
@@ -131,10 +126,6 @@ export function ProveedorDetailPage() {
               </p>
             )}
           </div>
-          {/* TODO(carga-unificada): once the unified IA/manual carga modal
-              (C-21) lands, these should open it pre-set to
-              tipo=factura|pago and proveedor_id={proveedorId} instead of
-              navigating to /facturas/nueva and /pagos/nuevo. */}
           <div className="flex flex-wrap gap-2">
             <Link
               to={`/facturas/nueva?proveedor_id=${proveedorId}`}
