@@ -25,10 +25,10 @@
 
 ## 3. Cliente de actividad reciente dentro de `features/proveedores/` (D2, D3)
 
-- [ ] 3.1 **RED** — crear `src/features/proveedores/api/actividadRecienteApi.test.ts` con handlers MSW **propios, declarados dentro de `features/proveedores/`**. Casos: (a) el monto llega como cadena y el cliente devuelve número; (b) un monto vacío lanza; (c) un monto no numérico lanza; (d) `proveedor_nombre` ausente se normaliza a nulo sin perder la fila. Los fixtures reproducen la forma del **wire** (decimales como cadena), nunca valores ya convertidos.
-- [ ] 3.2 **GREEN** — crear `src/features/proveedores/api/actividadRecienteApi.ts` siguiendo el patrón de `proveedoresApi.ts`: interfaz `Raw` interna, función de parseo, y una conversión que **lanza** ante cadena vacía o valor no finito (nunca degrada a `0`, D-88). Ejecutar los tests hasta verde.
-- [ ] 3.3 **RED/GREEN** — crear `actividadRecienteHooks.test.tsx` y `actividadRecienteHooks.ts` con el hook de TanStack Query y su clave. Verificar que la clave incluye el límite, para que cambiarlo sea un refetch y no un acierto de caché sobre otra cantidad.
-- [ ] 3.4 Ejecutar `npm test` completo y `npm run typecheck`.
+- [x] 3.1 **RED** — crear `src/features/proveedores/api/actividadRecienteApi.test.ts` con handlers MSW **propios, declarados dentro de `features/proveedores/`**. Casos: (a) el monto llega como cadena y el cliente devuelve número; (b) un monto vacío lanza; (c) un monto no numérico lanza; (d) `proveedor_nombre` ausente se normaliza a nulo sin perder la fila. Los fixtures reproducen la forma del **wire** (decimales como cadena), nunca valores ya convertidos.
+- [x] 3.2 **GREEN** — crear `src/features/proveedores/api/actividadRecienteApi.ts` siguiendo el patrón de `proveedoresApi.ts`: interfaz `Raw` interna, función de parseo, y una conversión que **lanza** ante cadena vacía o valor no finito (nunca degrada a `0`, D-88). Ejecutar los tests hasta verde.
+- [x] 3.3 **RED/GREEN** — crear `actividadRecienteHooks.test.tsx` y `actividadRecienteHooks.ts` con el hook de TanStack Query y su clave. Verificar que la clave incluye el límite, para que cambiarlo sea un refetch y no un acierto de caché sobre otra cantidad.
+- [x] 3.4 Ejecutar `npm test` completo y `npm run typecheck`.
 
 ## 4. Panel "Actividad reciente" en `/proveedores` (spec `proveedores-frontend`)
 
