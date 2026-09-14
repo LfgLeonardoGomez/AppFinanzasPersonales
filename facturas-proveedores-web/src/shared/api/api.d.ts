@@ -69,23 +69,23 @@ export type DecimalAsNumber<T, K extends keyof T> = [K] extends [never]
  * (`datetime`, no default); the pre-C-41 hand-written type marked it
  * optional with no schema reason to.
  *
- * `tema_preferido` is a genuine backend inconsistency, documented rather
- * than "fixed" (Non-Goal: no backend fix in this change): the OpenAPI
- * schema (`app/schemas/auth.py::UsuarioResponse`) types the field as a bare
- * `Optional[str]`, not `Optional[TemaPreferido]` — but the underlying
- * column (`app/models/usuario.py::Usuario.tema_preferido`) IS the
- * `TemaPreferido` enum with a hard `default=TemaPreferido.CLARO` (never
- * `None`). Narrowed here to the domain enum, non-null — matching what the
- * value on the wire actually and always is, same as the pre-C-41 type.
+ * `tema_preferido` WAS a genuine backend inconsistency — the schema used to
+ * type it as a bare `Optional[str]` while the underlying column
+ * (`app/models/usuario.py::Usuario.tema_preferido`) is the `TemaPreferido`
+ * enum, NOT NULL, `default=TemaPreferido.CLARO` — fixed backend-side
+ * (`UsuarioResponse.tema_preferido: TemaPreferido = TemaPreferido.CLARO`).
+ * The generated schema now derives the enum directly, non-nullable and
+ * required, so it needs no hand override here any more — plain derivation,
+ * same as every other field that isn't a Decimal or a wire vs. domain
+ * mismatch.
  */
 export type Usuario = Omit<
   DecimalAsNumber<components['schemas']['UsuarioResponse'], never>,
-  'telefono' | 'avatar_url' | 'nombre_negocio' | 'tema_preferido' | 'updated_at'
+  'telefono' | 'avatar_url' | 'nombre_negocio' | 'updated_at'
 > & {
   telefono: string | null
   avatar_url: string | null
   nombre_negocio: string | null
-  tema_preferido: TemaPreferido
   updated_at: string
 }
 

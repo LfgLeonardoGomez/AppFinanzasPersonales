@@ -67,9 +67,9 @@
  *     `FacturaResponse`/`PagoResponse`, asserted equal), `RegistroBody`
  *     (~ RegistroRequest, zero drift), `Usuario` (~ UsuarioResponse —
  *     `telefono`/`avatar_url`/`nombre_negocio`/`updated_at` widened to
- *     required, `tema_preferido` narrowed to the domain enum despite the
- *     schema typing it as a bare `string` — a real backend inconsistency,
- *     documented not fixed), `MeResponse` (alias of `Usuario`).
+ *     required; `tema_preferido` needs no override any more — the backend
+ *     inconsistency this used to work around was fixed, the schema now
+ *     derives the domain enum directly), `MeResponse` (alias of `Usuario`).
  *   - `PropuestaFactura`/`PropuestaPago` — the one case in this file where a
  *     money field (`monto_total`/`monto`) is genuinely nullable, so the
  *     conversion is a hand override instead of routed through
@@ -512,22 +512,21 @@ type _RegistroBody = Assert<
 // FastAPI-always-serializes-the-key rationale as `Proveedor.cuit`.
 // `updated_at` widened to required too (the schema itself declares it
 // non-optional; the pre-C-41 hand type marked it optional with no reason
-// to). `tema_preferido` narrowed to the domain enum, non-null — the schema
-// types it as a bare `Optional[str]` (a real backend inconsistency,
-// documented not fixed, Non-Goal) but the model column is the
-// `TemaPreferido` enum with a hard default, never `None`.
+// to). `tema_preferido` needs no override: the backend schema used to type
+// it as a bare `Optional[str]` (a real inconsistency vs. the NOT NULL
+// `TemaPreferido` column) but that was fixed backend-side, so the
+// generated schema now derives the enum directly, required and non-null.
 type _Usuario = Assert<
-  'Usuario~UsuarioResponse (telefono/avatar_url/nombre_negocio/updated_at required, tema_preferido narrowed)',
+  'Usuario~UsuarioResponse (telefono/avatar_url/nombre_negocio/updated_at required)',
   Eq<
     Usuario,
     Omit<
       DecimalAsNumber<S['UsuarioResponse'], never>,
-      'telefono' | 'avatar_url' | 'nombre_negocio' | 'tema_preferido' | 'updated_at'
+      'telefono' | 'avatar_url' | 'nombre_negocio' | 'updated_at'
     > & {
       telefono: string | null
       avatar_url: string | null
       nombre_negocio: string | null
-      tema_preferido: TemaPreferido
       updated_at: string
     }
   >

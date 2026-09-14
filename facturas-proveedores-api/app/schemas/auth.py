@@ -13,6 +13,8 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, field_validator
 
+from app.models.enums import TemaPreferido
+
 
 class RegistroRequest(BaseModel):
     """Payload for POST /api/auth/registro.
@@ -133,7 +135,12 @@ class UsuarioResponse(BaseModel):
     telefono: Optional[str] = None
     avatar_url: Optional[str] = None
     nombre_negocio: Optional[str] = None
-    tema_preferido: Optional[str] = None
+    # The column is `TemaPreferido`, NOT NULL, `default=CLARO`
+    # (app/models/usuario.py::Usuario.tema_preferido) — never a bare `str`
+    # and never `None`. Typed here to match, so the OpenAPI schema (and the
+    # frontend types generated from it) reflect the real invariant instead
+    # of a wider-than-reality `Optional[str]`.
+    tema_preferido: TemaPreferido = TemaPreferido.CLARO
     created_at: datetime
     updated_at: datetime
 

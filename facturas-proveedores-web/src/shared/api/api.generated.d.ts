@@ -2426,8 +2426,8 @@ export interface components {
             avatar_url?: string | null;
             /** Nombre Negocio */
             nombre_negocio?: string | null;
-            /** Tema Preferido */
-            tema_preferido?: string | null;
+            /** @default CLARO */
+            tema_preferido: components["schemas"]["TemaPreferido"];
             /**
              * Created At
              * Format: date-time

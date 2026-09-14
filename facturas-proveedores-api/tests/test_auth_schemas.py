@@ -109,3 +109,71 @@ class TestUsuarioResponse:
         assert data["id"] == uid
         assert data["email"] == "user@example.com"
         assert data["nombre"] == "User"
+
+
+class TestUsuarioResponseTemaPreferido:
+    """
+    Spec: `tema_preferido` is typed as the `TemaPreferido` enum, never a bare
+    `str` — the underlying column (`Usuario.tema_preferido`) is NOT NULL with
+    a hard `default=TemaPreferido.CLARO`, so the response schema should
+    reject anything the enum doesn't accept, including `None`.
+    """
+
+    def _kwargs(self, **overrides):
+        import uuid
+        from datetime import datetime, timezone
+
+        base = dict(
+            id=uuid.uuid4(),
+            negocio_id=uuid.uuid4(),
+            email="user@example.com",
+            nombre="User",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        base.update(overrides)
+        return base
+
+    def test_defaults_to_claro(self):
+        """Spec: omitted tema_preferido defaults to CLARO (matches the model default)."""
+        from app.models.enums import TemaPreferido
+        from app.schemas.auth import UsuarioResponse
+
+        resp = UsuarioResponse(**self._kwargs())
+        assert resp.tema_preferido == TemaPreferido.CLARO
+
+    def test_accepts_oscuro(self):
+        """Triangulate: a second valid enum member round-trips correctly."""
+        from app.models.enums import TemaPreferido
+        from app.schemas.auth import UsuarioResponse
+
+        resp = UsuarioResponse(**self._kwargs(tema_preferido=TemaPreferido.OSCURO))
+        assert resp.tema_preferido == TemaPreferido.OSCURO
+        assert resp.model_dump()["tema_preferido"] == "OSCURO"
+
+    def test_rejects_invalid_value(self):
+        """Spec: a value outside CLARO/OSCURO raises ValidationError (typed enum, not a bare str)."""
+        from app.schemas.auth import UsuarioResponse
+
+        with pytest.raises(ValidationError):
+            UsuarioResponse(**self._kwargs(tema_preferido="ROSA"))
+
+    def test_rejects_null(self):
+        """Spec: None is no longer accepted — the column is never null (D-88/D-94 style: no fabricated default value hiding a bad read)."""
+        from app.schemas.auth import UsuarioResponse
+
+        with pytest.raises(ValidationError):
+            UsuarioResponse(**self._kwargs(tema_preferido=None))
+
+    def test_openapi_schema_references_the_enum(self):
+        """Spec: the JSON Schema FastAPI derives the OpenAPI doc from (and
+        that openapi-typescript reads on the frontend) points tema_preferido
+        at the TemaPreferido enum definition, not a bare "type": "string",
+        and is not nullable (no "anyOf" with "type": "null")."""
+        from app.schemas.auth import UsuarioResponse
+
+        schema = UsuarioResponse.model_json_schema()
+        prop = schema["properties"]["tema_preferido"]
+        assert prop.get("$ref") == "#/$defs/TemaPreferido"
+        assert "anyOf" not in prop
+        assert schema["$defs"]["TemaPreferido"]["enum"] == ["CLARO", "OSCURO"]
