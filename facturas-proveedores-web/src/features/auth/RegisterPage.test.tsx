@@ -233,3 +233,14 @@ describe('RegisterPage — dos caminos', () => {
     expect(alerta).not.toHaveTextContent(/vencid|usado|inexistente/i)
   })
 })
+
+// ── C-45: copy refresh for the broader business scope ─────────────────────
+
+describe('RegisterPage — subtitle reflects the broader business scope', () => {
+  it('shows the new subtitle for the "crear negocio" path and drops the old facturas-only wording', () => {
+    renderRegisterPage()
+
+    expect(screen.getByText('Empezá a gestionar tu negocio en minutos.')).toBeInTheDocument()
+    expect(screen.queryByText(/cargar facturas en minutos/i)).not.toBeInTheDocument()
+  })
+})

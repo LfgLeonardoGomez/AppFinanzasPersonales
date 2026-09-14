@@ -131,7 +131,7 @@ export default function RegisterPage() {
       subtitle={
         esInvitacion
           ? 'Usá el código que te dio el administrador de tu local.'
-          : 'Empezá a cargar facturas en minutos.'
+          : 'Empezá a gestionar tu negocio en minutos.'
       }
       footerText="¿Ya tenés cuenta?"
       footerLinkTo="/login"

@@ -47,7 +47,7 @@ export default function LoginPage() {
     <AuthShell
       mode="login"
       title="Bienvenido de nuevo"
-      subtitle="Ingresá para ver tus proveedores y facturas."
+      subtitle="Ingresá para gestionar tu negocio."
       footerText="¿No tenés cuenta?"
       footerLinkTo="/registro"
       footerLinkLabel="Creá una"

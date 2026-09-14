@@ -1,12 +1,16 @@
 /**
- * AuthShell — shared visual shell for LoginPage/RegisterPage (design handoff:
- * `Auth.dc.html`, specs/design/BRAND.md + LAYOUT.md).
+ * AuthShell — shared visual shell for LoginPage/RegisterPage/RecuperarPage/
+ * ResetPasswordPage (design handoff: `Auth.dc.html`, specs/design/BRAND.md +
+ * LAYOUT.md).
  *
- * Desktop (lg+): split screen — violet→magenta brand panel with tagline on
- * the left, form on the right. Mobile: compact brand banner on top, form
- * below. Both pages are still separate ROUTES (/login, /registro) — this
- * only unifies the chrome; the mode pills navigate between routes instead
- * of toggling local state, since each page keeps its own hooks/tests.
+ * Desktop (lg+): split screen — violet→magenta brand panel with the product
+ * pitch on the left, form on the right. Mobile: the brand panel is dropped
+ * entirely (`hidden lg:flex`) so the form is the protagonist above the
+ * fold — it survives only as a small, discreet phrase that flows after the
+ * form (never fixed, so it can't sit above the keyboard). Both pages are
+ * still separate ROUTES (/login, /registro) — this only unifies the chrome;
+ * the mode pills navigate between routes instead of toggling local state,
+ * since each page keeps its own hooks/tests.
  */
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -50,21 +54,23 @@ export function AuthShell({
 }: AuthShellProps) {
   return (
     <div className="flex min-h-[100dvh] flex-col bg-page font-inter lg:flex-row">
-      {/* ── Brand panel ─────────────────────────────────────────────────── */}
+      {/* ── Brand panel — desktop only ──────────────────────────────────────
+          Decorative marketing surface, not essential information: the mode
+          pills, title and form below carry everything the user needs, so
+          this whole panel is aria-hidden and dropped on mobile instead of
+          shrinking into a mobile banner. */}
       <div
-        className="relative flex shrink-0 items-end px-6 py-9 sm:px-10 lg:flex-1 lg:p-12"
+        aria-hidden="true"
+        className="relative hidden shrink-0 items-end p-12 lg:flex lg:flex-1"
         style={{ background: 'linear-gradient(135deg,#7c3aed 0%,#9333ea 55%,#d6409f 100%)' }}
       >
         <div>
-          <span
-            aria-hidden="true"
-            className="mb-3.5 block h-8 w-8 rounded-full bg-white/20 lg:mb-5 lg:h-10 lg:w-10"
-          />
-          <p className="mb-1 max-w-xs text-lg font-extrabold leading-snug tracking-tight text-white lg:mb-2 lg:max-w-xs lg:text-2xl">
-            Cargá facturas sacando una foto. El resto lo hace la IA.
+          <span className="mb-5 block h-10 w-10 rounded-full bg-white/20" />
+          <p className="mb-2 max-w-xs text-2xl font-extrabold leading-snug tracking-tight text-white">
+            Ventas, clientes y proveedores: tu negocio, en un solo lugar.
           </p>
-          <p className="hidden max-w-[300px] text-[13.5px] text-white/80 lg:block">
-            Finanzas para tu negocio, sin planillas.
+          <p className="max-w-[300px] text-[13.5px] text-white/80">
+            Cargá facturas sacando una foto — el resto lo hace la IA.
           </p>
         </div>
       </div>
@@ -102,6 +108,14 @@ export function AuthShell({
             <Link to={footerLinkTo} className="font-semibold text-violet-500 hover:text-violet-600">
               {footerLinkLabel}
             </Link>
+          </p>
+
+          {/* Mobile-only echo of the brand panel's secondary line — flows
+              after the form (never fixed), so an open keyboard can't push
+              the form under it. Discreet on purpose: the form is the
+              protagonist here, this is just a small trailing hint. */}
+          <p className="mt-4 text-center text-[11.5px] text-ink-soft lg:hidden">
+            Cargá facturas sacando una foto — el resto lo hace la IA.
           </p>
         </div>
       </div>

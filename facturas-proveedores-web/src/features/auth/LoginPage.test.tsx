@@ -137,3 +137,14 @@ describe('LoginPage', () => {
     })
   })
 })
+
+// ── C-45: copy refresh for the broader business scope ─────────────────────
+
+describe('LoginPage — subtitle reflects the broader business scope', () => {
+  it('shows the new subtitle and drops the old facturas/proveedores-only wording', () => {
+    renderLoginPage()
+
+    expect(screen.getByText('Ingresá para gestionar tu negocio.')).toBeInTheDocument()
+    expect(screen.queryByText(/ver tus proveedores y facturas/i)).not.toBeInTheDocument()
+  })
+})
