@@ -48,15 +48,6 @@ export function EstadisticasError({ error }: EstadisticasErrorProps) {
           </>
         )}
 
-        {clasificado.tipo === 'proveedor-inexistente' && (
-          <>
-            <p className="text-sm font-semibold text-ink">Este proveedor no existe</p>
-            <p className="text-sm text-ink-soft">
-              No se encontró el proveedor solicitado.
-            </p>
-          </>
-        )}
-
         {clasificado.tipo === 'desconocido' && (
           <>
             <p className="text-sm font-semibold text-ink">No se pudieron cargar las estadísticas</p>

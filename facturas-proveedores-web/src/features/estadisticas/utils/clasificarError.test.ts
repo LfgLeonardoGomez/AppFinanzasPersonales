@@ -49,10 +49,15 @@ describe('clasificarErrorEstadisticas', () => {
     expect(result.tipo).toBe('rango-invertido')
   })
 
-  it('classifies a 404 as proveedor-inexistente', () => {
-    const result = clasificarErrorEstadisticas(axiosErrorWith(404, 'Proveedor not found'))
+  it('classifies a 404 as desconocido (C-44)', () => {
+    // The `proveedor-inexistente` classification retired with
+    // `PanelComprasProveedor` — the only caller that ever sent
+    // `proveedor_id`. The two endpoints still consumed (`/ventas`,
+    // `/resumen`) never receive one, so a 404 here is not a case the
+    // classifier specifically recognizes.
+    const result = clasificarErrorEstadisticas(axiosErrorWith(404, 'Not Found'))
 
-    expect(result.tipo).toBe('proveedor-inexistente')
+    expect(result.tipo).toBe('desconocido')
   })
 
   it('classifies a 500 as desconocido', () => {

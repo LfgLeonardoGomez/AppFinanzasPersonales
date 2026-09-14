@@ -72,20 +72,21 @@ describe('EstadisticasError — other cases', () => {
     expect(alert.textContent).not.toMatch(/inesperad/i)
   })
 
-  it('reports a 404 as a missing supplier WITHOUT revealing it belongs to another business', () => {
-    render(<EstadisticasError error={axiosErrorWith(404, 'Proveedor not found')} />)
-
-    const alert = screen.getByRole('alert')
-    expect(alert).toHaveTextContent(/proveedor/i)
-    // negocio_id isolation answers 404 rather than 403 precisely so the
-    // caller cannot tell "does not exist" from "is not yours". The copy must
-    // not undo that.
-    expect(alert.textContent).not.toMatch(/otro negocio|no te pertenece|sin permiso|ajeno/i)
-  })
-
   it('falls back to a generic message on an unknown failure', () => {
     render(<EstadisticasError error={axiosErrorWith(500, 'boom')} />)
 
     expect(screen.getByRole('alert')).toBeInTheDocument()
+  })
+
+  it('a 404 falls back to the generic message and offers NO supplier diagnostic (C-44)', () => {
+    // `proveedor-inexistente` retired alongside `PanelComprasProveedor` — the
+    // two endpoints still consumed here (`/ventas`, `/resumen`) never
+    // receive `proveedor_id`, so a "this supplier does not exist" message
+    // would be a claim about something the request never asked for.
+    render(<EstadisticasError error={axiosErrorWith(404, 'Not Found')} />)
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toBeInTheDocument()
+    expect(alert.textContent).not.toMatch(/proveedor/i)
   })
 })
