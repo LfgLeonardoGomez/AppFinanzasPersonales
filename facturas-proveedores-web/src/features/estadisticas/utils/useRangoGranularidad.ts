@@ -16,7 +16,7 @@ import { useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { Granularidad } from '@shared/api/api'
 import { getTodayInArgentina } from '@shared/utils/date'
-import { rangoPorDefecto, type RangoEstadisticas, type VistaEstadisticas } from './rangos'
+import { rangoPorDefecto, type RangoEstadisticas } from './rangos'
 
 const GRANULARIDADES: readonly Granularidad[] = ['dia', 'semana', 'mes']
 
@@ -30,13 +30,12 @@ export interface UseRangoGranularidad {
 }
 
 export function useRangoGranularidad(
-  vista: VistaEstadisticas,
   hoy: string = getTodayInArgentina(),
 ): UseRangoGranularidad {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const rango = useMemo<RangoEstadisticas>(() => {
-    const porDefecto = rangoPorDefecto(vista, hoy)
+    const porDefecto = rangoPorDefecto(hoy)
     const granularidadParam = searchParams.get('granularidad')
 
     return {
@@ -46,7 +45,7 @@ export function useRangoGranularidad(
         ? granularidadParam
         : porDefecto.granularidad,
     }
-  }, [searchParams, vista, hoy])
+  }, [searchParams, hoy])
 
   const setRango = useCallback(
     (siguiente: RangoEstadisticas) => {

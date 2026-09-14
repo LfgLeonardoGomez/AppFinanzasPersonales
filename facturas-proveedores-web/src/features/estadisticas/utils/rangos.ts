@@ -19,8 +19,6 @@ export interface RangoEstadisticas {
   granularidad: Granularidad
 }
 
-export type VistaEstadisticas = 'compras' | 'ventas'
-
 export function restarDias(fecha: string, dias: number): string {
   const d = new Date(`${fecha}T00:00:00Z`)
   d.setUTCDate(d.getUTCDate() - dias)
@@ -53,25 +51,19 @@ export function restarMeses(fecha: string, meses: number): string {
 }
 
 /**
- * The default range each view opens with (design.md Open Questions).
+ * The default range the (now sole) ventas view opens with (design.md Open
+ * Questions). The compras branch this function used to have was retired in
+ * C-44 alongside `PanelComprasProveedor` — its only caller.
  *
- * Both stay far below the backend's 400-period cap: 12 months by month is 13
- * buckets, 30 days by day is 30. A default that 422'd on first paint would
- * make the screen look broken before the user touched anything.
+ * Stays far below the backend's 400-period cap: 30 days by day is 30
+ * buckets. A default that 422'd on first paint would make the screen look
+ * broken before the user touched anything.
  */
-export function rangoPorDefecto(vista: VistaEstadisticas, hoy: string): RangoEstadisticas {
-  if (vista === 'ventas') {
-    return {
-      desde: restarDias(hoy, 29),
-      hasta: hoy,
-      granularidad: 'dia',
-    }
-  }
-
+export function rangoPorDefecto(hoy: string): RangoEstadisticas {
   return {
-    desde: restarMeses(hoy, 12),
+    desde: restarDias(hoy, 29),
     hasta: hoy,
-    granularidad: 'mes',
+    granularidad: 'dia',
   }
 }
 

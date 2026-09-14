@@ -15,14 +15,8 @@ import { RangoGranularidadSelector } from './RangoGranularidadSelector'
 import { useRangoGranularidad } from '../utils/useRangoGranularidad'
 
 /** Mounts the selector on a route and echoes the resulting search params. */
-function Harness({
-  vista = 'compras',
-  hoy = '2026-08-26',
-}: {
-  vista?: 'compras' | 'ventas'
-  hoy?: string
-}) {
-  const { rango, setRango } = useRangoGranularidad(vista, hoy)
+function Harness({ hoy = '2026-08-26' }: { hoy?: string }) {
+  const { rango, setRango } = useRangoGranularidad(hoy)
   const [searchParams] = useSearchParams()
 
   return (
@@ -34,12 +28,12 @@ function Harness({
   )
 }
 
-function renderAt(initialEntry: string, vista: 'compras' | 'ventas' = 'compras') {
+function renderAt(initialEntry: string) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
-        <Route path="/x" element={<Harness vista={vista} />} />
-        <Route path="/y" element={<Harness vista={vista} />} />
+        <Route path="/x" element={<Harness />} />
+        <Route path="/y" element={<Harness />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -48,12 +42,6 @@ function renderAt(initialEntry: string, vista: 'compras' | 'ventas' = 'compras')
 describe('useRangoGranularidad — defaults', () => {
   it('initialises from the default range when there are no search params', () => {
     renderAt('/x')
-
-    expect(screen.getByTestId('rango')).toHaveTextContent('2025-08-26|2026-08-26|mes')
-  })
-
-  it('uses the ventas default on the ventas view', () => {
-    renderAt('/x', 'ventas')
 
     expect(screen.getByTestId('rango')).toHaveTextContent('2026-07-28|2026-08-26|dia')
   })
@@ -69,7 +57,7 @@ describe('useRangoGranularidad — defaults', () => {
     // collect an opaque 422 — the closed enum is validated on the way in.
     renderAt('/x?desde=2026-01-01&hasta=2026-03-31&granularidad=trimestre')
 
-    expect(screen.getByTestId('rango')).toHaveTextContent('2026-01-01|2026-03-31|mes')
+    expect(screen.getByTestId('rango')).toHaveTextContent('2026-01-01|2026-03-31|dia')
   })
 })
 
@@ -133,6 +121,6 @@ describe('per-route isolation (design.md D3)', () => {
     unmount()
 
     renderAt('/y')
-    expect(screen.getByTestId('rango')).toHaveTextContent('2025-08-26|2026-08-26|mes')
+    expect(screen.getByTestId('rango')).toHaveTextContent('2026-07-28|2026-08-26|dia')
   })
 })

@@ -21,7 +21,7 @@ import { PanelVentas } from './PanelVentas'
 import { PanelContraste } from './PanelContraste'
 
 export function EstadisticasPage() {
-  const { rango, setRango } = useRangoGranularidad('ventas')
+  const { rango, setRango } = useRangoGranularidad()
 
   return (
     <div data-testid="estadisticas-page" className="flex flex-col gap-5">

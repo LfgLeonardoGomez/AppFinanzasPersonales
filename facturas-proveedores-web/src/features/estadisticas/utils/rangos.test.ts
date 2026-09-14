@@ -56,21 +56,14 @@ describe('restarMeses', () => {
 })
 
 describe('rangoPorDefecto', () => {
-  it('gives compras/resumen the last 12 months by month', () => {
-    const rango = rangoPorDefecto('compras', '2026-08-26')
-
-    expect(rango).toEqual({
-      desde: '2025-08-26',
-      hasta: '2026-08-26',
-      granularidad: 'mes',
-    })
-  })
-
-  it('gives ventas the last 30 days by day, counted INCLUSIVELY', () => {
+  // C-44: the compras branch retired alongside `PanelComprasProveedor` — its
+  // only caller. `rangoPorDefecto` now takes a single `hoy` parameter and
+  // always returns the ventas-shaped default.
+  it('gives the last 30 days by day, counted INCLUSIVELY', () => {
     // Both bounds are inclusive on the backend, so 30 days means
     // `hasta - 29`, not `hasta - 30`: Jul 28→31 is 4 days plus Aug 1→26 is
     // 26, which is exactly 30.
-    const rango = rangoPorDefecto('ventas', '2026-08-26')
+    const rango = rangoPorDefecto('2026-08-26')
 
     expect(rango).toEqual({
       desde: '2026-07-28',
@@ -79,19 +72,17 @@ describe('rangoPorDefecto', () => {
     })
   })
 
-  it('the ventas default spans exactly 30 inclusive days', () => {
-    const rango = rangoPorDefecto('ventas', '2026-08-26')
+  it('spans exactly 30 inclusive days', () => {
+    const rango = rangoPorDefecto('2026-08-26')
     const dias = (Date.parse(rango.hasta) - Date.parse(rango.desde)) / 86_400_000 + 1
 
     expect(dias).toBe(30)
   })
 
   it('stays well under the backend period cap of 400', () => {
-    // The `dia` default is the one that could get close: 400 days is roughly
-    // 13 months, so a default any wider would 422 on first paint.
-    const ventas = rangoPorDefecto('ventas', '2026-08-26')
+    const rango = rangoPorDefecto('2026-08-26')
     const dias =
-      (Date.parse(ventas.hasta) - Date.parse(ventas.desde)) / (1000 * 60 * 60 * 24) + 1
+      (Date.parse(rango.hasta) - Date.parse(rango.desde)) / (1000 * 60 * 60 * 24) + 1
 
     expect(dias).toBeLessThan(400)
   })
