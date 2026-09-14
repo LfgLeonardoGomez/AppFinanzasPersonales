@@ -118,7 +118,7 @@ export function AppLayout() {
                 onClick={handleNavClick}
                 className={`
                   flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm transition-colors duration-160 ease-[var(--ease-out)]
-                  ${active ? 'bg-violet-50 font-semibold text-violet-900' : 'font-medium text-ink-soft-2 hover:bg-black/[0.03]'}
+                  ${active ? 'bg-violet-50 font-semibold text-violet-900' : 'font-medium text-ink-soft-2 hover:bg-ink/[0.04]'}
                   ${navBlocked ? 'pointer-events-none opacity-50' : ''}
                 `}
               >
@@ -140,7 +140,7 @@ export function AppLayout() {
             type="button"
             onClick={() => logoutMutation.mutate()}
             aria-label="Cerrar sesión"
-            className="rounded-lg p-2 text-ink-soft transition-colors hover:bg-black/[0.04] hover:text-danger"
+            className="rounded-lg p-2 text-ink-soft transition-colors hover:bg-ink/[0.04] hover:text-danger"
           >
             <LogOut className="h-4 w-4" />
           </button>

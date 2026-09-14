@@ -883,8 +883,8 @@ function ReviewFooter({
 
 function CheckIcon() {
   return (
-    <svg width="16" height="12" viewBox="0 0 16 12" fill="none" aria-hidden="true">
-      <path d="M1 6L6 11L15 1" stroke="#059669" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="16" height="12" viewBox="0 0 16 12" fill="none" aria-hidden="true" className="text-success">
+      <path d="M1 6L6 11L15 1" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

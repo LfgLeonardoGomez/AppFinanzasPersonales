@@ -25,7 +25,7 @@
  * Visual: same soft-structuralism language as the rest of the app
  * (D12). Inputs are stack-aligned with subtle ring focus rings,
  * labels above. The monto_total input is right-aligned for
- * numerics; the ARS suffix is a small text-xs text-slate-500 span
+ * numerics; the ARS suffix is a small text-xs text-ink-soft span
  * next to the input (mirrors the C-09 / C-11 form pages).
  */
 import { SupplierMatchControl } from './SupplierMatchControl'
@@ -57,7 +57,7 @@ export function PropuestaFacturaFields({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <label htmlFor="ia-propuesta-numero" className="block text-xs font-medium text-slate-600 mb-1">
+        <label htmlFor="ia-propuesta-numero" className="block text-xs font-medium text-ink-soft-2 mb-1">
           Número
         </label>
         <input
@@ -65,12 +65,12 @@ export function PropuestaFacturaFields({
           type="text"
           value={propuesta.numero ?? ''}
           onChange={(e) => onChange({ ...propuesta, numero: e.target.value || null })}
-          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+          className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
         />
       </div>
 
       <div>
-        <label htmlFor="ia-propuesta-fecha" className="block text-xs font-medium text-slate-600 mb-1">
+        <label htmlFor="ia-propuesta-fecha" className="block text-xs font-medium text-ink-soft-2 mb-1">
           Fecha de emisión
         </label>
         <input
@@ -78,16 +78,16 @@ export function PropuestaFacturaFields({
           type="date"
           value={isoDate(propuesta.fecha_emision)}
           onChange={(e) => onChange({ ...propuesta, fecha_emision: e.target.value || null })}
-          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+          className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
         />
       </div>
 
       <div>
-        <label htmlFor="ia-propuesta-monto" className="block text-xs font-medium text-slate-600 mb-1">
+        <label htmlFor="ia-propuesta-monto" className="block text-xs font-medium text-ink-soft-2 mb-1">
           Monto total
         </label>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">ARS</span>
+          <span className="text-xs text-ink-soft">ARS</span>
           <input
             id="ia-propuesta-monto"
             type="number"
@@ -103,7 +103,7 @@ export function PropuestaFacturaFields({
               const n = Number(raw)
               onChange({ ...propuesta, monto_total: Number.isFinite(n) ? n : null })
             }}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-right text-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
           />
         </div>
       </div>

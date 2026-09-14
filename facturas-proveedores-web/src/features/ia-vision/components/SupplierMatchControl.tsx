@@ -93,14 +93,14 @@ export function SupplierMatchControl({
 
   return (
     <div>
-      <label className="block text-xs font-medium text-slate-600 mb-1">Proveedor</label>
+      <label className="block text-xs font-medium text-ink-soft-2 mb-1">Proveedor</label>
       <SupplierSearch
         value={selectedProveedor}
         onChange={handleProveedorChange}
         placeholder="Buscar proveedor…"
       />
       {proveedorNombre ? (
-        <p className="text-xs text-slate-500 mt-1">
+        <p className="text-xs text-ink-soft mt-1">
           Detectado por IA: <span className="font-medium">{proveedorNombre}</span>
         </p>
       ) : null}
@@ -110,18 +110,18 @@ export function SupplierMatchControl({
             aria-label="Nombre del proveedor a crear"
             value={editableName}
             onChange={(e) => setEditableName(e.target.value)}
-            className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            className="flex-1 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
           />
           <button
             type="button"
             onClick={handleCreate}
             disabled={createMutation.isPending || !editableName.trim()}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg border border-border-subtle px-3 py-2 text-sm font-medium text-ink-soft-2 hover:bg-ink/5 transition-colors duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {createMutation.isPending ? 'Creando…' : `Crear «${editableName.trim()}»`}
           </button>
           {createMutation.isError ? (
-            <p role="alert" className="text-xs text-rose-600">
+            <p role="alert" className="text-xs text-danger">
               Error al crear proveedor. Intentá de nuevo.
             </p>
           ) : null}

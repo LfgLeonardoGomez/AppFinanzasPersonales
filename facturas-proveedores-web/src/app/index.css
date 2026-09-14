@@ -123,12 +123,88 @@
   --shadow-ia: 0 12px 32px rgba(124, 58, 237, 0.22);
 }
 
+/* ── Dark theme — semantic token overrides ─────────────────────────────────
+ * C-45 (dark theme fix). Root cause: the new design-system semantic
+ * tokens (page, surface family, ink family, border-subtle family, badge
+ * colors, status-bg) introduced by the redesign never got a `.dark`
+ * counterpart, unlike the old system (navy/cream/card/card-dark/espresso/
+ * zinc family) which ~30 files already pair manually via `dark:` utilities
+ * and keeps working unchanged.
+ *
+ * Strategy: redefine the semantic custom properties themselves under
+ * `.dark` instead of adding `dark:` to 55+ files. Every component that
+ * reads `bg-page`, `text-ink`, `bg-danger-bg`, etc. flips automatically —
+ * no JSX changes needed for components that were already token-based.
+ * Components that ALSO carry an explicit `dark:bg-card-dark`-style class
+ * keep rendering via that class (equal specificity, later `dark:` utility
+ * wins in source order) — no regression, this block is purely additive.
+ *
+ * Palette derivation: reuses the tones the OLD system already shipped
+ * (--color-espresso for the base layer, --color-card-dark for elevated
+ * surfaces, the zinc-100/300/500 text scale already used by Card/
+ * InputField/PageHeader's hand-written `dark:` pairs) so the two systems
+ * read as one coherent dark theme instead of two different dark themes
+ * stacked on each other. Status/badge colors move to low-opacity tints of
+ * the same hue (matching the `dark:bg-danger/10` pattern already used in
+ * FileUploadField) instead of their opaque light-mode tint, because an
+ * opaque #fef2f2-style chip reads as a light-mode bug on a dark page.
+ */
+.dark {
+  /* Surfaces (page < surface-alt < surface, darkest to lightest elevation) */
+  --color-page: #0f0e0c;
+  --color-surface-alt: #161513;
+  --color-surface: #1a1a1a;
+  --color-surface-soft: #201d29;
+
+  /* Borders */
+  --color-border-subtle: rgba(255, 255, 255, 0.1);
+  --color-border-subtle-2: rgba(255, 255, 255, 0.06);
+  --color-border-violet-soft: rgba(124, 58, 237, 0.32);
+
+  /* Text (ink = high emphasis, ink-soft-2 = medium, ink-soft = muted) */
+  --color-ink: #f4f4f5;
+  --color-ink-soft-2: #d4d4d8;
+  --color-ink-soft: #71717a;
+
+  /* Violet/magenta tint pairs (active nav, ghost button hover, chips) */
+  --color-violet-50: rgba(124, 58, 237, 0.16);
+  --color-violet-900: #c4b5fd;
+  --color-magenta-50: rgba(214, 64, 159, 0.16);
+  --color-magenta-900: #f9a8d4;
+
+  /* Status colors — brighter for AA text contrast on dark surfaces */
+  --color-success: #34d399;
+  --color-success-light: rgba(5, 150, 105, 0.24);
+  --color-success-bg: rgba(5, 150, 105, 0.14);
+
+  --color-warning: #fbbf24;
+  --color-warning-light: rgba(217, 119, 6, 0.24);
+  --color-warning-bg: rgba(217, 119, 6, 0.14);
+
+  --color-danger: #f87171;
+  --color-danger-light: rgba(220, 38, 38, 0.24);
+  --color-danger-bg: rgba(220, 38, 38, 0.14);
+
+  /* Invoice/payment state badges — same hue family, tinted for dark bg */
+  --color-badge-pendiente-bg: rgba(217, 119, 6, 0.16);
+  --color-badge-pendiente-text: #fcd34d;
+  --color-badge-pagada-bg: rgba(5, 150, 105, 0.16);
+  --color-badge-pagada-text: #6ee7b7;
+  --color-badge-parcial-bg: rgba(214, 64, 159, 0.16);
+  --color-badge-parcial-text: #f9a8d4;
+}
+
 /* ── Base layer ─────────────────────────────────────────────────────────── */
 @layer base {
   html {
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
   }
 
   body {
@@ -136,10 +212,12 @@
     color: var(--color-navy-800);
   }
 
-  /* Dark mode overrides */
+  /* Dark mode overrides. Reuses the semantic tokens above (instead of the
+   * old hardcoded --color-espresso/#e4e4e7 pair) so the body base layer
+   * and every `bg-page`/`text-ink` component share one source of truth. */
   html.dark body {
-    background-color: var(--color-espresso);
-    color: #e4e4e7;
+    background-color: var(--color-page);
+    color: var(--color-ink);
   }
 
   h1, h2, h3, h4 {

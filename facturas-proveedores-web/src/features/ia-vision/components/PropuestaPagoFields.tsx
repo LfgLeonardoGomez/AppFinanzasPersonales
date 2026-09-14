@@ -64,11 +64,11 @@ export function PropuestaPagoFields({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <label htmlFor="ia-propuesta-pago-monto" className="block text-xs font-medium text-slate-600 mb-1">
+        <label htmlFor="ia-propuesta-pago-monto" className="block text-xs font-medium text-ink-soft-2 mb-1">
           Monto
         </label>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">ARS</span>
+          <span className="text-xs text-ink-soft">ARS</span>
           <input
             id="ia-propuesta-pago-monto"
             type="number"
@@ -84,13 +84,13 @@ export function PropuestaPagoFields({
               const n = Number(raw)
               onChange({ ...propuesta, monto: Number.isFinite(n) ? n : null })
             }}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-right text-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
           />
         </div>
       </div>
 
       <div>
-        <label htmlFor="ia-propuesta-pago-fecha" className="block text-xs font-medium text-slate-600 mb-1">
+        <label htmlFor="ia-propuesta-pago-fecha" className="block text-xs font-medium text-ink-soft-2 mb-1">
           Fecha
         </label>
         <input
@@ -98,12 +98,12 @@ export function PropuestaPagoFields({
           type="date"
           value={isoDate(propuesta.fecha)}
           onChange={(e) => onChange({ ...propuesta, fecha: e.target.value || null })}
-          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+          className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
         />
       </div>
 
       <div>
-        <label htmlFor="ia-propuesta-pago-metodo" className="block text-xs font-medium text-slate-600 mb-1">
+        <label htmlFor="ia-propuesta-pago-metodo" className="block text-xs font-medium text-ink-soft-2 mb-1">
           Método
         </label>
         <div className="flex items-center gap-3">
@@ -117,7 +117,7 @@ export function PropuestaPagoFields({
                 metodo: (e.target.value === '' ? null : (e.target.value as MetodoPago)),
               })
             }
-            className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            className="flex-1 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-ink/10"
           >
             <option value="">—</option>
             {METODO_OPTIONS.map((opt) => (

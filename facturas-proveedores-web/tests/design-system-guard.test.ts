@@ -101,3 +101,116 @@ describe('design system guard — Ventas/Clientes screens (C-34, task 9.3)', () 
     expect(offenders, `hardcoded hex colors found in: ${offenders.join(', ')}`).toEqual([])
   })
 })
+
+describe('dark theme guard (C-45 — dark theme token overrides)', () => {
+  // Scope: shared primitives and the feature directories actually swept for
+  // C-45 (dark theme fix). This is deliberately NOT "all of src" — a few
+  // screens (HomePage's IA banner, AuthShell's brand panel) paint a fixed
+  // violet/magenta gradient with white text ON PURPOSE (a decorative panel,
+  // not a page surface) and are correct to keep a literal white regardless
+  // of theme. Forms already migrated to the OLD dark system (PagoForm,
+  // FacturaForm, VentaForm, ClienteAutocomplete, SupplierSearch, ...) pair
+  // every raw color with an explicit `dark:` class already and are outside
+  // this guard's scope on purpose — this guard is for components that rely
+  // on the token-flip strategy, not on hand-written `dark:` pairs. A
+  // directory belongs here once it has been verified clean; add it when you
+  // clean the next one.
+  const scanDirs = [
+    join(projectRoot, 'src/shared/components/AppLayout'),
+    join(projectRoot, 'src/shared/components/Button'),
+    join(projectRoot, 'src/shared/components/Card'),
+    join(projectRoot, 'src/shared/components/InputField'),
+    join(projectRoot, 'src/shared/components/PageHeader'),
+    join(projectRoot, 'src/shared/components/HistorialTable'),
+    join(projectRoot, 'src/shared/components/ArchivoPreviewDialog'),
+    join(projectRoot, 'src/features/ia-vision/components'),
+    join(projectRoot, 'src/features/estadisticas'),
+  ].filter((d) => existsSync(d))
+
+  const files = scanDirs
+    .flatMap((d) => walk(d))
+    .filter(
+      (f) =>
+        (f.endsWith('.tsx') || f.endsWith('.ts')) &&
+        !f.endsWith('.test.tsx') &&
+        !f.endsWith('.test.ts'),
+    )
+
+  it('the swept components use no raw non-token colors that would not flip in dark mode', () => {
+    // A Tailwind class token is "safe" here if it is explicitly paired with
+    // a `dark:` variant — this codebase always writes `dark:` as the FIRST
+    // variant in a chain (verified: no `hover:dark:...` token exists), so
+    // filtering out any token containing "dark:" removes every legitimately
+    // hand-paired old-system color and leaves only the ones that would
+    // leak straight through to dark mode unchanged.
+    const bannedSuffix =
+      /\b(?:bg-white|text-black|(?:bg|text|border|ring|fill|stroke)-(?:gray|zinc|slate)-\d+)\b/
+    const hexInClass = /#[0-9a-fA-F]{3,8}\b/
+    // Tailwind classes in this codebase aren't always inline in a JSX
+    // `className=` attribute — several components (Button's VARIANT_CLASSES,
+    // EstadoBadge/FacturasList's status-color maps) build a class string in a
+    // module-level constant first. Scan the whole file, but strip inline
+    // `style={{ ... }}` props first: a decorative
+    // `style={{ background: 'linear-gradient(...,#7c3aed,...)' }}` (the
+    // violet->magenta brand mark used in a few logos/banners) is a fixed
+    // decorative color, not a themed surface, and is correct to leave as a
+    // literal hex regardless of theme.
+    const styleProp = /style=\{\{[\s\S]*?\}\}/g
+
+    const offenders: string[] = []
+    for (const file of files) {
+      const content = readFileSync(file, 'utf-8').replace(styleProp, '')
+      const tokens = content.split(/\s+/)
+      const isOffending = tokens.some(
+        (t) => !t.includes('dark:') && (bannedSuffix.test(t) || hexInClass.test(t)),
+      )
+      if (isOffending) {
+        offenders.push(file)
+      }
+    }
+
+    expect(
+      offenders,
+      `raw non-token colors (bg-white/text-black/gray/zinc/slate/hex) found in: ${offenders.join(', ')}`,
+    ).toEqual([])
+  })
+
+  it('every surface/text/border/status/badge semantic token defined in @theme has a .dark override', () => {
+    // Parses src/app/index.css directly (not the compiled output — Tailwind
+    // v4 tree-shakes unused custom properties out of the compiled :root,
+    // which would make this guard blind to a token nobody references yet).
+    const cssPath = join(projectRoot, 'src/app/index.css')
+    const css = readFileSync(cssPath, 'utf-8')
+
+    const themeMatch = css.match(/@theme\s*\{([\s\S]*?)\n\}/)
+    const darkMatch = css.match(/\n\.dark\s*\{([\s\S]*?)\n\}/)
+    expect(themeMatch, '@theme block not found in index.css').not.toBeNull()
+    expect(darkMatch, '.dark override block not found in index.css').not.toBeNull()
+
+    const themeBlock = themeMatch![1]
+    const darkBlock = darkMatch![1]
+
+    // Semantic-role token families that MUST have a dark counterpart because
+    // they paint surfaces, text, borders, status colors or badges directly
+    // (as opposed to raw palette swatches like --color-navy-200 or
+    // --color-accent-300, which are building blocks other tokens/utilities
+    // reference and are not meant to invert on their own).
+    const semanticNamePattern =
+      /^--color-(page|surface(?:-alt|-soft)?|ink(?:-soft(?:-2)?)?|border-subtle(?:-2)?|border-violet-soft|violet-50|violet-900|magenta-50|magenta-900|success(?:-light|-bg)?|warning(?:-light|-bg)?|danger(?:-light|-bg)?|badge-(?:pendiente|pagada|parcial)-(?:bg|text))$/
+
+    const declaredTokenNames = [...themeBlock.matchAll(/(--color-[a-z0-9-]+)\s*:/g)]
+      .map((m) => m[1])
+      .filter((name) => semanticNamePattern.test(name))
+
+    expect(declaredTokenNames.length, 'no semantic tokens matched — pattern likely stale').toBeGreaterThan(0)
+
+    const missing = declaredTokenNames.filter(
+      (name) => !new RegExp(`${name}\\s*:`).test(darkBlock),
+    )
+
+    expect(
+      missing,
+      `semantic tokens with no .dark override: ${missing.join(', ')}`,
+    ).toEqual([])
+  })
+})

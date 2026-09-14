@@ -16,9 +16,10 @@
  * otherwise).
  *
  * Visual design (D12 / high-end-visual-design):
- *   - Double-bezel: an outer `bg-white/60` ring with a soft inner
- *     `bg-white` card. A subtle `ring-1 ring-black/5` keeps the
- *     bezel visible without being heavy.
+ *   - Double-bezel: an outer `bg-surface/60` ring with a soft inner
+ *     surface card. A subtle `ring-1 ring-ink/5` keeps the
+ *     bezel visible without being heavy (token-based, so it holds up
+ *     in dark mode too — see C-45).
  *   - Drag-over state: a `--accent` background tint + a thicker
  *     ring. The transition uses the project's standard
  *     `cubic-bezier(0.23, 1, 0.32, 1)` ease-out (200ms) so the
@@ -112,8 +113,8 @@ export function ImagenPicker({ onPick, disabled = false }: ImagenPickerProps) {
           'rounded-2xl p-8 text-center',
           'ring-1 transition-all duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]',
           isDragOver
-            ? 'bg-slate-900/5 ring-2 ring-slate-900/20'
-            : 'bg-white/60 ring-black/5',
+            ? 'bg-ink/5 ring-2 ring-ink/20'
+            : 'bg-surface/60 ring-ink/5',
           disabled ? 'opacity-50 pointer-events-none' : 'cursor-pointer',
         ].join(' ')}
         onClick={() => inputRef.current?.click()}
@@ -127,15 +128,15 @@ export function ImagenPicker({ onPick, disabled = false }: ImagenPickerProps) {
           onChange={handleInputChange}
           className="sr-only"
         />
-        <span className="text-sm font-medium text-slate-900">
+        <span className="text-sm font-medium text-ink">
           Arrastrá una imagen o hacé click para elegir un archivo
         </span>
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-ink-soft">
           JPG, PNG o WebP · máximo 10 MB
         </span>
       </div>
       {error ? (
-        <p role="alert" className="text-sm text-rose-600">
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       ) : null}
