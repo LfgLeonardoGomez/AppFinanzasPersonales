@@ -56,9 +56,9 @@
 
 ## 7. Eliminar `features/home/` (D2)
 
-- [ ] 7.1 Verificar por búsqueda que no queda ningún import de `@features/home/...` en todo `src/`.
-- [ ] 7.2 Eliminar `src/features/home/` completo (`homeApi.ts` y `homeHooks.ts`). Con él desaparecen `getProveedoresFrecuentes`, `useProveedoresFrecuentes`, `ProveedorFrecuente` (extensión hoy no-op) y la copia a mano de `ActividadRecienteItem`.
-- [ ] 7.3 Ejecutar `npm run typecheck` (detecta cualquier import colgado antes de que llegue a un test) y después `npm test` completo.
+- [x] 7.1 Verificar por búsqueda que no queda ningún import de `@features/home/...` en todo `src/`.
+- [x] 7.2 Eliminar `src/features/home/` completo (`homeApi.ts` y `homeHooks.ts`). Con él desaparecen `getProveedoresFrecuentes`, `useProveedoresFrecuentes`, `ProveedorFrecuente` (extensión hoy no-op) y la copia a mano de `ActividadRecienteItem`.
+- [x] 7.3 Ejecutar `npm run typecheck` (detecta cualquier import colgado antes de que llegue a un test) y después `npm test` completo.
 
 ## 8. Reordenar la navegación principal (spec `home-y-navegacion`, D7)
 
