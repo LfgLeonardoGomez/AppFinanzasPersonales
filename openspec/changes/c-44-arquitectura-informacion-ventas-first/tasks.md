@@ -40,11 +40,11 @@
 
 ## 5. Panel "Proveedores frecuentes" en `/proveedores` (spec `proveedores-frontend`, D2, D4)
 
-- [ ] 5.1 **RED** — crear `src/features/proveedores/components/ProveedoresFrecuentes.test.tsx`: se muestran nombre y saldo de cada proveedor; una lista vacía muestra estado vacío explícito; los accesos directos de factura y pago llevan al formulario con el proveedor ya identificado.
-- [ ] 5.2 **GREEN** — crear `ProveedoresFrecuentes.tsx` consumiendo `useProveedores({ orderBy: 'saldo' })` del propio feature y cortando a 6 en el componente. **No** crear un segundo cliente HTTP contra `/proveedores`.
-- [ ] 5.3 **RED/GREEN (D4)** — agregar un test que afirme que un proveedor presente a la vez en el listado y en el panel muestra su saldo **con el mismo signo y el mismo criterio de color** en ambos. Adoptar `formatSaldo` y el mismo criterio de color que `ProveedoresList`. Este test es la única defensa contra dos lecturas contradictorias del mismo dato en la misma pantalla.
-- [ ] 5.4 **RED/GREEN** — extender `ProveedoresPage.test.tsx` y montar el panel en `ProveedoresPage.tsx`.
-- [ ] 5.5 Ejecutar `npm test` completo. **Gate del grupo 6:** no avanzar a vaciar la home hasta que los dos paneles estén verdes en `/proveedores` (D8).
+- [x] 5.1 **RED** — crear `src/features/proveedores/components/ProveedoresFrecuentes.test.tsx`: se muestran nombre y saldo de cada proveedor; una lista vacía muestra estado vacío explícito; los accesos directos de factura y pago llevan al formulario con el proveedor ya identificado.
+- [x] 5.2 **GREEN** — crear `ProveedoresFrecuentes.tsx` consumiendo `useProveedores({ orderBy: 'saldo' })` del propio feature y cortando a 6 en el componente. **No** crear un segundo cliente HTTP contra `/proveedores`.
+- [x] 5.3 **RED/GREEN (D4)** — agregar un test que afirme que un proveedor presente a la vez en el listado y en el panel muestra su saldo **con el mismo signo y el mismo criterio de color** en ambos. Adoptar `formatSaldo` y el mismo criterio de color que `ProveedoresList`. Este test es la única defensa contra dos lecturas contradictorias del mismo dato en la misma pantalla.
+- [x] 5.4 **RED/GREEN** — extender `ProveedoresPage.test.tsx` y montar el panel en `ProveedoresPage.tsx`.
+- [x] 5.5 Ejecutar `npm test` completo. **Gate del grupo 6:** no avanzar a vaciar la home hasta que los dos paneles estén verdes en `/proveedores` (D8).
 
 ## 6. La home pasa a ser una superficie de acción (spec `home-y-navegacion`)
 

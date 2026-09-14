@@ -95,6 +95,13 @@ describe('ProveedoresPage', () => {
     )
   })
 
+  it('mounts the "Proveedores frecuentes" panel (C-44)', async () => {
+    render(<ProveedoresPage />, { wrapper: createWrapper() })
+    await waitFor(() =>
+      expect(screen.getByText('Proveedores frecuentes')).toBeInTheDocument(),
+    )
+  })
+
   it('shows "Nuevo proveedor" button that opens the create form modal', async () => {
     render(<ProveedoresPage />, { wrapper: createWrapper() })
     await waitFor(() => expect(screen.getByText('Proveedor Uno')).toBeInTheDocument())

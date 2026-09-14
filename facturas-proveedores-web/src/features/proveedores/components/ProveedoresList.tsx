@@ -15,6 +15,7 @@ import { Link } from 'react-router-dom'
 import { useProveedores, useDeleteProveedor } from '../api/proveedoresHooks'
 import { DeleteProveedorDialog } from './DeleteProveedorDialog'
 import { formatSaldo } from '@shared/utils/currency'
+import { saldoColorClass } from './saldoColorClass'
 import { PageHeader } from '@shared/components/PageHeader/PageHeader'
 import { Card } from '@shared/components/Card/Card'
 import { Button } from '@shared/components/Button/Button'
@@ -37,12 +38,6 @@ function matchesSearch(p: ProveedorListItem, term: string): boolean {
     p.nombre.toLowerCase().includes(needle) ||
     Boolean(p.cuit?.toLowerCase().includes(needle))
   )
-}
-
-function saldoColorClass(saldo: number): string {
-  if (saldo > 0) return 'text-danger'
-  if (saldo < 0) return 'text-success'
-  return 'text-ink'
 }
 
 // Stable fallback for when the query has not resolved to an array yet —

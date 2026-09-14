@@ -11,6 +11,7 @@ import { useState } from 'react'
 import { ProveedoresList } from './components/ProveedoresList'
 import { ProveedorDialog } from './components/ProveedorDialog'
 import { ActividadReciente } from './components/ActividadReciente'
+import { ProveedoresFrecuentes } from './components/ProveedoresFrecuentes'
 import { toast } from '@shared/components/Toaster/toast'
 import type { ProveedorListItem, Proveedor } from '@shared/api/api'
 
@@ -54,8 +55,9 @@ export function ProveedoresPage() {
     <div className="flex flex-col gap-4">
       <ProveedoresList onNewProveedor={openCreate} onEditProveedor={openEdit} />
 
-      {/* C-44: relocated from HomePage — proveedores frecuentes lands here
-          in task group 5, below the list (design.md Open Question 4). */}
+      {/* C-44: relocated from HomePage, below the list (design.md Open
+          Question 4). */}
+      <ProveedoresFrecuentes />
       <ActividadReciente />
 
       <ProveedorDialog
