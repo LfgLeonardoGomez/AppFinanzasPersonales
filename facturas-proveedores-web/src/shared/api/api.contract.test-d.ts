@@ -91,6 +91,7 @@
 import type { components } from './api.generated'
 import type {
   DecimalAsNumber,
+  ActividadRecienteItem,
   Proveedor,
   ProveedorListItem,
   FacturaItem,
@@ -294,6 +295,29 @@ const _proveedorAssertions: [
   _AssertNoNotasInListItem,
 ] = [true, true, true, true]
 void _proveedorAssertions
+
+// ── ActividadRecienteItem (C-44, task group 2) ──────────────────────────────
+//
+// `proveedor_nombre` is widened back to required (`string | null`, not
+// `?: string | null`) — same pattern as `ProveedorListItem.ultima_factura_fecha`:
+// the schema marks it "not required" because a supplier that was deactivated
+// leaves the backend's LEFT JOIN with a NULL name, but the key itself is
+// always on the wire. `monto` is converted string→number via
+// `DecimalAsNumber` — `actividadRecienteApi.ts` (features/proveedores) is the
+// boundary that makes this true.
+
+type _ActividadRecienteItem = Assert<
+  'ActividadRecienteItem (monto converted, proveedor_nombre required)',
+  Eq<
+    ActividadRecienteItem,
+    Omit<DecimalAsNumber<S['ActividadRecienteItem'], 'monto'>, 'proveedor_nombre'> & {
+      proveedor_nombre: string | null
+    }
+  >
+>
+
+const _actividadRecienteAssertions: [_ActividadRecienteItem] = [true]
+void _actividadRecienteAssertions
 
 // ── FacturaItem / FacturaResponse / FacturaListItem / FacturaConEstado
 // (task group 4) ─────────────────────────────────────────────────────────

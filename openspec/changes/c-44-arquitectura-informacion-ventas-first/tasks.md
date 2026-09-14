@@ -13,15 +13,15 @@
 
 ## 1. Línea de base
 
-- [ ] 1.1 Ejecutar `npm test`, `npm run typecheck` y `npm run lint` y registrar la línea de base. Esperado: **1035 passed / 126 archivos**, `tsc` y `eslint` limpios. Si algo falla acá, es un fallo preexistente: reportarlo y **no** arreglarlo dentro de este change.
-- [ ] 1.2 Verificar por búsqueda que `PanelComprasProveedor` es el único consumidor de `useCompras`, y que `SerieBarras` tiene un segundo consumidor (`PanelVentas`). Dejar constancia del resultado — es el supuesto sobre el que se apoyan los grupos 9 y 10.
+- [x] 1.1 Ejecutar `npm test`, `npm run typecheck` y `npm run lint` y registrar la línea de base. Esperado: **1035 passed / 126 archivos**, `tsc` y `eslint` limpios. Si algo falla acá, es un fallo preexistente: reportarlo y **no** arreglarlo dentro de este change.
+- [x] 1.2 Verificar por búsqueda que `PanelComprasProveedor` es el único consumidor de `useCompras`, y que `SerieBarras` tiene un segundo consumidor (`PanelVentas`). Dejar constancia del resultado — es el supuesto sobre el que se apoyan los grupos 9 y 10.
 
 ## 2. Contrato de tipos: `ActividadRecienteItem` derivado del OpenAPI (D3)
 
-- [ ] 2.1 **RED** — agregar en `src/shared/api/api.contract.test-d.ts` la aserción de compilación de `ActividadRecienteItem` contra `components['schemas']['ActividadRecienteItem']`, con `monto` convertido a número vía `DecimalAsNumber`. Verificar que `npm run typecheck` **falla** (el tipo todavía no existe en `api.d.ts`).
-- [ ] 2.2 **GREEN** — declarar `ActividadRecienteItem` en la sección **derivada** de `src/shared/api/api.d.ts` (no en la sección escrita a mano: tiene schema de backend, así que ese es su lado). Resolver explícitamente la opcionalidad de `proveedor_nombre` siguiendo el patrón de `ProveedorListItem`. Verificar que `npm run typecheck` pasa.
-- [ ] 2.3 **TRIANGULATE (por mutación)** — renombrar temporalmente un campo del schema `ActividadRecienteItem` en `api.generated.d.ts` y confirmar que `npm run typecheck` falla señalando el tipo. Revertir la mutación. Sin esta comprobación, la aserción podría estar comparando dos expresiones que mutan juntas y no detectar nada.
-- [ ] 2.4 Ejecutar `npm test` completo.
+- [x] 2.1 **RED** — agregar en `src/shared/api/api.contract.test-d.ts` la aserción de compilación de `ActividadRecienteItem` contra `components['schemas']['ActividadRecienteItem']`, con `monto` convertido a número vía `DecimalAsNumber`. Verificar que `npm run typecheck` **falla** (el tipo todavía no existe en `api.d.ts`).
+- [x] 2.2 **GREEN** — declarar `ActividadRecienteItem` en la sección **derivada** de `src/shared/api/api.d.ts` (no en la sección escrita a mano: tiene schema de backend, así que ese es su lado). Resolver explícitamente la opcionalidad de `proveedor_nombre` siguiendo el patrón de `ProveedorListItem`. Verificar que `npm run typecheck` pasa.
+- [x] 2.3 **TRIANGULATE (por mutación)** — renombrar temporalmente un campo del schema `ActividadRecienteItem` en `api.generated.d.ts` y confirmar que `npm run typecheck` falla señalando el tipo. Revertir la mutación. Sin esta comprobación, la aserción podría estar comparando dos expresiones que mutan juntas y no detectar nada.
+- [x] 2.4 Ejecutar `npm test` completo.
 
 ## 3. Cliente de actividad reciente dentro de `features/proveedores/` (D2, D3)
 

@@ -1100,6 +1100,33 @@ export type ResumenResponse = DecimalAsNumber<
 >
 
 // ---------------------------------------------------------------------------
+// Actividad reciente (C-44, D3)
+// ---------------------------------------------------------------------------
+
+/**
+ * One row of the merged recent-activity feed (facturas + pagos), sorted by
+ * the backend service layer (`fecha DESC, created_at DESC`).
+ *
+ * Derived from `ActividadRecienteItem` (C-44). `monto` converted
+ * string→number via `DecimalAsNumber` — the wire serializes it as a
+ * Pydantic-v2 Decimal string, same convention as every other money field in
+ * this file. `proveedor_nombre` is widened back to REQUIRED (`string |
+ * null`, not `?: string | null`) — same pattern as
+ * `ProveedorListItem.ultima_factura_fecha`: the schema marks it "not
+ * required" because a deactivated supplier leaves the backend's LEFT JOIN
+ * with a NULL name, but FastAPI still serializes the key on every response.
+ * `actividadRecienteApi.ts` (`features/proveedores/api/`) is the boundary
+ * that makes this true and converts `monto`, never degrading a malformed
+ * value to `0` (D-88, D-94).
+ */
+export type ActividadRecienteItem = Omit<
+  DecimalAsNumber<components['schemas']['ActividadRecienteItem'], 'monto'>,
+  'proveedor_nombre'
+> & {
+  proveedor_nombre: string | null
+}
+
+// ---------------------------------------------------------------------------
 // Hand-written types — no backend schema counterpart (design.md D5)
 // ---------------------------------------------------------------------------
 //
