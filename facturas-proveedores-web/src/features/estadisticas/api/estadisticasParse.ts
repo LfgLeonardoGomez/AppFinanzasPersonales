@@ -17,6 +17,7 @@
  * The `Raw*` interfaces mirror the wire exactly and stay internal to this
  * module.
  */
+import { toFiniteNumber } from '@shared/utils/decimal'
 import type {
   VentasResponse,
   ResumenResponse,
@@ -65,9 +66,9 @@ export function parseResumen(raw: RawResumenResponse): ResumenResponse {
   return {
     desde: raw.desde,
     hasta: raw.hasta,
-    compras: toFiniteNumber(raw.compras, 'compras'),
-    ventas: toFiniteNumber(raw.ventas, 'ventas'),
-    diferencia: toFiniteNumber(raw.diferencia, 'diferencia'),
+    compras: toFiniteNumber(raw.compras, 'compras', 'parseEstadisticas'),
+    ventas: toFiniteNumber(raw.ventas, 'ventas', 'parseEstadisticas'),
+    diferencia: toFiniteNumber(raw.diferencia, 'diferencia', 'parseEstadisticas'),
   }
 }
 
@@ -81,30 +82,18 @@ export function parseResumen(raw: RawResumenResponse): ResumenResponse {
 function parseVentaPeriodo(raw: RawVentaPeriodo): VentaPeriodo {
   const desglose = {} as Record<FormaPago, number>
   for (const [forma, monto] of Object.entries(raw.desglose) as [FormaPago, string][]) {
-    desglose[forma] = toFiniteNumber(monto, `periodos[${raw.periodo}].desglose.${forma}`)
+    desglose[forma] = toFiniteNumber(
+      monto,
+      `periodos[${raw.periodo}].desglose.${forma}`,
+      'parseEstadisticas',
+    )
   }
 
   return {
     periodo: raw.periodo,
     desde: raw.desde,
     hasta: raw.hasta,
-    total: toFiniteNumber(raw.total, `periodos[${raw.periodo}].total`),
+    total: toFiniteNumber(raw.total, `periodos[${raw.periodo}].total`, 'parseEstadisticas'),
     desglose,
   }
-}
-
-function toFiniteNumber(value: string, field: string): number {
-  // `Number('')` is 0, not NaN — an empty string would sail through a plain
-  // `Number.isNaN` check and land on the screen as a real zero.
-  if (value.trim() === '') {
-    throw new Error(`parseEstadisticas: malformed Decimal at field "${field}" — got an empty string`)
-  }
-
-  const n = Number(value)
-  if (!Number.isFinite(n)) {
-    throw new Error(
-      `parseEstadisticas: malformed Decimal at field "${field}" — got ${JSON.stringify(value)}`,
-    )
-  }
-  return n
 }

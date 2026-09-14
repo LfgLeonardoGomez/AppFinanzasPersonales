@@ -17,6 +17,7 @@
  * module.
  */
 import { apiClient } from '@shared/api/client'
+import { toFiniteNumber } from '@shared/utils/decimal'
 import type {
   CuentaCorrienteResponse,
   FacturaConEstado,
@@ -83,7 +84,7 @@ export function parseCuentaCorriente(
 ): CuentaCorrienteResponse {
   return {
     proveedor_id: raw.proveedor_id,
-    saldo: toFiniteNumber(raw.saldo, 'saldo'),
+    saldo: toFiniteNumber(raw.saldo, 'saldo', 'parseCuentaCorriente'),
     facturas_con_estado: raw.facturas_con_estado.map((f) =>
       parseFacturaConEstado(f),
     ),
@@ -99,7 +100,7 @@ function parseFacturaConEstado(raw: RawFacturaConEstado): FacturaConEstado {
     numero: raw.numero,
     fecha_emision: raw.fecha_emision,
     fecha_vencimiento: raw.fecha_vencimiento,
-    monto_total: toFiniteNumber(raw.monto_total, 'monto_total'),
+    monto_total: toFiniteNumber(raw.monto_total, 'monto_total', 'parseCuentaCorriente'),
     archivo_url: raw.archivo_url,
     origen: raw.origen,
     estado: raw.estado,
@@ -122,18 +123,10 @@ function parseEntradaHistorial(raw: RawEntradaHistorial): EntradaHistorial {
     id: raw.id,
     tipo: raw.tipo,
     fecha: raw.fecha,
-    monto: toFiniteNumber(raw.monto, 'monto'),
-    saldo_acumulado: toFiniteNumber(raw.saldo_acumulado, 'saldo_acumulado'),
+    monto: toFiniteNumber(raw.monto, 'monto', 'parseCuentaCorriente'),
+    saldo_acumulado: toFiniteNumber(raw.saldo_acumulado, 'saldo_acumulado', 'parseCuentaCorriente'),
     // `?? null` so a row predating the field is `null`, not `undefined` —
     // the UI checks truthiness, but the two differ when serialized.
     archivo_url: raw.archivo_url ?? null,
   }
-}
-
-function toFiniteNumber(value: string, field: string): number {
-  const n = Number(value)
-  if (!Number.isFinite(n)) {
-    throw new Error(`parseCuentaCorriente: malformed Decimal at field "${field}" — got ${JSON.stringify(value)}`)
-  }
-  return n
 }

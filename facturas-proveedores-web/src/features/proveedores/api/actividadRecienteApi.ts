@@ -16,6 +16,7 @@
  * movement of zero amount.
  */
 import { apiClient } from '@shared/api/client'
+import { toFiniteNumber } from '@shared/utils/decimal'
 import type { ActividadRecienteItem } from '@shared/api/api'
 
 // ── Wire (raw) shape — strings for decimals, proveedor_nombre optional ────────
@@ -44,20 +45,6 @@ export function parseActividadRecienteItem(
     fecha: raw.fecha,
     created_at: raw.created_at,
   }
-}
-
-function toFiniteNumber(value: string, field: string, fn: string): number {
-  // `Number('')` is 0, not NaN — an empty string would sail through a plain
-  // `Number.isNaN` check and land on the screen as a real amount.
-  if (value.trim() === '') {
-    throw new Error(`${fn}: malformed Decimal at field "${field}" — got an empty string`)
-  }
-
-  const n = Number(value)
-  if (!Number.isFinite(n)) {
-    throw new Error(`${fn}: malformed Decimal at field "${field}" — got ${JSON.stringify(value)}`)
-  }
-  return n
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

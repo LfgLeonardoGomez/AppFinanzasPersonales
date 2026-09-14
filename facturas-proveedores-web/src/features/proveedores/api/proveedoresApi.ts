@@ -17,6 +17,7 @@
  * module.
  */
 import { apiClient } from '@shared/api/client'
+import { toFiniteNumber } from '@shared/utils/decimal'
 import type {
   Proveedor,
   ProveedorCreate,
@@ -74,20 +75,6 @@ export function parseProveedorListItem(raw: RawProveedorListItem): ProveedorList
     saldo: toFiniteNumber(raw.saldo, 'saldo', 'parseProveedorListItem'),
     ultima_factura_fecha: raw.ultima_factura_fecha ?? null,
   }
-}
-
-function toFiniteNumber(value: string, field: string, fn: string): number {
-  // `Number('')` is 0, not NaN — an empty string would sail through a plain
-  // `Number.isNaN` check and land on the screen as a real balance.
-  if (value.trim() === '') {
-    throw new Error(`${fn}: malformed Decimal at field "${field}" — got an empty string`)
-  }
-
-  const n = Number(value)
-  if (!Number.isFinite(n)) {
-    throw new Error(`${fn}: malformed Decimal at field "${field}" — got ${JSON.stringify(value)}`)
-  }
-  return n
 }
 
 /**

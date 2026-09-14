@@ -63,6 +63,7 @@ import { isAxiosError } from 'axios'
 import { apiClient } from '@shared/api/client'
 import { getIdempotencyKey, confirmIdempotencyKey } from '@shared/api/idempotency'
 import { classifySuccess } from '@shared/api/submitOutcome'
+import { toFiniteNumber } from '@shared/utils/decimal'
 import type {
   Venta,
   VentaListItem,
@@ -105,20 +106,6 @@ function parseVenta(raw: RawVenta): Venta {
 
 function parseVentaListItem(raw: RawVenta): VentaListItem {
   return parseVenta(raw)
-}
-
-function toFiniteNumber(value: string, field: string, fn: string): number {
-  // `Number('')` is 0, not NaN — an empty string would sail through a plain
-  // `Number.isNaN` check and land on the screen as a real amount.
-  if (value.trim() === '') {
-    throw new Error(`${fn}: malformed Decimal at field "${field}" — got an empty string`)
-  }
-
-  const n = Number(value)
-  if (!Number.isFinite(n)) {
-    throw new Error(`${fn}: malformed Decimal at field "${field}" — got ${JSON.stringify(value)}`)
-  }
-  return n
 }
 
 // ── List (unpaginated — design.md D2, GET /api/ventas returns a bare list) ────
