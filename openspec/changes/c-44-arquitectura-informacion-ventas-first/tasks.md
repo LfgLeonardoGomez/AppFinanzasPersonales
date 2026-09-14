@@ -32,11 +32,11 @@
 
 ## 4. Panel "Actividad reciente" en `/proveedores` (spec `proveedores-frontend`)
 
-- [ ] 4.1 **RED** — crear `src/features/proveedores/components/ActividadReciente.test.tsx` cubriendo los escenarios del spec: se renderiza una fila por movimiento distinguiendo factura de pago; una lista vacía muestra estado vacío explícito; una fila sin nombre de proveedor se muestra igual y no se omite.
-- [ ] 4.2 **GREEN** — crear `ActividadReciente.tsx` migrando el marcado de la sección homónima de `HomePage.tsx`. Usar `formatMonto` de `@shared/utils/currency` en lugar del `formatARS` local. Llevar el helper de tiempo relativo con el componente, como módulo propio y con su test.
-- [ ] 4.3 **TRIANGULATE** — agregar un caso con orden no trivial que verifique que el panel muestra las filas **en el orden que devolvió el backend**, sin reordenar.
-- [ ] 4.4 **RED/GREEN** — extender `ProveedoresPage.test.tsx` para afirmar que la pantalla monta el panel, y montarlo en `ProveedoresPage.tsx` (debajo del listado, design.md Open Question 4).
-- [ ] 4.5 Ejecutar `npm test` completo.
+- [x] 4.1 **RED** — crear `src/features/proveedores/components/ActividadReciente.test.tsx` cubriendo los escenarios del spec: se renderiza una fila por movimiento distinguiendo factura de pago; una lista vacía muestra estado vacío explícito; una fila sin nombre de proveedor se muestra igual y no se omite.
+- [x] 4.2 **GREEN** — crear `ActividadReciente.tsx` migrando el marcado de la sección homónima de `HomePage.tsx`. Usar `formatMonto` de `@shared/utils/currency` en lugar del `formatARS` local. Llevar el helper de tiempo relativo con el componente, como módulo propio y con su test.
+- [x] 4.3 **TRIANGULATE** — agregar un caso con orden no trivial que verifique que el panel muestra las filas **en el orden que devolvió el backend**, sin reordenar.
+- [x] 4.4 **RED/GREEN** — extender `ProveedoresPage.test.tsx` para afirmar que la pantalla monta el panel, y montarlo en `ProveedoresPage.tsx` (debajo del listado, design.md Open Question 4).
+- [x] 4.5 Ejecutar `npm test` completo.
 
 ## 5. Panel "Proveedores frecuentes" en `/proveedores` (spec `proveedores-frontend`, D2, D4)
 

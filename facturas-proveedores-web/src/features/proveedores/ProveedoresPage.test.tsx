@@ -41,6 +41,14 @@ const mockCreatedProveedor = {
   updated_at: '2026-06-01T00:00:00',
 }
 
+// C-44: ProveedoresPage now also mounts the relocated "Actividad reciente"
+// and "Proveedores frecuentes" panels, so both `GET /api/proveedores`
+// (reused, order_by=saldo) and `GET /api/actividad-reciente` need handlers
+// here too — the panels' own MSW fixtures live inside
+// `features/proveedores/` per design.md Risks, but this page-level suite
+// still needs a response for every request it triggers.
+const mockActividadReciente: unknown[] = []
+
 // ── MSW Server ────────────────────────────────────────────────────────────────
 
 const server = setupServer(
@@ -52,6 +60,7 @@ const server = setupServer(
       { status: 201 },
     )
   }),
+  http.get('/api/actividad-reciente', () => HttpResponse.json(mockActividadReciente)),
 )
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -77,6 +86,13 @@ describe('ProveedoresPage', () => {
   it('renders the supplier list when loaded', async () => {
     render(<ProveedoresPage />, { wrapper: createWrapper() })
     await waitFor(() => expect(screen.getByText('Proveedor Uno')).toBeInTheDocument())
+  })
+
+  it('mounts the "Actividad reciente" panel (C-44)', async () => {
+    render(<ProveedoresPage />, { wrapper: createWrapper() })
+    await waitFor(() =>
+      expect(screen.getByText('Actividad reciente')).toBeInTheDocument(),
+    )
   })
 
   it('shows "Nuevo proveedor" button that opens the create form modal', async () => {
