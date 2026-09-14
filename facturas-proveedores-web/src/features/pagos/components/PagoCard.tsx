@@ -11,6 +11,13 @@
  * viewer is open — mirroring how `TablaFacturasConEstado` and
  * `PagosRegistrados` own their viewer (C-24). Still no fetching.
  *
+ * Read-only detail dialog: mirrors `FacturasList`'s D4 pattern — the
+ * informational area is the clickable region (`onOpenDetail`) and the
+ * action buttons (comprobante/edit/delete) live OUTSIDE it as siblings.
+ * Nesting them inside a clickable row would put interactive controls
+ * inside an interactive control, and would leave correctness depending on
+ * every future action remembering to stop propagation.
+ *
  * INVARIANTS preserved:
  *  - monto (Intl ARS) shown in green with a leading "-" (it's money going out).
  *  - fecha rendered verbatim, as its own text node.
@@ -18,7 +25,7 @@
  *  - "Pago al proveedor" reinforcement label (RN-PAG-01 — a pago never
  *    links to a factura, only to a supplier).
  *  - comprobante link only rendered when `comprobante_url` is present.
- *  - edit/delete actions invoke the corresponding prop callback.
+ *  - edit/delete/detail actions invoke the corresponding prop callback.
  */
 import type { PagoListItem } from '@shared/api/api'
 import { MetodoBadge } from './MetodoBadge'
@@ -30,6 +37,7 @@ import { ArchivoPreviewDialog } from '@shared/components/ArchivoPreviewDialog/Ar
 interface PagoCardProps {
   pago: PagoListItem & { comprobante_url?: string | null }
   proveedorNombre?: string | undefined
+  onOpenDetail: (pago: PagoListItem) => void
   onEdit: (pago: PagoListItem) => void
   onDelete: (pago: PagoListItem) => void
 }
@@ -49,7 +57,7 @@ function pickChipPalette(seed: string): { bg: string; text: string } {
     : { bg: 'bg-magenta-50', text: 'text-magenta-500' }
 }
 
-export function PagoCard({ pago, proveedorNombre, onEdit, onDelete }: PagoCardProps) {
+export function PagoCard({ pago, proveedorNombre, onOpenDetail, onEdit, onDelete }: PagoCardProps) {
   const palette = pickChipPalette(pago.proveedor_id)
   const [previewOpen, setPreviewOpen] = useState(false)
 
@@ -58,30 +66,37 @@ export function PagoCard({ pago, proveedorNombre, onEdit, onDelete }: PagoCardPr
       data-testid={`pago-card-${pago.id}`}
       className="flex items-center gap-3.5 py-3.5 font-inter"
     >
-      <div
-        aria-hidden="true"
-        className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-chip text-xs font-bold ${palette.bg} ${palette.text}`}
+      <button
+        type="button"
+        onClick={() => onOpenDetail(pago)}
+        aria-label={`Ver detalle del pago ${pago.id}`}
+        className="flex min-w-0 flex-1 items-center gap-3.5 rounded-lg text-left transition-colors hover:bg-page/40"
       >
-        {proveedorNombre ? getInitials(proveedorNombre) : <CreditCard className="h-4 w-4" />}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10.5px] font-bold uppercase tracking-wide text-ink-soft">
-            Pago al proveedor
-          </span>
+        <div
+          aria-hidden="true"
+          className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-chip text-xs font-bold ${palette.bg} ${palette.text}`}
+        >
+          {proveedorNombre ? getInitials(proveedorNombre) : <CreditCard className="h-4 w-4" />}
         </div>
-        <p className="mt-0.5 truncate text-sm font-semibold text-ink">
-          {proveedorNombre ?? 'Proveedor'}
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10.5px] font-bold uppercase tracking-wide text-ink-soft">
+              Pago al proveedor
+            </span>
+          </div>
+          <p className="mt-0.5 truncate text-sm font-semibold text-ink">
+            {proveedorNombre ?? 'Proveedor'}
+          </p>
+          <p className="mt-0.5 text-xs text-ink-soft">{pago.fecha}</p>
+        </div>
+
+        <MetodoBadge metodo={pago.metodo} />
+
+        <p className="w-24 shrink-0 text-right text-sm font-bold tabular-nums text-success">
+          -{formatMonto(pago.monto)}
         </p>
-        <p className="mt-0.5 text-xs text-ink-soft">{pago.fecha}</p>
-      </div>
-
-      <MetodoBadge metodo={pago.metodo} />
-
-      <p className="w-24 shrink-0 text-right text-sm font-bold tabular-nums text-success">
-        -{formatMonto(pago.monto)}
-      </p>
+      </button>
 
       {pago.comprobante_url && (
         // c-26: opens the shared in-app viewer instead of a new tab, so

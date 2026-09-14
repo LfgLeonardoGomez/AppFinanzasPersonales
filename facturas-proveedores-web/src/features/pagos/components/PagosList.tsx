@@ -10,11 +10,16 @@
  *  - delete buttons with name /eliminar/i
  *  - dialog role
  *  - confirm button with name /confirmar|sí|yes/i
+ *
+ * Read-only detail dialog (mirrors FacturasList/FacturaDetailDialog): the
+ * list owns the `detalle` selection; `PagoDetailDialog` is the read-only
+ * view, editing from there hands off to the same `onEditPago` callback.
  */
 import { useMemo, useState } from 'react'
 import { usePagos, useDeletePago } from '../api/pagosHooks'
 import { useProveedores } from '@features/proveedores/api/proveedoresHooks'
 import { PagoCard } from './PagoCard'
+import { PagoDetailDialog } from './PagoDetailDialog'
 import { Card } from '@shared/components/Card/Card'
 import { Button } from '@shared/components/Button/Button'
 import { EmptyState } from '@shared/components/EmptyState/EmptyState'
@@ -67,6 +72,7 @@ function DeletePagoDialog({ open, pago, onConfirm, onCancel, isPending }: Delete
 export function PagosList({ filters, onEditPago }: PagosListProps) {
   const [pendingDelete, setPendingDelete] = useState<PagoListItem | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [detalle, setDetalle] = useState<PagoListItem | null>(null)
 
   const { data, isLoading, isError } = usePagos(filters)
   const deleteMutation = useDeletePago()
@@ -127,6 +133,7 @@ export function PagosList({ filters, onEditPago }: PagosListProps) {
                 <PagoCard
                   pago={pago}
                   proveedorNombre={proveedorNombreById.get(pago.proveedor_id)}
+                  onOpenDetail={setDetalle}
                   onEdit={onEditPago}
                   onDelete={handleDeleteClick}
                 />
@@ -135,6 +142,19 @@ export function PagosList({ filters, onEditPago }: PagosListProps) {
           </ul>
         </Card>
       )}
+
+      <PagoDetailDialog
+        pago={detalle}
+        proveedorNombre={detalle ? proveedorNombreById.get(detalle.proveedor_id) : undefined}
+        open={detalle !== null}
+        onOpenChange={(next) => {
+          if (!next) setDetalle(null)
+        }}
+        onEdit={(pago) => {
+          setDetalle(null)
+          onEditPago(pago)
+        }}
+      />
 
       <DeletePagoDialog
         open={showDeleteDialog}

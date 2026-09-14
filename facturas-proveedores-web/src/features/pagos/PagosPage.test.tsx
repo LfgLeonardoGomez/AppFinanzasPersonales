@@ -35,6 +35,21 @@ const server = setupServer(
       page_size: 50,
     }),
   ),
+  http.get('/api/pagos/:id', () =>
+    HttpResponse.json({
+      id: 'pago-1',
+      negocio_id: 'negocio-1',
+      proveedor_id: 'prov-1',
+      monto: '1500',
+      fecha: '2026-06-15',
+      metodo: 'EFECTIVO',
+      comprobante_url: null,
+      origen: 'MANUAL',
+      created_at: '2026-06-15T10:00:00',
+      updated_at: '2026-06-15T10:00:00',
+      proveedor_nombre: null,
+    }),
+  ),
   http.get('/api/proveedores/buscar', () => HttpResponse.json([])),
   http.get('/api/proveedores', () => HttpResponse.json([])),
 )
@@ -105,6 +120,16 @@ describe('PagosPage — FE-001 SPA navigation', () => {
     await waitFor(() => expect(screen.getByText('EFECTIVO')).toBeInTheDocument())
     const editButton = screen.getByRole('button', { name: /editar/i })
     fireEvent.click(editButton)
+    await waitFor(() => expect(screen.getByText('EDIT_FORM')).toBeInTheDocument())
+  })
+
+  it('navigates to /pagos/:id/editar when Editar is clicked from the read-only detail dialog', async () => {
+    render(<PagosPage />, { wrapper: createWrapperWithRoutes() })
+    await waitFor(() => expect(screen.getByText('EFECTIVO')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /ver detalle del pago pago-1/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^editar$/i }))
+
     await waitFor(() => expect(screen.getByText('EDIT_FORM')).toBeInTheDocument())
   })
 

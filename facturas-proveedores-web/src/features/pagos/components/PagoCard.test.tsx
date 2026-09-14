@@ -37,7 +37,7 @@ describe('PagoCard — viewing the comprobante (c-26)', () => {
     // Same leftover as FileUploadField: C-24 moved the cuenta-corriente
     // tables to the in-app viewer but this list kept opening a new tab, so
     // one action had two behaviours depending on the screen.
-    render(<PagoCard pago={conComprobante} onEdit={vi.fn()} onDelete={vi.fn()} />)
+    render(<PagoCard pago={conComprobante} onOpenDetail={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />)
 
     fireEvent.click(screen.getByRole('button', { name: /ver comprobante/i }))
 
@@ -46,7 +46,7 @@ describe('PagoCard — viewing the comprobante (c-26)', () => {
   })
 
   it('does not render a link that leaves the application', () => {
-    render(<PagoCard pago={conComprobante} onEdit={vi.fn()} onDelete={vi.fn()} />)
+    render(<PagoCard pago={conComprobante} onOpenDetail={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />)
 
     const escaping = screen
       .queryAllByRole('link')
@@ -56,7 +56,7 @@ describe('PagoCard — viewing the comprobante (c-26)', () => {
   })
 
   it('offers nothing when the payment has no comprobante', () => {
-    render(<PagoCard pago={basePago} onEdit={vi.fn()} onDelete={vi.fn()} />)
+    render(<PagoCard pago={basePago} onOpenDetail={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />)
 
     expect(screen.queryByRole('button', { name: /ver comprobante/i })).not.toBeInTheDocument()
   })
@@ -65,7 +65,7 @@ describe('PagoCard — viewing the comprobante (c-26)', () => {
 describe('PagoCard', () => {
   it('renders monto formatted as ARS, fecha, and the MetodoBadge', () => {
     render(
-      <PagoCard pago={basePago} onEdit={vi.fn()} onDelete={vi.fn()} />,
+      <PagoCard pago={basePago} onOpenDetail={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />,
     )
     expect(screen.getByText(/2\.500/)).toBeInTheDocument()
     expect(screen.getByText('2026-06-15')).toBeInTheDocument()
@@ -74,7 +74,7 @@ describe('PagoCard', () => {
 
   it('shows the "Pago al proveedor" reinforcement label (RN-PAG-01)', () => {
     render(
-      <PagoCard pago={basePago} onEdit={vi.fn()} onDelete={vi.fn()} />,
+      <PagoCard pago={basePago} onOpenDetail={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />,
     )
     expect(screen.getByText(/pago al proveedor/i)).toBeInTheDocument()
   })
@@ -92,6 +92,7 @@ describe('PagoCard', () => {
     render(
       <PagoCard
         pago={pagoConComprobante}
+        onOpenDetail={vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
       />,
@@ -103,7 +104,7 @@ describe('PagoCard', () => {
 
   it('does NOT render a comprobante link when comprobante_url is missing', () => {
     render(
-      <PagoCard pago={basePago} onEdit={vi.fn()} onDelete={vi.fn()} />,
+      <PagoCard pago={basePago} onOpenDetail={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />,
     )
     // The card may have other links; we just check there's no comprobante
     // link with the comprobante URL.
@@ -114,7 +115,7 @@ describe('PagoCard', () => {
   it('invokes onEdit when the edit button is clicked', () => {
     const onEdit = vi.fn()
     render(
-      <PagoCard pago={basePago} onEdit={onEdit} onDelete={vi.fn()} />,
+      <PagoCard pago={basePago} onOpenDetail={vi.fn()} onEdit={onEdit} onDelete={vi.fn()} />,
     )
     const editBtn = screen.getByRole('button', { name: /editar/i })
     fireEvent.click(editBtn)
@@ -124,10 +125,34 @@ describe('PagoCard', () => {
   it('invokes onDelete when the delete button is clicked', () => {
     const onDelete = vi.fn()
     render(
-      <PagoCard pago={basePago} onEdit={vi.fn()} onDelete={onDelete} />,
+      <PagoCard pago={basePago} onOpenDetail={vi.fn()} onEdit={vi.fn()} onDelete={onDelete} />,
     )
     const deleteBtn = screen.getByRole('button', { name: /eliminar/i })
     fireEvent.click(deleteBtn)
     expect(onDelete).toHaveBeenCalledWith(basePago)
+  })
+})
+
+describe('PagoCard — read-only detail (mirrors FacturasList D4)', () => {
+  it('invokes onOpenDetail when the informational area is clicked', () => {
+    const onOpenDetail = vi.fn()
+    render(
+      <PagoCard pago={basePago} onOpenDetail={onOpenDetail} onEdit={vi.fn()} onDelete={vi.fn()} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /ver detalle del pago pago-uuid-1/i }))
+    expect(onOpenDetail).toHaveBeenCalledWith(basePago)
+  })
+
+  it('does NOT invoke onOpenDetail when the edit or delete controls are used', () => {
+    // Action buttons sit OUTSIDE the clickable region by construction — same
+    // guarantee as FacturasList (D4) — so this cannot regress by someone
+    // forgetting a stopPropagation call.
+    const onOpenDetail = vi.fn()
+    render(
+      <PagoCard pago={basePago} onOpenDetail={onOpenDetail} onEdit={vi.fn()} onDelete={vi.fn()} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^editar$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /eliminar/i }))
+    expect(onOpenDetail).not.toHaveBeenCalled()
   })
 })
