@@ -69,10 +69,10 @@
 
 ## 9. Retirar el panel de compras de la ficha de proveedor (spec `estadisticas-frontend`, REMOVED)
 
-- [ ] 9.1 **RED** — ajustar `ProveedorDetailPage.test.tsx` y `ProveedorDetailPage.integration.test.tsx` para afirmar que la ficha **no** monta el panel de compras por período, y que la cuenta corriente y las acciones del encabezado siguen intactas.
-- [ ] 9.2 **GREEN** — quitar de `ProveedorDetailPage.tsx` el import y el montaje de `PanelComprasProveedor`, junto con el comentario que lo justificaba.
-- [ ] 9.3 Eliminar `src/features/estadisticas/PanelComprasProveedor.tsx` y `PanelComprasProveedor.test.tsx`.
-- [ ] 9.4 Ejecutar `npm run typecheck` y `npm test` completo.
+- [x] 9.1 **RED** — ajustar `ProveedorDetailPage.test.tsx` y `ProveedorDetailPage.integration.test.tsx` para afirmar que la ficha **no** monta el panel de compras por período, y que la cuenta corriente y las acciones del encabezado siguen intactas.
+- [x] 9.2 **GREEN** — quitar de `ProveedorDetailPage.tsx` el import y el montaje de `PanelComprasProveedor`, junto con el comentario que lo justificaba.
+- [x] 9.3 Eliminar `src/features/estadisticas/PanelComprasProveedor.tsx` y `PanelComprasProveedor.test.tsx`.
+- [x] 9.4 Ejecutar `npm run typecheck` y `npm test` completo.
 
 ## 10. Podar la ruta de datos de compras del frontend (D5)
 

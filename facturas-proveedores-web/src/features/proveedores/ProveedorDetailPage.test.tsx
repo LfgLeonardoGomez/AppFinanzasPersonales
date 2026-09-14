@@ -157,6 +157,18 @@ describe('ProveedorDetailPage', () => {
     expect(badge.textContent).toContain('1.500,00')
   })
 
+  it('does NOT mount the purchases-by-period panel (C-44, spec estadisticas-frontend REMOVED)', async () => {
+    render(<ProveedorDetailPage />, { wrapper: createWrapper() })
+    await waitFor(() =>
+      expect(screen.getByText('Proveedor Alfa')).toBeInTheDocument(),
+    )
+    expect(screen.queryByLabelText('Compras por período')).not.toBeInTheDocument()
+    // Cuenta corriente and the header actions stay intact alongside the removal.
+    expect(screen.getByTestId('saldo-badge')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /cargar factura/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /cargar pago/i })).toBeInTheDocument()
+  })
+
   it('renders the "Cargar factura" link with ?proveedor_id= query string', async () => {
     render(<ProveedorDetailPage />, { wrapper: createWrapper() })
     await waitFor(() =>
