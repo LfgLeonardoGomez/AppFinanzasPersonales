@@ -474,9 +474,114 @@ class TestProveedorDeCorreo:
         assert "alguien@test.com" in salida
         assert "reset?token=abc123" in salida
 
-    def test_smtp_falla_ruidoso_en_lugar_de_no_hacer_nada(self, env_vars):
-        """Creer que mandaste un enlace que nunca saliste es peor que fallar."""
+    def test_smtp_falla_ruidoso_en_lugar_de_no_hacer_nada(self, env_vars, monkeypatch):
+        """Creer que mandaste un enlace que nunca saliste es peor que fallar.
+
+        Cobertura completa del `SmtpEmailSender` real (headers, orden
+        STARTTLS/SSL, timeout, no-logueo de secretos) vive en
+        tests/test_email_smtp.py — acá solo se deja el contrato mínimo que
+        esta clase siempre sostuvo: una falla se propaga, nunca se traga.
+        """
+        from unittest.mock import MagicMock, patch
+
         from app.core.email import SmtpEmailSender
 
-        with pytest.raises(NotImplementedError):
-            SmtpEmailSender().enviar("a@test.com", "x", "y")
+        monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+        monkeypatch.setenv("SMTP_FROM", "no-responder@example.com")
+        monkeypatch.setenv("SMTP_USER", "no-responder@example.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "x")
+
+        with patch("app.core.email.smtplib.SMTP") as mock_smtp_cls:
+            mock_smtp_cls.return_value.__enter__ = MagicMock(
+                side_effect=OSError("no conecta")
+            )
+            with pytest.raises(OSError):
+                SmtpEmailSender().enviar("a@test.com", "x", "y")
+
+
+class TestEnvioEnSegundoPlano:
+    """
+    C-31 fase 2: el envío real corre en `BackgroundTasks`, no en el request.
+
+    Dos cosas hay que probar que la fixture `correo` (in-memory, instantánea)
+    no puede mostrar por sí sola:
+
+    1. Para cuando el remitente se invoca, el token YA está commiteado — si
+       el despacho corriera antes del commit, una falla de red podría dejar
+       un correo "enviado" apuntando a un token que un rollback deshizo.
+    2. Una falla del remitente (antes: NotImplementedError; ahora: cualquier
+       error de SMTP) nunca llega a la respuesta HTTP — ya se contestó 202
+       antes de que el background task corra.
+    """
+
+    def test_el_token_ya_esta_commiteado_cuando_se_despacha_el_correo(
+        self, app_with_db, engine, monkeypatch
+    ):
+        from app.services import usuario_service
+
+        usuario = make_user_client(app_with_db, prefix="bg1")
+        visto = {"contador_en_envio": None}
+
+        class SenderQueMiraLaDb:
+            def enviar(self, destinatario: str, asunto: str, cuerpo: str) -> None:
+                with engine.connect() as conn:
+                    visto["contador_en_envio"] = conn.execute(
+                        text(
+                            "SELECT count(*) FROM token_reset WHERE usuario_id = :id"
+                        ),
+                        {"id": uuid.UUID(usuario.usuario_id)},
+                    ).scalar()
+
+        monkeypatch.setattr(
+            usuario_service, "get_email_sender", lambda: SenderQueMiraLaDb()
+        )
+
+        respuesta = _pedir_reset(app_with_db, usuario.email)
+
+        assert respuesta.status_code == 202
+        assert visto["contador_en_envio"] == 1, (
+            "el remitente corrió antes de que el token quedara commiteado"
+        )
+
+    def test_una_falla_de_envio_no_cambia_la_respuesta_http(
+        self, app_with_db, monkeypatch
+    ):
+        from app.services import usuario_service
+
+        usuario = make_user_client(app_with_db, prefix="bg2")
+
+        class SenderQueFalla:
+            def enviar(self, destinatario: str, asunto: str, cuerpo: str) -> None:
+                raise OSError("el proveedor SMTP no contesta")
+
+        monkeypatch.setattr(
+            usuario_service, "get_email_sender", lambda: SenderQueFalla()
+        )
+
+        respuesta = _pedir_reset(app_with_db, usuario.email)
+
+        assert respuesta.status_code == 202
+        assert respuesta.json() == {
+            "mensaje": "Si el email corresponde a una cuenta, te enviamos un enlace."
+        }
+
+    def test_email_inexistente_no_agenda_ningun_envio(
+        self, app_with_db, monkeypatch
+    ):
+        """Complementa TestNoRevelaQuienTieneCuenta: ni siquiera se agenda tarea."""
+        from app.services import usuario_service
+
+        llamado = {"n": 0}
+
+        class SenderQueCuenta:
+            def enviar(self, destinatario: str, asunto: str, cuerpo: str) -> None:
+                llamado["n"] += 1
+
+        monkeypatch.setattr(
+            usuario_service, "get_email_sender", lambda: SenderQueCuenta()
+        )
+
+        respuesta = _pedir_reset(app_with_db, "nadie_bg@test.com")
+
+        assert respuesta.status_code == 202
+        assert llamado["n"] == 0

@@ -12,11 +12,21 @@ succeed, and start mailing users from someone's laptop.
 """
 
 import logging
+import smtplib
+import ssl
+from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
 from typing import Protocol
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _dominio(direccion: str) -> str:
+    """Recipient domain only, for logging. Never log the full address here —
+    it is not a secret, but there is no reason to put it in logs either."""
+    return direccion.rsplit("@", 1)[-1] if "@" in direccion else "?"
 
 
 class EmailSender(Protocol):
@@ -60,21 +70,69 @@ class ConsoleEmailSender:
 
 class SmtpEmailSender:
     """
-    Placeholder for a real provider.
+    Sends mail through a generic SMTP server (stdlib `smtplib`, no vendor SDK).
 
-    C-31 ships the abstraction and the console implementation; wiring an actual
-    SMTP or API provider is deployment configuration, not application code, and
-    it belongs to whoever decides which service to pay for.
+    Chosen over a provider-specific SDK because config alone — host, port,
+    user, password — already covers Gmail (app password), Brevo, Resend's SMTP
+    endpoint, Mailgun's SMTP endpoint, and effectively every transactional
+    provider: they all speak SMTP as a baseline, so one implementation serves
+    all of them and swapping providers is an env var change, not a deploy.
 
-    Raises rather than silently doing nothing: a system that believes it sent a
-    recovery link it never sent is worse than one that fails.
+    TLS is never optional: STARTTLS (`SMTP_SECURITY=starttls`, the default,
+    port 587) or implicit TLS (`SMTP_SECURITY=ssl`, `SMTP.SMTP_SSL`, port 465).
+    There is no plaintext path — credentials and the reset link never go out
+    unencrypted, and `ssl.create_default_context()` verifies the server
+    certificate rather than trusting it blindly.
+
+    Raises on failure rather than silently doing nothing: a system that
+    believes it sent a recovery link it never sent is worse than one that
+    fails. It is the CALLER's job to decide what "failing" means in its own
+    context — here, the caller runs this in a background task (see
+    `usuario_service._despachar_correo_reset`) precisely so that a raise here
+    reaches a log line, never the HTTP response.
+
+    Never logs the message body or the reset link — the link IS a bearer
+    credential for the account (D2, C-31). Only the recipient's domain and a
+    success/failure outcome are logged.
     """
 
     def enviar(self, destinatario: str, asunto: str, cuerpo: str) -> None:
-        raise NotImplementedError(
-            "EMAIL_PROVIDER=smtp todavía no tiene implementación. "
-            "Configurá 'console' o implementá este proveedor antes de desplegar."
-        )
+        mensaje = EmailMessage()
+        mensaje["From"] = settings.SMTP_FROM
+        mensaje["To"] = destinatario
+        mensaje["Subject"] = asunto
+        mensaje["Date"] = formatdate(localtime=True)
+        mensaje["Message-ID"] = make_msgid()
+        mensaje.set_content(cuerpo)
+
+        host = settings.SMTP_HOST
+        port = settings.SMTP_PORT
+        timeout = settings.SMTP_TIMEOUT_S
+        usuario = settings.SMTP_USER
+        password = settings.SMTP_PASSWORD.get_secret_value()
+        contexto_tls = ssl.create_default_context()
+
+        try:
+            if settings.SMTP_SECURITY == "ssl":
+                with smtplib.SMTP_SSL(
+                    host, port, timeout=timeout, context=contexto_tls
+                ) as smtp:
+                    smtp.login(usuario, password)
+                    smtp.send_message(mensaje)
+            else:
+                with smtplib.SMTP(host, port, timeout=timeout) as smtp:
+                    smtp.starttls(context=contexto_tls)
+                    smtp.login(usuario, password)
+                    smtp.send_message(mensaje)
+        except Exception:
+            logger.exception(
+                "[email:smtp] fallo enviando a dominio=%s", _dominio(destinatario)
+            )
+            raise
+        else:
+            logger.info(
+                "[email:smtp] enviado a dominio=%s", _dominio(destinatario)
+            )
 
 
 def get_email_sender() -> EmailSender:

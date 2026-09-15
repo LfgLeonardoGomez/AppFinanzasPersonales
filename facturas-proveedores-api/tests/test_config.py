@@ -264,3 +264,148 @@ class TestIARateLimitSettings:
                 os.environ["IA_RATE_MAX_REQUESTS"] = original
             else:
                 os.environ.pop("IA_RATE_MAX_REQUESTS", None)
+
+
+class TestSmtpSettings:
+    """
+    C-31 fase 2: real SMTP delivery. `EMAIL_PROVIDER=smtp` requires
+    SMTP_HOST/SMTP_FROM/SMTP_USER/SMTP_PASSWORD, fail-fast at startup —
+    mirrors how VISION_PROVIDER validates its allowed set.
+    """
+
+    _SMTP_KEYS = (
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USER",
+        "SMTP_PASSWORD",
+        "SMTP_FROM",
+        "SMTP_SECURITY",
+        "SMTP_TIMEOUT_S",
+    )
+
+    def _snapshot_and_clear(self) -> dict:
+        original = {k: os.environ.pop(k, None) for k in self._SMTP_KEYS}
+        original["EMAIL_PROVIDER"] = os.environ.get("EMAIL_PROVIDER")
+        return original
+
+    def _restore(self, original: dict) -> None:
+        for k, v in original.items():
+            if v is not None:
+                os.environ[k] = v
+            else:
+                os.environ.pop(k, None)
+
+    def test_email_provider_smtp_sin_host_falla_al_arrancar(self, env_vars):
+        """
+        WHEN EMAIL_PROVIDER=smtp pero no hay SMTP_HOST configurado
+        THEN Settings falla (fail-fast), igual que un VISION_PROVIDER mal
+        configurado — nunca debe arrancar creyendo que puede enviar correo
+        y no poder.
+        """
+        from app.core.config import Settings
+
+        original = self._snapshot_and_clear()
+        os.environ["EMAIL_PROVIDER"] = "smtp"
+        os.environ["SMTP_FROM"] = "no-responder@midominio.com"
+        os.environ["SMTP_USER"] = "no-responder@midominio.com"
+        os.environ["SMTP_PASSWORD"] = "x"
+        try:
+            with pytest.raises(ValidationError) as exc_info:
+                Settings(_env_file=None)  # type: ignore[call-arg]
+            assert "SMTP_HOST" in str(exc_info.value)
+        finally:
+            self._restore(original)
+
+    def test_email_provider_smtp_sin_credenciales_falla_al_arrancar(self, env_vars):
+        """WHEN falta SMTP_USER/SMTP_PASSWORD THEN falla (auth es obligatoria)."""
+        from app.core.config import Settings
+
+        original = self._snapshot_and_clear()
+        os.environ["EMAIL_PROVIDER"] = "smtp"
+        os.environ["SMTP_HOST"] = "smtp.example.com"
+        os.environ["SMTP_FROM"] = "no-responder@midominio.com"
+        try:
+            with pytest.raises(ValidationError) as exc_info:
+                Settings(_env_file=None)  # type: ignore[call-arg]
+            mensaje = str(exc_info.value)
+            assert "SMTP_USER" in mensaje
+            assert "SMTP_PASSWORD" in mensaje
+        finally:
+            self._restore(original)
+
+    def test_email_provider_invalido_rechazado(self, env_vars):
+        """WHEN EMAIL_PROVIDER no es console ni smtp THEN Settings lo rechaza."""
+        from app.core.config import Settings
+
+        original = os.environ.get("EMAIL_PROVIDER")
+        os.environ["EMAIL_PROVIDER"] = "sendgrid-magico"
+        try:
+            with pytest.raises(ValidationError):
+                Settings(_env_file=None)  # type: ignore[call-arg]
+        finally:
+            if original is not None:
+                os.environ["EMAIL_PROVIDER"] = original
+            else:
+                os.environ.pop("EMAIL_PROVIDER", None)
+
+    def test_smtp_security_invalido_rechazado(self, env_vars):
+        """WHEN SMTP_SECURITY no es starttls ni ssl THEN Settings lo rechaza."""
+        from app.core.config import Settings
+
+        original = os.environ.get("SMTP_SECURITY")
+        os.environ["SMTP_SECURITY"] = "plaintext"
+        try:
+            with pytest.raises(ValidationError):
+                Settings(_env_file=None)  # type: ignore[call-arg]
+        finally:
+            if original is not None:
+                os.environ["SMTP_SECURITY"] = original
+            else:
+                os.environ.pop("SMTP_SECURITY", None)
+
+    def test_smtp_completo_arranca_sin_error(self, env_vars):
+        """WHEN EMAIL_PROVIDER=smtp con todos los campos requeridos THEN arranca."""
+        from app.core.config import Settings
+
+        original = self._snapshot_and_clear()
+        os.environ["EMAIL_PROVIDER"] = "smtp"
+        os.environ["SMTP_HOST"] = "smtp.example.com"
+        os.environ["SMTP_FROM"] = "no-responder@midominio.com"
+        os.environ["SMTP_USER"] = "no-responder@midominio.com"
+        os.environ["SMTP_PASSWORD"] = "app-password-xyz"
+        try:
+            s = Settings(_env_file=None)  # type: ignore[call-arg]
+            assert s.EMAIL_PROVIDER == "smtp"
+            assert s.SMTP_PASSWORD.get_secret_value() == "app-password-xyz"
+            assert "app-password-xyz" not in repr(s.SMTP_PASSWORD)
+            assert "app-password-xyz" not in str(s.SMTP_PASSWORD)
+        finally:
+            self._restore(original)
+
+    def test_defaults_de_puerto_seguridad_y_timeout(self, env_vars):
+        """WHEN no se configura SMTP_* THEN los defaults son 587/starttls/10s."""
+        from app.core.config import Settings
+
+        original = self._snapshot_and_clear()
+        try:
+            s = Settings(_env_file=None)  # type: ignore[call-arg]
+            assert s.SMTP_PORT == 587
+            assert s.SMTP_SECURITY == "starttls"
+            assert s.SMTP_TIMEOUT_S == 10
+        finally:
+            self._restore(original)
+
+    def test_factory_devuelve_smtp_email_sender(self, env_vars):
+        """WHEN EMAIL_PROVIDER=smtp THEN get_email_sender() devuelve SmtpEmailSender."""
+        from app.core.email import SmtpEmailSender, get_email_sender
+
+        original = self._snapshot_and_clear()
+        os.environ["EMAIL_PROVIDER"] = "smtp"
+        os.environ["SMTP_HOST"] = "smtp.example.com"
+        os.environ["SMTP_FROM"] = "no-responder@midominio.com"
+        os.environ["SMTP_USER"] = "no-responder@midominio.com"
+        os.environ["SMTP_PASSWORD"] = "app-password-xyz"
+        try:
+            assert isinstance(get_email_sender(), SmtpEmailSender)
+        finally:
+            self._restore(original)

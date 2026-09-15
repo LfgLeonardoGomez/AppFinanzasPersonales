@@ -18,11 +18,12 @@ Reglas duras:
 - actualizar_perfil uses model_dump(exclude_unset=True) — omitted fields untouched.
 """
 
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Tuple
 
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks, HTTPException, status
 from sqlmodel import Session
 
 from app.core.config import settings
@@ -48,6 +49,8 @@ from app.repositories.invitacion_repository import InvitacionRepository
 from app.repositories.token_reset_repository import TokenResetRepository
 from app.schemas.perfil import PerfilUpdate, AvatarUpdate
 
+logger = logging.getLogger(__name__)
+
 _INVALID_CREDENTIALS = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
     detail="Credenciales inválidas",
@@ -67,6 +70,27 @@ def _resolver_nombre_negocio(propuesto: str | None, nombre_usuario: str) -> str:
     if not candidato:
         candidato = f"Negocio de {nombre_usuario.strip()}"
     return candidato[:_NOMBRE_NEGOCIO_MAX]
+
+
+def _despachar_correo_reset(destinatario: str, asunto: str, cuerpo: str) -> None:
+    """
+    Runs as a `BackgroundTasks` job, after the response already went out.
+
+    By the time this executes, `/api/auth/recuperar` already answered 202 with
+    its fixed, identical-either-way body. There is no request left to fail: a
+    real SMTP error here must never propagate (Starlette re-raises background
+    task exceptions into the ASGI call, which would surface as a noisy 500
+    trace despite the client already having its response, and would break the
+    TestClient assertions that call `/recuperar` for every C-31 test). So this
+    is the one place allowed to swallow `EmailSender.enviar`'s exception — it
+    still logs it (via `SmtpEmailSender`'s own `logger.exception`, plus this
+    outer catch as a safety net for any sender implementation).
+    """
+    try:
+        get_email_sender().enviar(destinatario, asunto, cuerpo)
+    except Exception:
+        logger.exception("No se pudo despachar el correo de recuperación")
+
 
 _USER_NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
@@ -202,7 +226,7 @@ class UsuarioService:
 
     # ── recuperación de contraseña (C-31) ─────────────────────────────────────
 
-    def solicitar_reset(self, email: str) -> None:
+    def solicitar_reset(self, email: str, background_tasks: BackgroundTasks) -> None:
         """
         Start password recovery. Returns nothing, always, on purpose.
 
@@ -210,13 +234,23 @@ class UsuarioService:
         otherwise this public endpoint tells anyone who has an account here.
 
         Matching the response text is not enough. The "exists" branch generates
-        a token, hashes it, inserts a row and dispatches mail; a branch that did
+        a token, hashes it, inserts a row and schedules mail; a branch that did
         none of that would answer measurably faster. So the miss path generates
         and hashes a token too, then throws it away without persisting or
-        sending (D2). Same idea as `dummy_verify` in login (D-C03-5).
+        scheduling anything (D2). Same idea as `dummy_verify` in login (D-C03-5).
 
         A deactivated user is treated as a miss: recovering a password must not
         be a way around having been removed from a negocio.
+
+        The actual send is scheduled via `background_tasks`, not called inline
+        (C-31 fase 2). A real SMTP provider takes ~1-3s; doing that inside the
+        request would make the response itself the timing oracle D2 exists to
+        close — the hit branch would measurably outlast the miss branch no
+        matter how well the two branches are balanced otherwise. Scheduling a
+        task is a cheap, constant-time list append, so it does not reopen that
+        gap. `background_tasks.add_task` only runs after the endpoint returns
+        — i.e. after the caller commits the token row (C-31 fase 2, D-B1) — so
+        the token this email references is always durable before mail goes out.
         """
         token, token_hash = generar_token_reset()
 
@@ -243,7 +277,7 @@ class UsuarioService:
 
         enlace = construir_enlace_reset(token)
         asunto, cuerpo = construir_mensaje_reset(enlace, ttl)
-        get_email_sender().enviar(usuario.email, asunto, cuerpo)
+        background_tasks.add_task(_despachar_correo_reset, usuario.email, asunto, cuerpo)
 
     def aplicar_reset(self, token: str, password_nueva: str) -> Usuario:
         """

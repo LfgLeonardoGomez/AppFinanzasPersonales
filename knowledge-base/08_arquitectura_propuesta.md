@@ -95,8 +95,18 @@ ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
 ACCESS_TOKEN_TTL_MIN=           # ej. 30
 REFRESH_TOKEN_TTL_DAYS=         # ej. 30
-FRONTEND_ORIGIN=                # CORS en fallback de orígenes separados
+FRONTEND_ORIGIN=                # CORS en fallback de orígenes separados; también base del link de reset (C-31)
 COOKIE_DOMAIN=
+
+# Recuperación de contraseña (C-31)
+EMAIL_PROVIDER=console          # console (default, imprime a stdout) | smtp (envío real)
+SMTP_HOST=                      # requerido si EMAIL_PROVIDER=smtp. Ej: smtp.gmail.com, smtp-relay.brevo.com
+SMTP_PORT=587                   # 587 con SMTP_SECURITY=starttls | 465 con SMTP_SECURITY=ssl
+SMTP_USER=                      # requerido si EMAIL_PROVIDER=smtp
+SMTP_PASSWORD=                  # requerido si EMAIL_PROVIDER=smtp. Contraseña de aplicación o API key — nunca en logs
+SMTP_FROM=                      # ej. "Facturas <no-responder@midominio.com>"
+SMTP_SECURITY=starttls          # starttls (default) | ssl — la conexión SIEMPRE es cifrada, nunca texto plano
+SMTP_TIMEOUT_S=10
 ```
 
 ## Estrategia de testing (resumen)

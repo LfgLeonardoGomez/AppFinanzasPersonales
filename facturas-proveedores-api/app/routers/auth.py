@@ -11,7 +11,16 @@ Design decisions:
 
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from sqlmodel import Session
 
 from app.core.config import settings
@@ -156,6 +165,7 @@ def registro_empleado(
 )
 def recuperar(
     body: RecuperarRequest,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_db),
     _rate: None = Depends(rate_limit),
 ) -> dict:
@@ -169,9 +179,16 @@ def recuperar(
     202 rather than 200 because that is literally what happened: the request was
     accepted, and whether anything was sent is not something the caller gets
     to learn.
+
+    The actual send happens in `background_tasks`, scheduled inside
+    `solicitar_reset` — Starlette only runs it after this function returns, so
+    it always runs after `session.commit()` below (C-31 fase 2). That keeps a
+    real SMTP round trip (~1-3s) from ever touching response time, which would
+    otherwise reopen the D2 timing oracle now that sending is no longer a
+    same-process `print()`.
     """
     svc = UsuarioService(session)
-    svc.solicitar_reset(str(body.email))
+    svc.solicitar_reset(str(body.email), background_tasks)
     session.commit()
     return {
         "mensaje": "Si el email corresponde a una cuenta, te enviamos un enlace."

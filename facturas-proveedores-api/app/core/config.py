@@ -18,7 +18,7 @@ fixture-side `cache_clear()` required. Regression-locked by
 
 from typing import Any
 
-from pydantic import AnyUrl, Field, field_validator
+from pydantic import AnyUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -83,6 +83,54 @@ class Settings(BaseSettings):
             "no frena a quien las rote para llenar una casilla ajena; esto acota "
             "cuántos tokens quedan usables a la vez (C-31, D5)."
         ),
+    )
+
+    # ── SMTP (proveedor real de correo, C-31 fase 2) ──────────────────────────
+    SMTP_HOST: str = Field(
+        default="",
+        description=(
+            "Host del servidor SMTP. Requerido si EMAIL_PROVIDER=smtp. "
+            "Ejemplo: smtp.gmail.com (Gmail con contraseña de aplicación) o "
+            "smtp-relay.brevo.com / smtp.mailgun.org (proveedor transaccional)."
+        ),
+    )
+    SMTP_PORT: int = Field(
+        default=587,
+        gt=0,
+        description=(
+            "Puerto SMTP. 587 para STARTTLS (default) o 465 para SSL directo — "
+            "debe coincidir con SMTP_SECURITY."
+        ),
+    )
+    SMTP_USER: str = Field(
+        default="",
+        description="Usuario SMTP. Requerido si EMAIL_PROVIDER=smtp.",
+    )
+    SMTP_PASSWORD: SecretStr = Field(
+        default=SecretStr(""),
+        description=(
+            "Contraseña o API key SMTP. Requerida si EMAIL_PROVIDER=smtp. "
+            "SecretStr: nunca aparece en logs ni en representaciones del objeto."
+        ),
+    )
+    SMTP_FROM: str = Field(
+        default="",
+        description=(
+            "Remitente del correo. Requerido si EMAIL_PROVIDER=smtp. Puede "
+            "incluir nombre visible, ej. 'Facturas <no-responder@midominio.com>'."
+        ),
+    )
+    SMTP_SECURITY: str = Field(
+        default="starttls",
+        description=(
+            "Modo de cifrado SMTP. Opciones: starttls (puerto 587, default) | "
+            "ssl (puerto 465, conexión cifrada desde el inicio)."
+        ),
+    )
+    SMTP_TIMEOUT_S: int = Field(
+        default=10,
+        gt=0,
+        description="Timeout en segundos para la conexión SMTP (evita colgar un worker).",
     )
 
     # ── Proveedor de visión IA ────────────────────────────────────────────────
@@ -168,6 +216,62 @@ class Settings(BaseSettings):
                 f"VISION_PROVIDER debe ser uno de {allowed}. Recibido: '{v}'"
             )
         return v.lower()
+
+    @field_validator("EMAIL_PROVIDER")
+    @classmethod
+    def email_provider_must_be_valid(cls, v: str) -> str:
+        allowed = {"console", "smtp"}
+        if v.lower() not in allowed:
+            raise ValueError(
+                f"EMAIL_PROVIDER debe ser uno de {allowed}. Recibido: '{v}'"
+            )
+        return v.lower()
+
+    @field_validator("SMTP_SECURITY")
+    @classmethod
+    def smtp_security_must_be_valid(cls, v: str) -> str:
+        allowed = {"starttls", "ssl"}
+        if v.lower() not in allowed:
+            raise ValueError(
+                f"SMTP_SECURITY debe ser uno de {allowed}. Recibido: '{v}'"
+            )
+        return v.lower()
+
+    @model_validator(mode="after")
+    def smtp_settings_required_when_provider_is_smtp(self) -> "Settings":
+        """
+        Fail fast, same spirit as VISION_PROVIDER: a deploy with
+        EMAIL_PROVIDER=smtp but no real SMTP configuration must not start and
+        silently fall back to doing nothing — it must refuse to boot.
+
+        SMTP_USER/SMTP_PASSWORD are mandatory here (not merely recommended):
+        every transactional provider realistic for this project (Gmail app
+        password, Brevo, Mailgun, Resend SMTP) requires authentication. An
+        unauthenticated relay is not a real deployment target, so treating
+        auth as optional would only defer a misconfiguration from startup
+        (clear error) to the first recovery request in production (opaque
+        SMTPAuthenticationError, and a user who never got their link).
+        """
+        if self.EMAIL_PROVIDER != "smtp":
+            return self
+
+        faltantes = []
+        if not self.SMTP_HOST.strip():
+            faltantes.append("SMTP_HOST")
+        if not self.SMTP_FROM.strip():
+            faltantes.append("SMTP_FROM")
+        if not self.SMTP_USER.strip():
+            faltantes.append("SMTP_USER")
+        if not self.SMTP_PASSWORD.get_secret_value().strip():
+            faltantes.append("SMTP_PASSWORD")
+
+        if faltantes:
+            raise ValueError(
+                "EMAIL_PROVIDER=smtp requiere configurar: "
+                + ", ".join(faltantes)
+                + "."
+            )
+        return self
 
 
 class _SettingsProxy:
