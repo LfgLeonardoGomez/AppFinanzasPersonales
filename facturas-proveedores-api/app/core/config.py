@@ -195,6 +195,18 @@ class Settings(BaseSettings):
         description="Dominio para la cookie de sesión. Ejemplo: .midominio.com",
     )
 
+    # ── Logging ───────────────────────────────────────────────────────────────
+    LOG_LEVEL: str = Field(
+        default="INFO",
+        description=(
+            "Nivel mínimo de los logs de la aplicación. Opciones: DEBUG | INFO "
+            "| WARNING | ERROR | CRITICAL. El default es 'INFO' porque sin "
+            "configuración de logging el root logger queda sin handlers y los "
+            "caminos felices no dejan rastro: un envío SMTP exitoso era "
+            "invisible y el único indicio era la ausencia de un traceback."
+        ),
+    )
+
     # ── Validación cruzada ────────────────────────────────────────────────────
     @field_validator("FRONTEND_ORIGIN")
     @classmethod
@@ -226,6 +238,23 @@ class Settings(BaseSettings):
                 f"EMAIL_PROVIDER debe ser uno de {allowed}. Recibido: '{v}'"
             )
         return v.lower()
+
+    @field_validator("LOG_LEVEL")
+    @classmethod
+    def log_level_must_be_valid(cls, v: str) -> str:
+        """
+        Fail fast ante un typo, mismo criterio que VISION_PROVIDER.
+
+        Degradar a un default dejaría al operador creyendo que pidió un nivel
+        de logs que nunca se aplicó — y los logs son justamente lo que mira
+        cuando algo anda mal.
+        """
+        allowed = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        if v.upper() not in allowed:
+            raise ValueError(
+                f"LOG_LEVEL debe ser uno de {allowed}. Recibido: '{v}'"
+            )
+        return v.upper()
 
     @field_validator("SMTP_SECURITY")
     @classmethod

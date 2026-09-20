@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.logging_config import configure_logging
 from app.routers import auth as auth_router
 from app.routers import usuarios as usuarios_router
 from app.routers import proveedores as proveedores_router
@@ -22,6 +23,11 @@ from app.routers import clientes as clientes_router
 from app.routers import ventas as ventas_router
 from app.routers import cobros as cobros_router
 from app.routers import estadisticas as estadisticas_router
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+# Antes de instanciar la app: cualquier log emitido durante el registro de
+# routers también necesita un handler donde escribir.
+configure_logging()
 
 # ── Instancia FastAPI ─────────────────────────────────────────────────────────
 app = FastAPI(
