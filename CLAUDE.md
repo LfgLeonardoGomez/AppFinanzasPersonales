@@ -135,6 +135,13 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 
 **Recordatorio:** resolver **Q-01 (id UUID vs serial)** antes de escribir el primer modelo.
 
+## ⚠️ Pendientes de deploy (el proyecto corre SOLO en local)
+
+Checklist completo en [`08_arquitectura_propuesta.md`](knowledge-base/08_arquitectura_propuesta.md) §Checklist de deploy. Los dos que muerden:
+
+1. **`FRONTEND_ORIGIN` vale `http://localhost:5173`** y además de CORS es **la base del link del correo de recuperación** (C-31). Deployar sin cambiarlo manda a cada usuario a su propia máquina: el correo sale bien, el envío loguea éxito, y el fallo solo aparece del lado del usuario.
+2. **El token del link de recuperación es una credencial al portador.** Nunca pegarlo en un chat, issue, captura o sesión con un agente — vive hasta que vence (`RESET_TOKEN_TTL_MIN`, 60 min) o alguien lo usa. Por eso `app/core/email.py` loguea solo el dominio del destinatario, nunca el cuerpo ni el enlace.
+
 ## Flujo de Trabajo
 
 ```

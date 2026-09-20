@@ -107,7 +107,49 @@ SMTP_PASSWORD=                  # requerido si EMAIL_PROVIDER=smtp. Contraseña 
 SMTP_FROM=                      # ej. "Facturas <no-responder@midominio.com>"
 SMTP_SECURITY=starttls          # starttls (default) | ssl — la conexión SIEMPRE es cifrada, nunca texto plano
 SMTP_TIMEOUT_S=10
+
+# Logging
+LOG_LEVEL=INFO                  # DEBUG | INFO | WARNING | ERROR | CRITICAL. Valida contra el conjunto: un typo NO arranca
 ```
+
+## ⚠️ Checklist de deploy (pendientes conocidos al salir de local)
+
+El proyecto corre **solo en local** al 2026-09-20. Estos dos puntos no son bugs:
+son cosas correctas en desarrollo que se vuelven incorrectas el día del deploy.
+Revisarlos ANTES de exponer la app.
+
+### 1. `FRONTEND_ORIGIN` apunta a `localhost` — hay que cambiarlo
+
+`FRONTEND_ORIGIN` cumple **dos** funciones, y la segunda es la que se olvida:
+
+1. El origen permitido por CORS.
+2. **La base del link del correo de recuperación de contraseña** (C-31).
+
+En local vale `http://localhost:5173`. Si se deploya sin tocarlo, el correo
+llega perfecto y el link manda a cada usuario **a su propia máquina** — donde no
+hay nada escuchando. El fallo no aparece en ningún log del servidor: el envío
+fue exitoso. Solo se manifiesta como "el link no me funciona" del lado del
+usuario, que es el peor lugar para descubrirlo.
+
+Al deployar: `FRONTEND_ORIGIN=https://<dominio-real>`, y verificar el link de un
+correo real antes de dar la recuperación por funcionando.
+
+### 2. El link de recuperación es una credencial al portador
+
+El token del link **es** la credencial: quien lo tiene toma control de la
+cuenta, sin saber la contraseña vieja. De ahí que `app/core/email.py` loguee
+únicamente el **dominio** del destinatario y el resultado del envío, nunca el
+cuerpo ni el enlace.
+
+Consecuencias operativas:
+
+- **Nunca** pegar un link de recuperación real en un chat, un issue, una captura
+  o una sesión con un agente. Si pasa, ese token queda vivo hasta que vence
+  (`RESET_TOKEN_TTL_MIN`, default **60 minutos**) o hasta que alguien lo usa.
+- No subir el nivel de logs del envío para "depurar" mostrando el cuerpo del
+  mensaje: eso deja credenciales en los logs del servidor.
+- Un token quemado se invalida completando el reset (consume el token y mata
+  el resto de los pendientes de esa cuenta) o esperando a que expire.
 
 ## Estrategia de testing (resumen)
 
@@ -115,6 +157,16 @@ SMTP_TIMEOUT_S=10
 - Frontend: **Vitest** + React Testing Library + **MSW**.
 - Estructura **AAA**, tests independientes, cobertura pragmática (priorizar saldo/estado/aislamiento). CI opcional (GitHub Actions).
 - Detalle en `docs/05-convenciones-testing.md`.
+
+### Los tests NO leen el `.env` del desarrollador (2026-09-20)
+
+`Settings.model_config` declara `env_file=".env"`, y pydantic-settings lo resuelve **relativo al directorio desde el que se lanza pytest**. Eso metía el archivo `.env` local de cada máquina adentro del suite como una segunda fuente de configuración, invisible y no controlada por las fixtures.
+
+**Cómo se manifestó:** después de configurar SMTP real en `facturas-proveedores-api/.env`, el test `test_c31_password_recovery.py::TestProveedorDeCorreo::test_el_default_es_consola` — que borra `EMAIL_PROVIDER` del entorno para comprobar que el default del código sea `console` — empezó a leer el `EMAIL_PROVIDER=smtp` del archivo. Resultado: **el mismo commit pasaba lanzando pytest desde la raíz del repo y fallaba lanzándolo desde `facturas-proveedores-api/`**, y el veredicto dependía de qué tuviera cada desarrollador en su `.env`.
+
+**Fix:** la fixture `aislar_env_file` en `tests/conftest.py` (session, autouse) pone `env_file = None` durante todo el suite. Queda una sola fuente de configuración en tests: `os.environ`, que las fixtures controlan.
+
+**Regla:** un test que compruebe el **default** de una variable no debe limitarse a borrarla de `os.environ` — sin el aislamiento, pydantic cae al archivo. Cierre de regresión: `test_config.py::TestAislamientoDelArchivoEnv` (un test verifica que el archivo se ignora; el otro, que el entorno sigue mandando — aislar el archivo no debe sordear también a las fixtures).
 
 ### Patrón de test pollution fix (c-16, c-17)
 
