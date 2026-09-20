@@ -56,4 +56,4 @@ Tres hallazgos de la revisión 4R no se arreglaron junto con los seis que sí (c
 
 - La IA **no** extrae items ni crea proveedores: cualquier feature que lo sugiera está fuera del MVP.
 - No asumir notificaciones de vencimiento: el doc dice explícitamente "no especificado aún, no asumir nada".
-- Recuperación de contraseña por email está fuera del MVP; durante el MVP se resuelve en base de datos manualmente.
+- ~~Recuperación de contraseña por email está fuera del MVP; durante el MVP se resuelve en base de datos manualmente.~~ **DESACTUALIZADO — la feature EXISTE y está en producción del código.** La implementó **C-31** (`POST /api/auth/recuperar` + `POST /api/auth/reset`, token de un solo uso con TTL de `RESET_TOKEN_TTL_MIN`), y la fase 2 de ese change cableó el envío por SMTP real (`EMAIL_PROVIDER=smtp`), verificado extremo a extremo contra Gmail el 2026-09-20. **No la saques por creerla fuera de alcance.** Esta nota queda tachada y no borrada a propósito: es el recordatorio de que el alcance del MVP original quedó superado por la etapa post-MVP (D-27 a D-38).
