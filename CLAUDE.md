@@ -44,7 +44,9 @@ La fuente de verdad estructurada vive en [`knowledge-base/`](knowledge-base/READ
 
 > Los compact rules de cada skill los resuelve el orquestador desde `.atl/skill-registry.md`, generado por `skill-registry`.
 >
-> **Sí está versionado** — desde el commit inicial del repo, pese a lo que decía esta línea hasta 2026-08-11. Tenerlo en git hace que el registry viaje con el código, pero conviene saber dos cosas: se regenera con `gentle-ai skill-registry refresh --force` y su contenido incluye **rutas absolutas de la máquina que lo generó** (`C:\Users\...`), visibles en un repo público. Si eso molesta, la salida es gitignorearlo y que cada máquina lo regenere.
+> **NO está versionado** (decidido 2026-09-20). Estuvo en git desde el commit inicial hasta esa fecha; se sacó con `git rm --cached` y quedó en `.gitignore` porque su contenido incluye **rutas absolutas de la máquina que lo generó** (`C:\Users\...`) y este repo es público. Cada máquina lo regenera con `gentle-ai skill-registry refresh --force`. De paso deja de ensuciar el working tree cada vez que se regenera solo.
+>
+> ⚠️ Gitignorearlo corta la exposición **hacia adelante, no hacia atrás**: las versiones viejas con esas rutas siguen en el historial público del repo. Limpiarlas requiere reescribir el historial (`git filter-repo`) y forzar el push — no se hizo, porque lo expuesto son rutas locales, no secretos.
 
 ## Roadmap de Changes
 

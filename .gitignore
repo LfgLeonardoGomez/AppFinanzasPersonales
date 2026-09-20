@@ -58,3 +58,9 @@ htmlcov/
 
 # Agent worktrees (temporary checkouts created by isolated sub-agents)
 .claude/worktrees/
+
+# Skill registry — NOT versioned (decidido 2026-09-20): su contenido incluye
+# rutas absolutas de la máquina que lo generó (C:\Users\...), visibles en un
+# repo público. Se regenera por máquina con `gentle-ai skill-registry refresh --force`.
+.atl/skill-registry.md
+.atl/.skill-registry.cache.json
