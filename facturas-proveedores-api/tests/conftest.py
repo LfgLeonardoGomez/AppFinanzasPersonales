@@ -55,10 +55,45 @@ def db_url(pg_container: PostgresContainer) -> str:
     return url
 
 
+# ── Aislamiento del archivo .env ─────────────────────────────────────────────
+
+@pytest.fixture(scope="session", autouse=True)
+def aislar_env_file():
+    """
+    Impide que el suite lea el archivo `.env` del desarrollador.
+
+    `Settings.model_config` declara `env_file=".env"`, y pydantic-settings lo
+    resuelve **relativo al directorio desde el que se lanza pytest**. Con un
+    `.env` real en `facturas-proveedores-api/`, cualquier test que borre una
+    variable del entorno para comprobar su default terminaba leyendo el valor
+    de ese archivo en vez del default del código.
+
+    Caso real (2026-09-20): tras configurar SMTP en el `.env` local,
+    `test_c31_password_recovery.py::TestProveedorDeCorreo::test_el_default_es_consola`
+    pasaba lanzando pytest desde la raíz del repo y fallaba lanzándolo desde
+    `facturas-proveedores-api/`. El mismo commit, verde o rojo según la carpeta
+    y según qué tuviera cada máquina en su `.env`.
+
+    Neutralizar `env_file` deja una sola fuente de configuración durante los
+    tests: `os.environ`, que las fixtures sí controlan. Parchear solo la
+    variable del día taparía este caso y dejaría el resto igual de frágil.
+
+    Cierre de regresión: `test_config.py::TestAislamientoDelArchivoEnv`.
+    """
+    from app.core.config import Settings
+
+    original = Settings.model_config.get("env_file")
+    Settings.model_config["env_file"] = None
+
+    yield
+
+    Settings.model_config["env_file"] = original
+
+
 # ── Variables de entorno mínimas para tests ──────────────────────────────────
 
 @pytest.fixture(scope="session", autouse=True)
-def env_vars(db_url: str):
+def env_vars(db_url: str, aislar_env_file):
     """
     Establece las variables de entorno mínimas para que Settings no falle.
 

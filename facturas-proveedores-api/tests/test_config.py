@@ -409,3 +409,72 @@ class TestSmtpSettings:
             assert isinstance(get_email_sender(), SmtpEmailSender)
         finally:
             self._restore(original)
+
+
+class TestAislamientoDelArchivoEnv:
+    """
+    Los tests NO deben leer el archivo `.env` del desarrollador.
+
+    Descubierto el 2026-09-20: `Settings.model_config` declara
+    `env_file=".env"`, resuelto **relativo al directorio desde el que se lanza
+    pytest**. Con un `.env` real en `facturas-proveedores-api/`, un test que
+    borra una variable del entorno para comprobar su default terminaba leyendo
+    el valor del archivo. Efecto concreto:
+    `TestProveedorDeCorreo::test_el_default_es_consola` pasaba lanzando pytest
+    desde la raíz del repo y fallaba lanzándolo desde `facturas-proveedores-api/`
+    — el mismo commit, verde o rojo según la carpeta y según lo que cada
+    desarrollador tuviera en su `.env` local.
+
+    La fixture `aislar_env_file` de conftest.py neutraliza `env_file` durante
+    todo el suite. Estos tests son su cierre de regresión.
+    """
+
+    def test_settings_ignora_un_env_file_del_directorio_actual(
+        self, env_vars, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN un archivo .env en el directorio de trabajo que pisa un default
+        WHEN se instancia Settings() sin la variable en el entorno
+        THEN gana el default del código, no el archivo.
+        """
+        (tmp_path / ".env").write_text(
+            "\n".join(
+                [
+                    "EMAIL_PROVIDER=smtp",
+                    "SMTP_HOST=smtp.delarchivo.com",
+                    "SMTP_USER=alguien@delarchivo.com",
+                    "SMTP_PASSWORD=secreto-del-archivo",
+                    "SMTP_FROM=alguien@delarchivo.com",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("EMAIL_PROVIDER", raising=False)
+        from app.core.config import Settings
+
+        s = Settings()
+
+        assert s.EMAIL_PROVIDER == "console"
+        assert s.SMTP_HOST == ""
+
+    def test_el_entorno_sigue_mandando(self, env_vars, monkeypatch, tmp_path):
+        """
+        Triangulación: aislar el archivo NO debe sordear el entorno.
+
+        Las fixtures configuran los tests vía os.environ; si el aislamiento
+        también bloqueara eso, el suite entero quedaría leyendo defaults.
+        """
+        (tmp_path / ".env").write_text("EMAIL_PROVIDER=console", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("EMAIL_PROVIDER", "smtp")
+        monkeypatch.setenv("SMTP_HOST", "smtp.delentorno.com")
+        monkeypatch.setenv("SMTP_USER", "alguien@delentorno.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "secreto-del-entorno")
+        monkeypatch.setenv("SMTP_FROM", "alguien@delentorno.com")
+        from app.core.config import Settings
+
+        s = Settings()
+
+        assert s.EMAIL_PROVIDER == "smtp"
+        assert s.SMTP_HOST == "smtp.delentorno.com"
